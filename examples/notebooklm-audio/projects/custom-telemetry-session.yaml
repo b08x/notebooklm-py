@@ -1,0 +1,27 @@
+# Offline declarative compilation example specifying explicit telemetry vocabulary
+# without requiring manual string editing of raw markdown prompt templates.
+
+title: "Production Distributed Lock Synchronizer"
+topic: "deadlock race conditions in multi-tenant Redis clustered locks"
+source_type: "notebook"
+auto_extract: false
+
+lexical_dictionary:
+  agreement: "[State 1: Quorum consensus confirmed via Raft voting transition]"
+  confusion: "[State 2: Split-brain fencing token divergence across Availability Zones]"
+  frustration: "[State 3: Connection pool eviction and socket read timeout]"
+  brainstorm: "[State 4: Unenforced optimistic concurrency fallback assumptions]"
+
+telemetry:
+  scaling_var: "network jitter packet drop ratio"
+  coefficient: 1.42
+  unstructured_goal: "unbounded background worker retry loops"
+
+topics:
+  - "Mechanism 1: Clock drift tolerance in Redlock algorithm implementations"
+  - "Mechanism 2: Thwarting deadlocks when primary replica failover interrupts lease renewal"
+  - "Mechanism 3: Trade-offs between strong consistency vs linearizable latency degradation"
+
+catchphrase: "God's truth! Another split-brain partition!"
+audio_format: "default"
+audio_length: "long"

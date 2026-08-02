@@ -1,0 +1,17 @@
+# Declarative specification targeting an existing NotebookLM notebook UUID.
+# With auto_extract enabled, the orchestrator will automatically interrogate the notebook
+# to fill Title, Scope, Lexical Dictionaries, and Debate Topics without manual intervention.
+
+notebook_id: "dfa4c86e-11b2-4d22-9018-000011112222"
+source_type: "notebook"
+auto_extract: true
+template: "mr-and-mrs-language-model"
+
+include_telemetry: true
+include_escalations: true
+include_style_module: true
+
+catchphrase: "By Cor! A high-entropy desynchronization event!"
+
+audio_format: "default"
+audio_length: "default"
