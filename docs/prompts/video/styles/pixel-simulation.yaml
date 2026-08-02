@@ -1,0 +1,37 @@
+name: pixel-simulation
+description: Cohesive 16-bit simulation world where concepts become physical game mechanics and interactive systems.
+camera:
+  - isometric projection
+  - overhead grid view
+  - structured tracking camera
+palette:
+  - vibrant 16-bit RGB
+  - slate grey hardware accents
+  - neon indicators (cyan, magenta, amber)
+medium:
+  - retro pixel-art sprites
+  - tile-mapped simulation landscapes
+  - vintage system fonts
+visual_grammar:
+  - factories, automation pipelines, and conveyor belts
+  - resource pools and energy meters
+  - autonomous sprite agents and couriers
+  - classic simulation dashboards and debug HUDs
+animation:
+  - frame-by-frame sprite construction
+  - real-time resource packets flowing along tracks
+  - state changes driven by simulated triggers and timers
+  - technology tree node unlocks
+constraints:
+  - Avoid photorealism and modern corporate vector flat art
+  - Do not use standard presentation slides
+  - Every abstract concept must be physically instantiated as an operating game mechanic
+tags:
+  - distributed systems
+  - software architecture
+  - networking
+  - concurrency
+  - pipelines
+  - simulation
+  - engineering
+  - protocols

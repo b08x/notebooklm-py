@@ -1,0 +1,23 @@
+Project Overview: {{ project.title }}
+Target Audience: {{ project.audience }} (Calibrate technical rigor, vocabulary depth, and pacing to this audience).
+Target Run Time: Approximately {{ project.length }}.
+
+Narrative Voice & Tone (Profile: {{ voice.name | replace('-', ' ') | title }}):
+- Instructional Atmosphere: {{ voice.tone }}
+- Delivery Pacing: {{ voice.pacing }}
+
+Narrative Structure & Chronological Flow:
+Organize the overview into the following chronological structured chapters:
+{% for section in voice.narrative_structure %}
+{{ loop.index }}. {{ section }}
+{% endfor %}
+
+Vocabulary & Lexical Precision Guidelines:
+{% for guideline in voice.vocabulary_guidelines %}
+- {{ guideline }}
+{% endfor %}
+{% if project.custom_instructions %}
+
+Additional Project Custom Instructions:
+{{ project.custom_instructions }}
+{% endif %}

@@ -1,0 +1,13 @@
+title: "Clinical Modalities in Radiology"
+style: "research-notebook"
+domain: "radiology"
+voice: "documentary"
+audience: "Medical students and resident clinical observers"
+length: "8 min"
+video_format: "explainer"
+documents:
+  - "https://en.wikipedia.org/wiki/Radiography"
+  - "https://en.wikipedia.org/wiki/Magnetic_resonance_imaging"
+custom_instructions: >
+  Emphasize diagnostic precision and clearly contrast tissue relaxation dynamics
+  in MRI against attenuation gradients in x-ray CT modalities.

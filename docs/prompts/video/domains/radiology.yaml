@@ -1,0 +1,19 @@
+name: radiology
+description: Diagnostic medical imaging modalities and anatomical pathology mappings.
+concept_mapping:
+  CT scan: dimensional slicing engine viewing biological structures layer-by-layer like an open deck of cards
+  MRI: magnetic spin resonance topology mapping soft tissues through energetic relaxation times
+  ultrasound: acoustic echolocation sweeping across fluid boundaries and vascular flows
+  lesion: anomalous structural density outlier contrasting against uniform surrounding tissue patterns
+  contrast agent: bioluminescent tracer fluid illuminating vascular high-speed highways and capillary networks
+domain_rules:
+  - Prioritize accurate spatial anatomical orientation and clinical specificity
+  - Distinguish imaging modality physical physics (x-ray attenuation vs. magnetic resonance vs. ultrasound echo)
+  - Emphasize diagnostic clarity and comparative tissue contrasting
+tags:
+  - radiology
+  - medical imaging
+  - pathology
+  - anatomy
+  - clinical Diagnostics
+  - medicine

@@ -1,0 +1,39 @@
+Visual Style Grammar: {{ style.name | replace('-', ' ') | title }}
+{% if style.description %}
+{{ style.description }}
+{% endif %}
+
+Generate every video scene adhering strictly to the following visual aesthetics and drawing medium:
+- Primary Medium: {{ style.medium | join('; ') }}.
+- Color Palette: {{ style.palette | join(', ') }}.
+- Camera Projection & Framing: {{ style.camera | join(', ') }}.
+
+Visual Grammar & Metaphor Language:
+Incorporate the following spatial structures, iconography, and physical compositions:
+{% for grammar_item in style.visual_grammar %}
+- {{ grammar_item }}
+{% endfor %}
+{% if domain and domain.concept_mapping %}
+
+Domain Concept Mappings (Instantiate abstract domain topics as concrete visual mechanics):
+{% for concept, representation in domain.concept_mapping.items() %}
+- [{{ concept }}] ➔ visualize as: {{ representation }}
+{% endfor %}
+{% endif %}
+
+Animation & Motion Dynamics:
+{% for anim in style.animation %}
+- {{ anim }}
+{% endfor %}
+
+Stylistic Guardrails & Negative Constraints:
+{% for constraint in style.constraints %}
+- {{ constraint }}
+{% endfor %}
+{% if domain and domain.domain_rules %}
+
+Domain Pedagogical Rules:
+{% for rule in domain.domain_rules %}
+- {{ rule }}
+{% endfor %}
+{% endif %}

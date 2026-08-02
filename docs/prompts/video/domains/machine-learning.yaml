@@ -1,0 +1,20 @@
+name: machine-learning
+description: Core computational concepts in deep learning, model training, and mathematical architecture.
+concept_mapping:
+  neural layer: hierarchical sorting sieve that extracts abstract features from raw input arrays
+  gradient descent: cautious navigational descent down a foggy mathematical mountain toward the deepest valley of accuracy
+  loss function: uncompromising quality inspection barometer measuring delta between hypothesis and ground truth
+  attention mechanism: dynamic directional spotlight scanning across context canvases to weigh semantic relevance
+  overfitting: overly specific memorization of noise rather than generalizing universal mathematical patterns
+  embedding space: multi-dimensional constellation chart where conceptually identical terms cluster tightly together
+domain_rules:
+  - Explicitly connect intuitive graphical geometry with actual computational training behaviors
+  - Contrast training convergence against validation inference stability
+  - Visualize high-dimensional mathematical transformations as clean structural spatial projections
+tags:
+  - machine learning
+  - deep learning
+  - artificial intelligence
+  - algorithms
+  - mathematical modeling
+  - optimization

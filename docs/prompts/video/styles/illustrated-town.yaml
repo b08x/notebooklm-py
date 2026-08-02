@@ -1,0 +1,33 @@
+name: illustrated-town
+description: Whimsical yet structured architectural town model representing organizational workflows, civic structures, and enterprise departments.
+camera:
+  - diorama crane angle
+  - orbiting architectural focus
+  - street-level transitions
+palette:
+  - warm pastel terracotta
+  - forest green and slate blue
+  - golden hour natural illumination
+medium:
+  - tactile matte Gouache illustrations
+  - architectural maquettes and diorama layouts
+visual_grammar:
+  - civic buildings representing departments and registries
+  - town halls, marketplaces, archives, and workshops
+  - citizens and couriers executing tasks along paved avenues
+  - organizational boundaries shown as bridges, gates, and districts
+animation:
+  - architectural structures popping smoothly into place
+  - civic traffic pulsing along defined workflow roads
+  - day-to-night lighting cycles to illustrate operational timelines
+constraints:
+  - Keep human figures symbolic rather than hyper-detailed
+  - Map every procedural step to a physical civic location or transaction
+tags:
+  - organizational workflows
+  - enterprise software
+  - logistics
+  - HR and management
+  - civic systems
+  - operations
+  - governance

@@ -1,0 +1,35 @@
+name: strategy-game
+description: Grand strategy interactive board where macroeconomic forces and game-theoretic scenarios play out over geopolitical territory.
+camera:
+  - strategic overhead table view
+  - tactical zoom onto specific territory zones
+  - split-screen comparative forecasting
+palette:
+  - regal gold and deep burgundy
+  - command-table mahogany
+  - status indicators (surplus emerald, deficit amber)
+medium:
+  - rendered wooden figurines and token pieces
+  - topographical strategy maps with embossed boundaries
+  - dynamic statistical charts rising directly from map territories
+visual_grammar:
+  - resource pools, trade caravans, and currency flows across borders
+  - policy levers and regulatory floodgates altering market conditions
+  - competitive faction markers representing market players or institutions
+  - risk equilibrium balances and probability heatmaps
+animation:
+  - tactical pieces sliding into position across map grids
+  - currency and capital counters surging along trade networks
+  - border expansions and contractual agreements forming in real time
+constraints:
+  - Maintain a high-stakes, analytical strategic atmosphere
+  - Translate abstract incentives and pricing signals into tactile token mechanics
+tags:
+  - economics
+  - finance
+  - game theory
+  - strategy
+  - markets
+  - policy
+  - management
+  - incentives

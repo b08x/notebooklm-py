@@ -1,0 +1,35 @@
+name: laboratory-notebook
+description: Interactive experimental AI laboratory environment combining mathematically rigorous formulas with dynamic neural network visualizers.
+camera:
+  - dimensional floating workspace view
+  - deep dive into computational graph nodes
+  - synchronized matrix transformation views
+palette:
+  - deep terminal cyber blue and graphite
+  - luminous glowing nodes (neon cyan, activation emerald, gradient orange)
+  - precision scientific grid dark mode
+medium:
+  - multidimensional glowing tensor visualizations
+  - crisp mathematical syntax rendering
+  - dynamic loss landscape surfaces
+visual_grammar:
+  - multi-layered attention matrices and neural connection weighted graphs
+  - token embedding manifolds floating in high-dimensional semantic space
+  - gradient vectors pointing down loss landscapes toward local optimization minima
+  - real-time training metric curves and validation histograms
+animation:
+  - activation signals rippling across deep layers of transformer attention heads
+  - geometric manifold projections clustering similar concepts together
+  - iterative weight updates reshaping decision boundaries in real time
+constraints:
+  - Keep tensor and matrix representations mathematically grounded and visually precise
+  - Avoid Hollywood generic hacker aesthetics in favor of authoritative AI engineering tooling
+tags:
+  - machine learning
+  - artificial intelligence
+  - neural networks
+  - transformers
+  - optimization
+  - statistics
+  - deep learning
+  - embedding

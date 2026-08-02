@@ -1,0 +1,36 @@
+name: metro-map
+description: Clean, high-contrast schematic transportation diagram inspired by iconic metropolitan subway maps for routing and protocols.
+camera:
+  - clean orthogonal top-down view
+  - smooth glide along colored lines
+  - rhythmic jump cuts between transit interchanges
+palette:
+  - high-contrast primary routing colors (red, blue, yellow, green)
+  - bold black and white interchanges
+  - neutral slate grid background
+medium:
+  - vector typography and geometry
+  - iconic minimalist symbology
+  - transit design standards
+visual_grammar:
+  - colored transit lines representing communication channels or protocol tracks
+  - interchange stations symbolizing switches, gateways, and transformations
+  - data trains moving down tracks with scheduled routing logic
+  - station legends and routing manifests
+animation:
+  - rapid line tracing between transfer nodes
+  - pulsing signal dots representing packet transfer and handoffs
+  - dynamic route highlighting during error resolution or failover
+constraints:
+  - Strictly adhere to 45-degree and 90-degree geometry angles
+  - Eliminate all realistic geographic distortion in favor of clear topology
+  - Maximize legibility of node names and routing paths
+tags:
+  - network protocols
+  - telecommunications
+  - data routing
+  - pipelines
+  - transit
+  - infrastructure
+  - microservices
+  - routing

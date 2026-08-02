@@ -1,0 +1,23 @@
+name: software-architecture
+description: Concepts and metaphors for distributed computing, cloud systems, and autonomous agent networks.
+concept_mapping:
+  API: secure entrance gateway with validation checkpoints
+  queue: multi-lane highway or holding buffers managing traffic surges
+  database: monumental central library with cataloged stacks and fast retrieval indices
+  agent: intelligent autonomous courier dispatching tasks and navigating obstacles
+  workflow: coordinated public marketplace with specialized artisan booths and exchange contracts
+  cache: high-speed front-desk workbench with instant access to active tools
+  load balancer: skilled traffic coordinator directing arrivals to optimal open lanes
+  microservice: self-contained workshop with dedicated craftspeople and isolated inventory
+domain_rules:
+  - Always emphasize asynchronous decoupling and failure boundaries between system components
+  - Show latency and bottlenecks as visual traffic accumulation or physical queuing queues
+  - Highlight security and observability checkpoints whenever data crosses system boundaries
+tags:
+  - software architecture
+  - backend
+  - distributed systems
+  - microservices
+  - agent
+  - cloud
+  - API

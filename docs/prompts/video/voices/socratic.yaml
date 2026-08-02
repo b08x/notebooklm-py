@@ -1,0 +1,12 @@
+name: socratic
+tone: Inquisitive, exploratory, and conversational tutorial guiding the learner through guided deductive problem-solving.
+pacing: Dynamic and responsive, building concepts step-by-step through inquiry and immediate visual feedback.
+narrative_structure:
+  - Introduce a seemingly paradoxical or challenging problem state
+  - Propose intuitive initial hypotheses and test them against simulated constraints
+  - Discover core governing rules through incremental iterative observation
+  - Summarize learned truths through generalized frameworks
+vocabulary_guidelines:
+  - Invite the audience into active hypothesis testing ("What happens when...", "Notice how...")
+  - Connect abstract definitions to immediate observable visual phenomena
+  - Emphasize discovery and insight formation

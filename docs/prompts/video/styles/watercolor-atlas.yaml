@@ -1,0 +1,37 @@
+name: watercolor-atlas
+description: Hand-painted explanatory notebook using watercolor washes on textured paper with crisp ink outlines.
+camera:
+  - elevated three-quarter perspective
+  - gentle pans and zooms
+  - slow-pan across conceptual landscapes
+palette:
+  - ochre
+  - terracotta
+  - olive
+  - warm earth tones
+medium:
+  - watercolor washes
+  - crisp ink outlines
+  - textured archival paper
+visual_grammar:
+  - maps and cartographic grids
+  - landmarks and monuments
+  - interconnected pathways and roads
+  - integrated handwritten annotations
+  - miniature environments and conceptual towns
+animation:
+  - organic sketching into existence
+  - watercolor washes bleeding and revealing
+  - path tracing between landmarks
+constraints:
+  - Avoid photorealism
+  - Maintain a single cohesive illustrated atlas world
+  - Prefer spatial relationships and physical topography over abstract UI diagrams
+tags:
+  - historical
+  - narrative
+  - geography
+  - exploration
+  - evolution
+  - survey
+  - atlas

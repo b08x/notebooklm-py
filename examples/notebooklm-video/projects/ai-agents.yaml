@@ -1,0 +1,12 @@
+title: "AI Agents: Multi-Agent Systems & Architecture"
+style: "pixel-simulation"
+domain: "software-architecture"
+voice: "technical-explainer"
+audience: "Senior Software Engineers and Cloud Architects"
+length: "10 min"
+video_format: "explainer"
+documents:
+  - "https://en.wikipedia.org/wiki/Multi-agent_system"
+custom_instructions: >
+  Focus heavily on how agents delegate subtasks using asynchronous queues and how
+  backpressure is handled when external tool APIs experience latency surges.

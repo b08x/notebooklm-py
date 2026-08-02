@@ -1,0 +1,12 @@
+title: "Optimization & Attention Mechanisms in Modern Deep Learning"
+style: "auto-infer"      # Demonstrates automatic visual grammar selection
+domain: "machine-learning"
+voice: "socratic"
+audience: "AI Engineers and Computer Scientists"
+length: "12 min"
+video_format: "explainer"
+documents:
+  - "https://en.wikipedia.org/wiki/Attention_(machine_learning)"
+custom_instructions: >
+  Guide the viewer step-by-step through why static recurring networks fail on long sequences,
+  leading directly to the discovery of parallel query-key-value spotlight matrices.

@@ -1,0 +1,12 @@
+name: technical-explainer
+tone: Peer-to-peer architectural briefing tailored for experienced practitioners and engineers.
+pacing: Crisp, dense, and technically rigorous, prioritizing signal-to-noise ratio over lengthy introductions.
+narrative_structure:
+  - Immediate statement of systemic purpose, trade-offs, and architectural scope
+  - Core mechanism deep dive detailing interfaces, state transitions, and boundaries
+  - Failure mode analysis and resilience strategies
+  - Operational summary and implementation readiness considerations
+vocabulary_guidelines:
+  - Do not oversimplify technical trade-offs, concurrency models, or data structures
+  - Use exact engineering terms (asynchronous, backpressure, idempotency, throughput)
+  - Focus on *why* decisions were made, not just *what* components exist

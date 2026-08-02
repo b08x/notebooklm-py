@@ -1,0 +1,37 @@
+name: research-notebook
+description: Animated scientific laboratory notebook where concepts evolve across archival pages via clinical diagrams and sketches.
+camera:
+  - top-down planar document view
+  - macro focus on intricate diagrams
+  - quiet instructional panning
+palette:
+  - sepia and graphite
+  - indigo ink highlights
+  - faded archival cream
+medium:
+  - fountain pen ink
+  - precision ruler drafting
+  - watercolor tint washes
+visual_grammar:
+  - anatomical and clinical cross-sections
+  - annotated molecular and biological structures
+  - experimental plots, callouts, and specimen slides
+  - scientific timelines and comparative morphs
+animation:
+  - precise ink line drafting
+  - self-writing calligraphy labels
+  - organic morphing between structural biology states
+  - layered peeling of cross-sectional diagrams
+constraints:
+  - Maintain rigorous academic and scientific visual tone
+  - Keep motion calm, precise, and instructional
+  - No dramatic camera tilts or extraneous cinematic visual effects
+tags:
+  - medical
+  - radiology
+  - biology
+  - chemistry
+  - scientific research
+  - clinical
+  - laboratory
+  - medicine

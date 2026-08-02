@@ -1,0 +1,21 @@
+name: nutrition
+description: Biophysical metabolism and human digestive microbiome concept mappings.
+concept_mapping:
+  protein: cellular building blocks stored in organized warehouse processing depots
+  mitochondria: high-efficiency chemical power stations generating usable kinetic energy currency
+  microbiome: bustling symbiotic village ecosystem where distinct microbial guilds cooperate
+  enzyme: precision specialized masterkey catalyzing complex biochemical assembly lines
+  glucose: rapid-release biofuel cartridges powering immediate metabolic activity
+  fiber: robust structural mesh cleansing and maintaining intestinal transport channels
+domain_rules:
+  - Present biological systems as cooperative and interconnected metabolic ecosystems
+  - Contrast rapid-acting chemical fuel sources against sustained structural nourishment
+  - Visualize absorption and cellular transport as active logistical delivery mechanisms
+tags:
+  - nutrition
+  - biology
+  - metabolism
+  - health
+  - microbiome
+  - physiology
+  - biochemical
