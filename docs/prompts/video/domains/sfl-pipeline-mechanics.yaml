@@ -1,0 +1,29 @@
+name: sfl-pipeline-mechanics
+description: Concepts and metaphors for the SFL Engine two-pass annotation pipeline and hybrid RRF retrieval, told as factory automation mechanics rather than security/firewall framing.
+concept_mapping:
+  clause entering the pipeline: raw material crate entering the factory floor
+  Pass 1 (spaCy): fast stamping machine — extracts structural parts (participants, processes) at line speed
+  Pass 2 (LLM): skilled inspector station — reads nuance, attaches quality tags (mood, modality, tenor)
+  ideational payload output: Conveyor Belt A — the "fact parts" bin
+  interpersonal payload output: Conveyor Belt B — the "stance tags" bin
+  Postgres/pgvector storage: dual warehouse silos, one per belt, independently indexed
+  incoming retrieval query: a dispatch order entering the yard
+  vector similarity search: "automated forklift #1 — scans by proximity/similarity"
+  keyword/full-text search: "automated forklift #2 — scans by exact tag match"
+  Reciprocal Rank Fusion: a merging conveyor junction where both forklifts' picks combine into one ranked cart via a visible scoring formula on a HUD
+  scalar stance filter: quality-control gate on the belt — rejects/dims flagged crates before the loading dock
+  LLM synthesis: the loading dock / delivery drone — only accepts QC-cleared crates
+domain_rules:
+  - Keep the two conveyor belts (ideational "fact parts" vs interpersonal "stance tags") visually and chromatically distinct from the split point all the way to their separate warehouse silos
+  - Show the Reciprocal Rank Fusion merge junction as an explicit mechanical moment with a visible scoring formula, not an implied or narrated-only event
+  - Show the quality-control gate as a mechanical process acting on crates in real time, not just described in narration
+  - This is a mechanics/how-it-works narrative, not a security narrative — do not introduce firewall, attack, or adversarial framing (that belongs to the separate laboratory-notebook video)
+tags:
+  - retrieval augmented generation
+  - hybrid search
+  - reciprocal rank fusion
+  - nlp pipeline
+  - systemic functional linguistics
+  - pgvector
+  - automation
+  - simulation
