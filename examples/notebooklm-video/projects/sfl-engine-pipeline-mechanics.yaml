@@ -1,0 +1,27 @@
+# Complementary video overview for the SFL Engine notebook (existing notebook,
+# targeted via -n/--notebook-id — no new sources are uploaded). Companion to
+# sfl-engine-rhetorical-firewall.yaml (laboratory-notebook style, security framing);
+# this one is pixel-simulation style, pipeline-mechanics framing, no security narrative.
+
+title: "SFL Engine: Inside the Pipeline"
+style: "pixel-simulation"
+domain: "sfl-pipeline-mechanics"
+voice: "documentary"
+audience: "General technical audience curious how RAG retrieval pipelines work"
+length: "6-8 min"
+video_format: "explainer"
+documents: []
+custom_instructions: >
+  Open on a single crate rolling onto the factory floor. Send it through the fast
+  stamping machine (Pass 1) which punches out structural tags, then the skilled
+  inspector station (Pass 2) which reads nuance and clips on quality tags for mood,
+  modality, and tenor. Show the crate physically splitting onto two color-coded
+  conveyor belts — Belt A carrying "fact parts" into one warehouse silo, Belt B
+  carrying "stance tags" into a separate silo. Cut to a dispatch order arriving in
+  the yard: two automated forklifts launch in parallel, one scanning by proximity/
+  similarity, one scanning by exact tag match, both converging at a merge junction
+  where a visible scoreboard computes the combined ranking. The merged cart rolls
+  through a quality-control gate that rejects or dims flagged crates before the
+  loading dock, where only cleared crates are picked up for delivery. Keep the two
+  belts visually and chromatically distinct end-to-end; make the RRF merge junction
+  and QC gate explicit mechanical beats, not just narrated asides.
