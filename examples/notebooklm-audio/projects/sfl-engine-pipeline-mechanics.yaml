@@ -1,0 +1,49 @@
+# SFL Engine — Pipeline Mechanics diagnostic session. Complements the
+# pixel-simulation video of the same name (examples/notebooklm-video/projects/
+# sfl-engine-pipeline-mechanics.yaml): mechanics/how-it-works framing, not
+# security/firewall framing (that's sfl-engine-rhetorical-firewall.yaml).
+# Live auto-extraction is enabled: title/scope/vocabulary/topics below are the
+# thematic fallback if RAG harvesting from the notebook's sources comes up short.
+
+notebook_id: "3da35aa6-8b7e-433d-9092-dfd29e9678b4"
+title: "SFL Engine: Inside the Pipeline"
+topic: "the mechanics of the two-pass annotation pipeline and hybrid RRF retrieval — how spaCy structural parsing, LLM semantic annotation, vector search, and keyword search fit together as one running system"
+source_type: "notebook"
+auto_extract: true
+template: "mr-and-mrs-language-model"
+
+include_telemetry: true
+include_escalations: true
+include_style_module: true
+
+lexical_dictionary:
+  agreement: "[State 1: Pass 1 structural extraction checkpoint confirmed — clause parsed clean]"
+  confusion: "[State 2: Pass 2 mood/modality tagging desync — annotation drifted from clause structure]"
+  frustration: "[State 3: RRF fusion starvation — forklift scan exhausted before merge junction could score]"
+  brainstorm: "[State 4: unconstrained tenor speculation — annotation with no source-grounded anchor]"
+
+telemetry:
+  scaling_var: "concurrent annotation queue depth"
+  coefficient: 1.05
+  unstructured_goal: "unmerged dual-belt backlog"
+
+escalations:
+  - compound: "State 2 (Confusion) + State 3 (Frustration)"
+    diagnostic: "Interpersonal payload backlog stalls the RRF merge junction, forcing the loading dock to stall on unscored carts"
+    tier: "Severity 1 (Fatal)"
+  - compound: "State 1 (Agreement) + State 4 (Tangent)"
+    diagnostic: "Ideational payload extracted cleanly while interpersonal annotation drifts into unverified speculative tenor tags"
+    tier: "Severity 2 (Elevated)"
+
+topics:
+  - "Mechanism 1: The two-pass annotation pipeline — spaCy structural parsing (Pass 1) handing off to LLM semantic annotation of mood, modality, and tenor (Pass 2)"
+  - "Mechanism 2: Why splitting output onto two independently indexed payloads (ideational vs interpersonal) changes what's independently filterable at retrieval time"
+  - "Mechanism 3: Hybrid retrieval — how vector similarity search and keyword search run in parallel and get merged via Reciprocal Rank Fusion into one ranked result"
+
+query_guidance:
+  - "What happens end-to-end to a single clause from ingestion through Pass 1, Pass 2, storage, and retrieval?"
+  - "Where in the pipeline would a malformed or ambiguous clause actually get stuck, and what does that failure look like operationally?"
+
+catchphrase: "Pass 1 confirmed! Pass 2 desync detected!"
+audio_format: "deep-dive"
+audio_length: "default"
