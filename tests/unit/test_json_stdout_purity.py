@@ -38,6 +38,7 @@ from notebooklm.rpc.types import ShareAccess, ShareViewLevel
 from notebooklm.types import (
     Artifact,
     AskResult,
+    Collection,
     Label,
     Note,
     Notebook,
@@ -161,6 +162,17 @@ def _stub_labels() -> list[Label]:
     ]
 
 
+def _stub_collections() -> list[Collection]:
+    return [
+        Collection(
+            id="col123def456ghi789jkl",
+            name="Research",
+            emoji="📁",
+            notebook_ids=["abc123def456ghi789jkl"],
+        ),
+    ]
+
+
 def _stub_share_status(notebook_id: str = "abc123def456ghi789jkl") -> ShareStatus:
     return ShareStatus(
         notebook_id=notebook_id,
@@ -192,6 +204,7 @@ def _make_client(extra_setup=None) -> MagicMock:
         "notes",
         "sharing",
         "labels",
+        "collections",
     ):
         setattr(client, ns, MagicMock())
 
@@ -256,6 +269,17 @@ def _make_client(extra_setup=None) -> MagicMock:
     client.labels.add_sources = AsyncMock(return_value=_stub_labels()[0])
     client.labels.remove_sources = AsyncMock(return_value=_stub_labels()[0])
     client.labels.delete = AsyncMock(return_value=None)
+
+    # collection group (account-level): list backs resolve_collection_id too; the
+    # CRUD verbs return a Collection (delete -> None); notebooks() expands to
+    # Notebook objects.
+    client.collections.list = AsyncMock(return_value=_stub_collections())
+    client.collections.notebooks = AsyncMock(return_value=_stub_notebooks())
+    client.collections.create = AsyncMock(return_value=_stub_collections()[0])
+    client.collections.rename = AsyncMock(return_value=_stub_collections()[0])
+    client.collections.add_notebooks = AsyncMock(return_value=_stub_collections()[0])
+    client.collections.remove_notebooks = AsyncMock(return_value=_stub_collections()[0])
+    client.collections.delete = AsyncMock(return_value=None)
 
     if extra_setup is not None:
         extra_setup(client)
@@ -361,6 +385,41 @@ def _customize_research_wait(client: MagicMock) -> None:
                 "query": "",
                 "report": "",
             }
+        )
+    )
+
+
+class _ImportedResearchSourcesStub(list):
+    """Mirrors ``notebooklm._research_import._ImportedResearchSources``: a ``list``
+    of newly-imported entries carrying the ``already_present`` side channel."""
+
+    def __init__(self, items, already_present=()):
+        super().__init__(items)
+        self.already_present = list(already_present)
+
+
+def _customize_research_import(client: MagicMock) -> None:
+    # `research import --json` polls once (resolving the bare "current run"
+    # from that same poll), then imports. A completed run with one source is
+    # the minimum that clears the importable-state ladder.
+    client.research.poll = AsyncMock(
+        return_value=_research_task(
+            {
+                "task_id": "run_789",
+                "status": "completed",
+                "sources": [{"url": "https://example.com/a", "title": "A"}],
+                "query": "q",
+                "report": "",
+            }
+        )
+    )
+    # A bare list is a shape the real client never returns — it hands back an
+    # ``_ImportedResearchSources`` (a list subclass carrying ``already_present``),
+    # so mirror that or the sweep never exercises the side channel.
+    client.research.import_sources_with_verification = AsyncMock(
+        return_value=_ImportedResearchSourcesStub(
+            [{"id": "src_1", "title": "A", "url": "https://example.com/a"}],
+            already_present=[{"id": "src_0", "title": "B", "url": "https://example.com/b"}],
         )
     )
 
@@ -502,6 +561,11 @@ JSON_COMMANDS: list[tuple[str, list[str], object]] = [
         _customize_research_wait,
     ),
     (
+        "research_import",
+        ["research", "import", "-n", "abc123def456ghi789jkl", "--json"],
+        _customize_research_import,
+    ),
+    (
         "research_cancel",
         ["research", "cancel", "run_456", "-n", "abc123def456ghi789jkl", "--json"],
         _customize_research_cancel,
@@ -601,6 +665,31 @@ JSON_COMMANDS: list[tuple[str, list[str], object]] = [
             "--yes",
             "--json",
         ],
+        None,
+    ),
+    # collection group (account-level; no -n). list backs resolve_collection_id;
+    # CRUD verbs return a Collection (delete -> None); notebooks expands members.
+    ("collection_list", ["collection", "list", "--json"], None),
+    ("collection_notebooks", ["collection", "notebooks", "col123def456ghi789jkl", "--json"], None),
+    ("collection_create", ["collection", "create", "Research Q3", "--json"], None),
+    (
+        "collection_rename",
+        ["collection", "rename", "col123def456ghi789jkl", "Research Q4", "--json"],
+        None,
+    ),
+    (
+        "collection_add",
+        ["collection", "add", "col123def456ghi789jkl", "abc123def456ghi789jkl", "--json"],
+        None,
+    ),
+    (
+        "collection_remove",
+        ["collection", "remove", "col123def456ghi789jkl", "abc123def456ghi789jkl", "--json"],
+        None,
+    ),
+    (
+        "collection_delete",
+        ["collection", "delete", "col123def456ghi789jkl", "--yes", "--json"],
         None,
     ),
     # notebook group (top-level via session/notebook modules)
@@ -974,6 +1063,15 @@ JSON_ERROR_WAIVED: dict[tuple[str, ...], str] = {
     ("source", "wait"): _MUTATION_RATIONALE_ERROR,
     # `use` context mutation — covered by session_characterization.
     ("use",): _MUTATION_RATIONALE_ERROR,
+    # collection group — success sweep is the primary contract (real entries in
+    # JSON_COMMANDS); error envelopes can grow incrementally like label/note/share.
+    ("collection", "list"): _INTROSPECTION_RATIONALE,
+    ("collection", "notebooks"): _INTROSPECTION_RATIONALE,
+    ("collection", "create"): _MUTATION_RATIONALE_ERROR,
+    ("collection", "rename"): _MUTATION_RATIONALE_ERROR,
+    ("collection", "add"): _MUTATION_RATIONALE_ERROR,
+    ("collection", "remove"): _MUTATION_RATIONALE_ERROR,
+    ("collection", "delete"): _MUTATION_RATIONALE_ERROR,
 }
 
 

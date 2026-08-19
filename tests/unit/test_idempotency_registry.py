@@ -64,6 +64,25 @@ def test_registry_classifies_every_rpc_method_at_variant_none() -> None:
         assert entry.notes.strip(), f"{method.name} classification must document its rationale"
 
 
+def test_get_notebook_notes_do_not_claim_the_fetch_is_side_effect_free() -> None:
+    """``GET_NOTEBOOK`` is idempotent, but it is NOT free of server-side effect.
+
+    It writes ``ProjectMetadata.lastViewedTime`` and thereby reorders the
+    account's recency list (#2126) — live-probed. The classification is still
+    correct (a timestamp write is last-write-wins under replay), but the
+    rationale string used to say "read-only notebook fetch; replay does not
+    mutate notebook state", which is the exact claim #2126 disproves. Pin the
+    correction: prose is the only record of a probed server behavior, and
+    nothing else would fail if it were reverted.
+    """
+    entry = IDEMPOTENCY_REGISTRY.get_entry(RPCMethod.GET_NOTEBOOK)
+    assert entry is not None
+    notes = entry.notes
+
+    assert "lastViewedTime" in notes
+    assert "read-only" not in notes
+
+
 def test_seed_defaults_makes_unregistered_methods_resolve_unclassified() -> None:
     """A method with NO explicit ``.register()`` MUST resolve to UNCLASSIFIED.
 
@@ -154,6 +173,7 @@ def test_retry_disabled_entries_are_intentional_and_documented() -> None:
         (RPCMethod.CREATE_LABEL, None): IdempotencyPolicy.NON_IDEMPOTENT_NO_RETRY,
         (RPCMethod.DELETE_LABEL, None): IdempotencyPolicy.NON_IDEMPOTENT_NO_RETRY,
         (RPCMethod.UPDATE_LABEL, "add_sources"): IdempotencyPolicy.NON_IDEMPOTENT_NO_RETRY,
+        (RPCMethod.UPDATE_LABEL, "add_notebooks"): IdempotencyPolicy.NON_IDEMPOTENT_NO_RETRY,
     }
     actual = {
         (method, variant): entry.policy
@@ -201,6 +221,31 @@ def test_update_label_remove_sources_variant_is_idempotent_set_op() -> None:
             RPCMethod.UPDATE_LABEL,
             caller_disable_internal_retries=False,
             operation_variant="remove_sources",
+        )
+        is False
+    )
+
+
+def test_update_label_remove_notebooks_variant_is_idempotent_set_op() -> None:
+    """The ``remove_notebooks`` UPDATE_LABEL variant is a retry-safe set-op.
+
+    Live-verified (PR #2009): removing an already-absent notebook member is a
+    confirmed silent no-op, so a blind transport retry that lands twice leaves
+    the same final state — same conclusion as ``remove_sources`` above, once
+    the previously-inferred (and wrong) wire shape was corrected and reverified
+    live.
+    """
+    entry = IDEMPOTENCY_REGISTRY.get_entry(
+        RPCMethod.UPDATE_LABEL, operation_variant="remove_notebooks"
+    )
+    assert entry.policy is IdempotencyPolicy.IDEMPOTENT_SET_OP
+    assert entry.notes.strip()
+    assert (
+        resolve_effective_disable_internal_retries(
+            IDEMPOTENCY_REGISTRY,
+            RPCMethod.UPDATE_LABEL,
+            caller_disable_internal_retries=False,
+            operation_variant="remove_notebooks",
         )
         is False
     )
@@ -505,6 +550,7 @@ def _build_rpc_executor() -> Any:
         rpc_method: str | None = None,
         refresh_budget: Any = None,
         retry_deadline: Any = None,
+        read_timeout: float | None = None,
     ) -> httpx.Response:
         captured["disable_internal_retries"] = disable_internal_retries
         captured["log_label"] = log_label
@@ -527,7 +573,9 @@ def _build_rpc_executor() -> Any:
     timeout = 30.0
     refresh_retry_delay = 0.0
 
-    def _decode(raw: str, rpc_id: str, *, allow_null: bool = False) -> Any:
+    def _decode(
+        raw: str, rpc_id: str, *, allow_null: bool = False, raise_on_null_status: bool = False
+    ) -> Any:
         return []
 
     async def _sleep(_: float) -> None:

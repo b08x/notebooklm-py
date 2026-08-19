@@ -7,34 +7,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-08-14
+
+### Added
+
+- Added account-level notebook collections through `client.collections` and the
+  `notebooklm collection` CLI group, including list, create, rename, membership,
+  and delete operations.
+- Expanded source discovery with status/type filters, strict exact counts, Drive
+  health, original-file links, MIME information, word counts, and revision
+  timestamps. MCP and REST URL batches now use a single batch-capable request.
+- Added structured source documents and offset-aware citation data so callers can
+  render readable source text and align citations with both answers and sources.
+- Exposed more notebook, artifact, chat, and research metadata, including project
+  state, chat follow-up suggestions, artifact content/state, research mode,
+  timings, termination reasons, and discovered-source ordinals.
+- Added standalone `notebooklm research import`, configurable research-import
+  timeouts, bulk sharing grants with `SharingAPI.set_users()`, and sharing-policy
+  and collaborator-limit fields.
+- Added opt-in mid-session `NOTEBOOKLM_REFRESH_CMD` support for long-running
+  servers with `NOTEBOOKLM_REFRESH_CMD_MIDSESSION=1`.
+
+### Changed
+
+- The default NotebookLM host is now `https://notebook.google.com`; the previous
+  `https://notebooklm.google.com` host remains supported for existing setups.
+- `Notebook.last_viewed_at` and `NotebookMetadata.last_viewed_at` now describe the
+  backend timestamp accurately. The old `modified_at` names remain compatible
+  aliases through v0.x.
+- Deep-research CLI waits now default to 1,800 seconds instead of 300 seconds.
+- **Compatibility note:** `QuizQuantity.MORE` now has its own wire value and no
+  longer compares equal to `QuizQuantity.STANDARD`. Quiz and flashcard option
+  inputs are also validated as enums.
+
+### Deprecated
+
+- Direct `AuthTokens` storage loading and cookie projections are deprecated in
+  favor of managed `NotebookLMClient.from_storage()` lifecycles. They remain
+  available through v0.x and are scheduled for removal in v1.0.
+- The pre-profiles home-root storage layout is deprecated. Running any
+  `notebooklm` command migrates it to `profiles/default/` automatically.
+- `ChatReference.answer_start_char` / `answer_end_char` are deprecated aliases
+  for `fragment_start_char` / `fragment_end_char`; the old names remain through
+  v0.x.
+
 ### Fixed
 
-- `notebooklm login --storage <path>` now gives each custom storage file an
-  isolated persistent browser profile, with login, logout, `status --paths`,
-  doctor's L3 readiness row, and L3 headless re-auth resolving the same
-  storage-specific path. New explicit-storage browser directories carry an
-  ownership marker: `login --fresh` refuses to recursively delete unowned
-  sidecars and logout leaves them intact (and reports the preserved path).
-  Canonical legacy and named-profile layouts remain managed even when selected
-  through `--storage`. Very long storage filenames use a stable canonical-path hash to
-  stay within filesystem component limits. Existing custom-storage browser
-  sessions are not auto-migrated because the old shared profile cannot be safely
-  attributed to a storage file or account. (#2026)
-- `notebooklm login --master-token` now starts Playwright with the required Windows
-  event-loop policy, avoiding a pre-browser `NotImplementedError` (#2011).
-- `notebooklm login` now recognizes `notebook.google.com` as the personal app landing
-  host after the Gemini Notebook rebrand, preventing successful browser sign-ins from
-  timing out after five minutes. Enterprise and RPC base-host validation remain
-  unchanged. (#2013)
-- `server_info(include_account=True)` (MCP tool and the REST `GET /v1/server/info`
-  route) now adds an `output_language_is_default` boolean to the account block. When
-  the account has never set an explicit output language, `output_language` is `null`
-  **and** `output_language_is_default` is `true`, signalling that the account uses
-  NotebookLM's default language rather than a bare null that reads as
-  missing/broken. A genuinely unparseable settings response still degrades to
-  `available: false` (so it stays distinguishable from the unset-uses-default case).
+- Improved authentication and login reliability across both NotebookLM hosts,
+  including Chromium setup diagnostics, custom storage paths, expired-session
+  recovery, cookie persistence, and long-running MCP/REST sessions.
+- Prevented notebook and source create retries from adopting an older item,
+  duplicating a committed item, or retrying when the idempotency probe itself
+  could not establish a safe answer.
+- File uploads now preserve partial-failure recovery details, report processing
+  failures that never resolve, and warn when a mistyped file extension would be
+  treated as pasted text.
+- Corrected chat answer selection, conversation turn numbering, Unicode and
+  multi-block citation offsets, full cited-text extraction, and source passage
+  resolution.
+- Corrected notebook ownership, not-found handling, empty-notebook decoding, and
+  create results when the pre-create baseline is unavailable.
+- Corrected artifact status decoding, generation rejection messages, quiz and
+  flashcard option ordering, and audio downloads (`.m4a` / `audio/mp4` rather
+  than `.mp3`).
+- Research imports now tolerate the backend's known retry response, distinguish
+  no-results and cancellation outcomes, and preserve typed failure reasons.
+- Corrected PowerPoint and unknown source-status decoding, Drive-source
+  idempotency, Markdown full-text formatting, table-cell rendering, and custom
+  per-RPC timeout handling.
 
-## [0.8.0]
+## [0.8.0] - 2026-08-03
 
 The headline of 0.8.0 is **integrations**: NotebookLM is now reachable from AI
 agents and HTTP clients through two new adapters built over the shared `_app/`
@@ -540,6 +582,30 @@ get-returns-None / kwarg-alias deprecation machinery — has been **removed**
 
 ### Fixed
 
+- `notebooklm login --storage <path>` now gives each custom storage file an
+  isolated persistent browser profile, with login, logout, `status --paths`,
+  doctor's L3 readiness row, and L3 headless re-auth resolving the same
+  storage-specific path. New explicit-storage browser directories carry an
+  ownership marker: `login --fresh` refuses to recursively delete unowned
+  sidecars and logout leaves them intact (and reports the preserved path).
+  Canonical legacy and named-profile layouts remain managed even when selected
+  through `--storage`. Very long storage filenames use a stable canonical-path hash to
+  stay within filesystem component limits. Existing custom-storage browser
+  sessions are not auto-migrated because the old shared profile cannot be safely
+  attributed to a storage file or account. (#2026)
+- `notebooklm login --master-token` now starts Playwright with the required Windows
+  event-loop policy, avoiding a pre-browser `NotImplementedError` (#2011).
+- `notebooklm login` now recognizes `notebook.google.com` as the personal app landing
+  host after the Gemini Notebook rebrand, preventing successful browser sign-ins from
+  timing out after five minutes. Enterprise and RPC base-host validation remain
+  unchanged. (#2013)
+- `server_info(include_account=True)` (MCP tool and the REST `GET /v1/server/info`
+  route) now adds an `output_language_is_default` boolean to the account block. When
+  the account has never set an explicit output language, `output_language` is `null`
+  **and** `output_language_is_default` is `true`, signalling that the account uses
+  NotebookLM's default language rather than a bare null that reads as
+  missing/broken. A genuinely unparseable settings response still degrades to
+  `available: false` (so it stays distinguishable from the unset-uses-default case).
 - **Self-hosted MCP OAuth: switching the served account no longer resets the client
   registry.** OAuth-registered clients + issued tokens (`oauth_state.json`) were stored
   under the *served account's profile dir*, so pointing the server at a different profile
@@ -1508,7 +1574,7 @@ Maintenance patch on the 0.7.x line. Backports two fixes from `main`
   from notebooklm import ResearchStatus
 
   result = await client.research.poll(nb_id)
-  if result.status == ResearchStatus.COMPLETED:   # also == "completed"
+  if result.status == ResearchStatus.COMPLETED:  # also == "completed"
       for source in result.sources:
           print(source.title, source.url)
 
@@ -1534,11 +1600,12 @@ Maintenance patch on the 0.7.x line. Backports two fixes from `main`
   `except TimeoutError` clauses keep catching every wait timeout unchanged.
   ```python
   from notebooklm import WaitTimeoutError
+
   try:
       await client.sources.wait_until_ready(nb_id, src_id)
       await client.artifacts.wait_for_completion(nb_id, task_id)
       await client.research.wait_for_completion(nb_id, research_task_id)
-  except WaitTimeoutError:   # was three separate / inconsistent timeout types
+  except WaitTimeoutError:  # was three separate / inconsistent timeout types
       ...
   ```
 - **`ResearchError` / `ResearchTimeoutError`.** The research domain gained a
@@ -2146,10 +2213,10 @@ Items that need attention when upgrading from 0.4.x. Full migration prose lives 
 - **`.kind` property** - Unified type access across `Source`, `Artifact`, and `SourceFulltext`:
   ```python
   # Works with both enum and string comparison
-  source.kind == SourceType.PDF        # True
-  source.kind == "pdf"                 # Also True
+  source.kind == SourceType.PDF  # True
+  source.kind == "pdf"  # Also True
   artifact.kind == ArtifactType.AUDIO  # True
-  artifact.kind == "audio"             # Also True
+  artifact.kind == "audio"  # Also True
   ```
 - **`UnknownTypeWarning`** - Warning (deduplicated) when API returns unknown type codes
 - **`SourceStatus.PREPARING`** - New status (5) for sources in upload/preparation phase
@@ -2370,7 +2437,8 @@ This is the initial public release of `notebooklm-py`. While core functionality 
 - **Authentication expiry**: CSRF tokens expire after some time. Re-run `notebooklm login` if you encounter auth errors.
 - **Large file uploads**: Files over 50MB may fail or timeout. Split large documents if needed.
 
-[Unreleased]: https://github.com/teng-lin/notebooklm-py/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/teng-lin/notebooklm-py/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/teng-lin/notebooklm-py/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/teng-lin/notebooklm-py/compare/v0.7.3...v0.8.0
 [0.7.3]: https://github.com/teng-lin/notebooklm-py/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/teng-lin/notebooklm-py/compare/v0.7.1...v0.7.2

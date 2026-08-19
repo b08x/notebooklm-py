@@ -14,56 +14,21 @@ Example:
 
 from __future__ import annotations
 
-import os
 import re
 import reprlib
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Literal
 
+from . import _logging
 from ._env import DEFAULT_BASE_URL, get_base_url
-from ._logging import scrub_secrets
+from ._logging import _truncate_response_preview, scrub_secrets
 
 if TYPE_CHECKING:
     from ._types.artifacts import GenerationStatus
 
 ArtifactStalledPhase = Literal["pending", "in_progress"]
-
-
-_PREVIEW_LIMIT = 80
-# Pre-slice cap for the truncated path: scrub at most this many chars before
-# cutting to ``_PREVIEW_LIMIT``. The 10x window gives a boundary-straddling
-# secret ample room to be neutralized before the 80-char cut (mirrors the
-# two-stage slice in ``AuthExtractionError`` below), while bounding the regex
-# sweep at O(800 chars) instead of O(len(raw)) for multi-MB error bodies.
-_PREVIEW_SCRUB_CAP = _PREVIEW_LIMIT * 10
-
-
-def _truncate_response_preview(raw: str | None) -> str | None:
-    """Truncate a raw RPC response preview for safe display in error contexts.
-
-    Default behavior keeps the preview compact (80 chars + ``"..."`` suffix) so
-    error logs and CLI output stay readable. Set ``NOTEBOOKLM_DEBUG=1`` to opt
-    into the full untruncated body for deep debugging.
-
-    Credential-shaped substrings (CSRF tokens, session cookies, etc.) are
-    scrubbed *before* truncation in both modes. ``raw_response`` is a public
-    attribute spliced into ``str()``/``repr()`` of RPC errors, so it escapes the
-    logging pipeline's ``RedactingFilter`` and must be sanitized at the source.
-
-    In the default (truncated) path the input is pre-sliced to
-    ``_PREVIEW_SCRUB_CAP`` before scrubbing so a multi-MB error body does not
-    pay for a full regex sweep just to discard all but the first 80 chars. The
-    ``NOTEBOOKLM_DEBUG=1`` path keeps the whole body, so it scrubs the full
-    string.
-    """
-    if raw is None:
-        return None
-    if os.environ.get("NOTEBOOKLM_DEBUG") == "1":
-        return scrub_secrets(raw)
-    scrubbed = scrub_secrets(raw[:_PREVIEW_SCRUB_CAP])
-    if len(scrubbed) > _PREVIEW_LIMIT:
-        return scrubbed[:_PREVIEW_LIMIT] + "..."
-    return scrubbed
+_PREVIEW_LIMIT = _logging._PREVIEW_LIMIT
+_PREVIEW_SCRUB_CAP = _logging._PREVIEW_SCRUB_CAP
 
 
 __all__ = [
@@ -76,6 +41,7 @@ __all__ = [
     "ValidationError",
     "ConfigurationError",
     "MissingDependencyError",
+    "LockUnavailableError",
     # Headless re-auth (layer-3 auth recovery)
     "HeadlessReauthError",
     "HeadlessLoginRequiredError",
@@ -133,6 +99,9 @@ __all__ = [
     # Domain: Source labels
     "LabelError",
     "LabelNotFoundError",
+    # Domain: Collections
+    "CollectionError",
+    "CollectionNotFoundError",
 ]
 
 
@@ -257,6 +226,27 @@ class MissingDependencyError(ConfigurationError):
     :func:`notebooklm._app.errors.classify` routes it to the more specific
     ``DEPENDENCY`` category so adapters surface an *install the extra* hint rather
     than the auth/storage one (#1959).
+    """
+
+
+class LockUnavailableError(NotebookLMError, TimeoutError):
+    """The canonical ``storage_state.json`` lock could not be acquired.
+
+    Raised by the fail-closed storage writers (account-metadata and master-token
+    persistence in :mod:`notebooklm._auth.storage`) when the unified
+    storage-sentinel lock stays unavailable for the whole bounded acquire window
+    (default 90 s) — either sustained contention or an infrastructure failure
+    (read-only directory, NFS without flock support, fd exhaustion). See
+    ADR-0029.
+
+    It mixes in the built-in :class:`TimeoutError` (itself an :class:`OSError`),
+    exactly mirroring the ``filelock.Timeout`` MRO it replaces, so existing
+    ``except OSError`` / ``except TimeoutError`` arms around those writers keep
+    catching a lock failure unchanged (the 10 s→90 s bound and the type change
+    are the only observable differences). It is also a :class:`NotebookLMError`,
+    so it is catchable via the library umbrella and
+    :func:`notebooklm._app.errors.classify` folds it into the ``LIBRARY``
+    category (rendered as ``NOTEBOOKLM_ERROR`` by the CLI/MCP/server adapters).
     """
 
 
@@ -761,6 +751,12 @@ class NotebookNotFoundError(NotFoundError, RPCError, NotebookError):
         method_id: The RPC method ID (inherited from :class:`RPCError`).
         raw_response: First 80 chars of the raw response, if any
             (``NOTEBOOKLM_DEBUG=1`` preserves the full body).
+        rpc_code / found_ids: Wire diagnostics, when the absence came from a
+            typed rejection rather than a degenerate payload (both inherited
+            from :class:`RPCError`).
+        detail: Appended to the message. A status-5 miss can mean "belongs to
+            another signed-in account" and adapters render only ``str(exc)``
+            (#114 / #294); callers pass text their layer already scrubbed.
     """
 
     def __init__(
@@ -769,12 +765,17 @@ class NotebookNotFoundError(NotFoundError, RPCError, NotebookError):
         *,
         method_id: str | None = None,
         raw_response: str | None = None,
+        rpc_code: str | int | None = None,
+        found_ids: list[str] | None = None,
+        detail: str | None = None,
     ):
         self.notebook_id = notebook_id
         super().__init__(
-            f"Notebook not found: {notebook_id}",
+            f"Notebook not found: {notebook_id}" + (f" — {detail}" if detail else ""),
             method_id=method_id,
             raw_response=raw_response,
+            rpc_code=rpc_code,
+            found_ids=found_ids,
         )
 
 
@@ -1519,6 +1520,56 @@ class LabelNotFoundError(NotFoundError, RPCError, LabelError):
         self.label_id = label_id
         super().__init__(
             f"Label not found: {label_id}",
+            method_id=method_id,
+            raw_response=raw_response,
+        )
+
+
+# =============================================================================
+# Domain: Collections (account-level notebook groups)
+# =============================================================================
+
+
+class CollectionError(NotebookLMError):
+    """Base for collection operations.
+
+    Gives the collection domain a catchable base mirroring :class:`LabelError`
+    (collections are the account-level sibling of source labels).
+    :class:`CollectionNotFoundError` inherits from it.
+    """
+
+
+class CollectionNotFoundError(NotFoundError, RPCError, CollectionError):
+    """Collection not found in the account.
+
+    Raised by ``client.collections.get`` and the collection mutation paths
+    (``rename`` / ``add_notebooks`` / ``remove_notebooks`` / ``notebooks``) on a
+    missing target. Absence is detected via a collection list lookup, not a
+    transport 404 (the ``LIST_LABELS`` payload simply omits the id). The
+    idempotent ``delete`` interprets the same absence as a no-op returning
+    ``None`` (ADR-0019); ``get_or_none`` returns ``None``.
+
+    Inherits from :class:`NotFoundError` (cross-domain umbrella),
+    :class:`RPCError` (transport-level catchability), and :class:`CollectionError`
+    (domain base), mirroring :class:`LabelNotFoundError`.
+
+    Attributes:
+        collection_id: The ID that was not found.
+        method_id: The RPC method ID (inherited from :class:`RPCError`).
+        raw_response: First 80 chars of the raw response, if any
+            (``NOTEBOOKLM_DEBUG=1`` preserves the full body).
+    """
+
+    def __init__(
+        self,
+        collection_id: str,
+        *,
+        method_id: str | None = None,
+        raw_response: str | None = None,
+    ):
+        self.collection_id = collection_id
+        super().__init__(
+            f"Collection not found: {collection_id}",
             method_id=method_id,
             raw_response=raw_response,
         )

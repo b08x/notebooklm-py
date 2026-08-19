@@ -17,11 +17,14 @@ import pytest
 import notebooklm.auth as auth_module
 import notebooklm.cli._firefox_containers as firefox_containers
 import notebooklm.cli.services.session_context as _sc
+from notebooklm.cli.services.login.browser_accounts import _read_browser_cookies
+from notebooklm.cli.services.login.outcomes import CookieValidationFailure
 from notebooklm.notebooklm_cli import cli
 from tests._fixtures import patch_session_login_dual
+from tests._fixtures.login_io import make_recording_io
 
 from ._session_helpers import (
-    _multiaccount_rookiepy_mock,
+    _multiaccount_rookie_cookies_mock,
     _read_account,
 )
 
@@ -37,6 +40,9 @@ def _valid_cookie_export(extra_cookies=None):
         },
         {"name": "APISID", "value": "fixture-apisid", "domain": ".google.com", "path": "/"},
         {"name": "SAPISID", "value": "fixture-sapisid", "domain": ".google.com", "path": "/"},
+        # LSID completes the secondary binding: APISID+SAPISID alone is not a
+        # usable set without OSID (#1977).
+        {"name": "LSID", "value": "fixture-lsid", "domain": "accounts.google.com", "path": "/"},
     ]
     if extra_cookies:
         cookies.extend(extra_cookies)
@@ -73,7 +79,7 @@ class TestAuthImportCookiesCommand:
         assert "imported" in result.output
         stored = json.loads(storage_path.read_text(encoding="utf-8"))
         stored_names = {cookie["name"] for cookie in stored["cookies"]}
-        assert {"SID", "__Secure-1PSIDTS", "APISID", "SAPISID"} <= stored_names
+        assert {"SID", "__Secure-1PSIDTS", "APISID", "SAPISID", "LSID"} <= stored_names
         assert "UNRELATED" not in stored_names
 
     def test_import_cookies_accepts_playwright_storage_state_from_stdin(self, runner, tmp_path):
@@ -89,7 +95,8 @@ class TestAuthImportCookiesCommand:
         assert result.exit_code == 0, result.output
         output = json.loads(result.output)
         assert output["success"] is True
-        assert output["cookie_count"] == 4
+        # 5, not 4: the shared fixture gained LSID to form a usable binding (#1977).
+        assert output["cookie_count"] == 5
         assert json.loads(storage_path.read_text(encoding="utf-8"))["cookies"]
 
     def test_import_cookies_drops_origins_from_playwright_storage_state(self, runner, tmp_path):
@@ -166,9 +173,9 @@ class TestAuthImportCookiesCommand:
                 _valid_cookie_export(
                     [
                         {
-                            "name": "DOCS_PREF",
-                            "value": "docs-cookie",
-                            "domain": "docs.google.com",
+                            "name": "YOUTUBE_PREF",
+                            "value": "youtube-cookie",
+                            "domain": ".youtube.com",
                             "path": "/",
                         }
                     ]
@@ -186,7 +193,7 @@ class TestAuthImportCookiesCommand:
             cookie["name"]
             for cookie in json.loads(storage_path.read_text(encoding="utf-8"))["cookies"]
         }
-        assert "DOCS_PREF" not in default_names
+        assert "YOUTUBE_PREF" not in default_names
 
         result_optin = runner.invoke(
             cli,
@@ -197,7 +204,7 @@ class TestAuthImportCookiesCommand:
                 "import-cookies",
                 str(input_path),
                 "--include-domains",
-                "docs",
+                "youtube",
             ],
         )
 
@@ -206,7 +213,7 @@ class TestAuthImportCookiesCommand:
             cookie["name"]
             for cookie in json.loads(storage_path.read_text(encoding="utf-8"))["cookies"]
         }
-        assert "DOCS_PREF" in optin_names
+        assert "YOUTUBE_PREF" in optin_names
 
     def test_import_cookies_sets_private_file_and_directory_permissions(self, runner, tmp_path):
         if sys.platform == "win32":
@@ -331,6 +338,48 @@ class TestAuthImportCookiesCommand:
         secure_cookie = next(c for c in stored["cookies"] if c["name"] == "__Secure-1PSIDTS")
         assert secure_cookie["secure"] is True
 
+    def test_import_cookies_rejects_lsid_only_binding(self, runner, tmp_path):
+        """An ``LSID``-only set must be rejected, not silently persisted.
+
+        Guards the *call site*, not the predicate. ``secondary_present`` decides
+        whether ``_has_usable_secondary_binding`` is consulted at all, so while
+        ``LSID`` was missing from that set an ``LSID``-only import produced an
+        empty ``secondary_present``, skipped the guard entirely, and wrote a
+        state the canonical rule rejects.
+
+        ``test_cli_binding_rule_matches_cookie_policy`` cannot catch this: it
+        pins the two predicates to each other but never exercises the gate that
+        chooses whether to call one.
+        """
+        input_path = tmp_path / "cookies.json"
+        storage_path = tmp_path / "storage_state.json"
+        cookies = [
+            {"name": "SID", "value": "fixture-sid", "domain": ".google.com", "path": "/"},
+            {
+                "name": "__Secure-1PSIDTS",
+                "value": "fixture-psidts",
+                "domain": ".google.com",
+                "path": "/",
+            },
+            # No OSID and no APISID/SAPISID: LSID alone is not a binding.
+            {
+                "name": "LSID",
+                "value": "fixture-lsid",
+                "domain": "accounts.google.com",
+                "path": "/",
+            },
+        ]
+        input_path.write_text(json.dumps(cookies), encoding="utf-8")
+
+        result = runner.invoke(
+            cli, ["--storage", str(storage_path), "auth", "import-cookies", str(input_path)]
+        )
+
+        assert result.exit_code != 0
+        assert "do not form a usable binding" in result.output
+        assert "LSID" in result.output
+        assert not storage_path.exists()
+
     def test_import_cookies_rejects_present_but_empty_secondary_binding(self, runner, tmp_path):
         input_path = tmp_path / "cookies.json"
         storage_path = tmp_path / "storage_state.json"
@@ -355,7 +404,8 @@ class TestAuthImportCookiesCommand:
         )
 
         assert result.exit_code != 0
-        assert "present but have empty values" in result.output
+        assert "do not form a usable binding" in result.output
+        assert "their values are empty" in result.output
         assert "OSID" in result.output
         assert not storage_path.exists()
 
@@ -1101,16 +1151,24 @@ class TestLoginBrowserCookies:
         result = runner.invoke(cli, ["login", "--help"])
         assert "--browser-cookies" in result.output
 
-    def test_rookiepy_not_installed_shows_error(self, runner):
-        """Shows helpful error when rookiepy is not installed."""
-        with patch.dict(sys.modules, {"rookiepy": None}):
+    def test_rookie_cookies_not_installed_shows_error(self, runner):
+        """Shows helpful error when rookie-cookies is not installed."""
+        with patch.dict(sys.modules, {"rookie_cookies": None}):
             result = runner.invoke(cli, ["login", "--browser-cookies", "auto"])
         assert result.exit_code != 0
-        assert "rookiepy" in result.output
+        assert "rookie-cookies" in result.output
         assert "pip install" in result.output
 
-    def test_auto_detect_calls_rookiepy_load(self, runner, tmp_path):
-        """Auto-detect calls rookiepy.load()."""
+    def test_rookie_cookies_not_installed_preserves_stable_error_code(self):
+        """The dependency rename must not break machine-readable CLI consumers."""
+        with patch.dict(sys.modules, {"rookie_cookies": None}):
+            outcome = _read_browser_cookies("auto", verbose=False, io=make_recording_io())
+
+        assert isinstance(outcome, CookieValidationFailure)
+        assert outcome.code == "ROOKIEPY_NOT_INSTALLED"
+
+    def test_auto_detect_calls_rookie_cookies_load(self, runner, tmp_path):
+        """Auto-detect calls rookie_cookies.load()."""
         storage_file = tmp_path / "storage.json"
         mock_cookies = [
             {
@@ -1119,7 +1177,7 @@ class TestLoginBrowserCookies:
                 "value": "abc",
                 "path": "/",
                 "secure": True,
-                "expires": 1234567890,
+                "expires": None,
                 "http_only": False,
             },
             {
@@ -1128,15 +1186,15 @@ class TestLoginBrowserCookies:
                 "value": "test_1psidts",
                 "path": "/",
                 "secure": True,
-                "expires": 1234567890,
+                "expires": None,
                 "http_only": False,
             },
         ]
-        mock_rookiepy = MagicMock()
-        mock_rookiepy.load = MagicMock(return_value=mock_cookies)
+        mock_rookie_cookies = MagicMock()
+        mock_rookie_cookies.load = MagicMock(return_value=mock_cookies)
 
         with (
-            patch.dict("sys.modules", {"rookiepy": mock_rookiepy}),
+            patch.dict("sys.modules", {"rookie_cookies": mock_rookie_cookies}),
             patch_session_login_dual("get_storage_path", return_value=storage_file),
             patch_session_login_dual("_sync_server_language_to_config"),
             patch_session_login_dual(
@@ -1147,10 +1205,10 @@ class TestLoginBrowserCookies:
         ):
             result = runner.invoke(cli, ["login", "--browser-cookies", "auto"])
         assert result.exit_code == 0, result.output
-        mock_rookiepy.load.assert_called_once()
+        mock_rookie_cookies.load.assert_called_once()
 
-    def test_named_browser_calls_rookiepy_function(self, runner, tmp_path):
-        """Named browser calls the matching rookiepy function."""
+    def test_named_browser_calls_rookie_cookies_function(self, runner, tmp_path):
+        """Named browser calls the matching rookie_cookies function."""
         storage_file = tmp_path / "storage.json"
         mock_cookies = [
             {
@@ -1172,11 +1230,11 @@ class TestLoginBrowserCookies:
                 "http_only": False,
             },
         ]
-        mock_rookiepy = MagicMock()
-        mock_rookiepy.chrome = MagicMock(return_value=mock_cookies)
+        mock_rookie_cookies = MagicMock()
+        mock_rookie_cookies.chrome = MagicMock(return_value=mock_cookies)
 
         with (
-            patch.dict("sys.modules", {"rookiepy": mock_rookiepy}),
+            patch.dict("sys.modules", {"rookie_cookies": mock_rookie_cookies}),
             patch_session_login_dual("get_storage_path", return_value=storage_file),
             patch_session_login_dual("_sync_server_language_to_config") as mock_sync,
             patch_session_login_dual(
@@ -1187,16 +1245,16 @@ class TestLoginBrowserCookies:
         ):
             result = runner.invoke(cli, ["login", "--browser-cookies", "chrome"])
         assert result.exit_code == 0, result.output
-        mock_rookiepy.chrome.assert_called_once()
+        mock_rookie_cookies.chrome.assert_called_once()
         mock_sync.assert_called_once_with(storage_path=storage_file, profile=None)
 
     def test_no_google_cookies_shows_error(self, runner, tmp_path):
         """Shows error when no Google cookies found."""
-        mock_rookiepy = MagicMock()
-        mock_rookiepy.load = MagicMock(return_value=[])
+        mock_rookie_cookies = MagicMock()
+        mock_rookie_cookies.load = MagicMock(return_value=[])
 
         with (
-            patch.dict("sys.modules", {"rookiepy": mock_rookiepy}),
+            patch.dict("sys.modules", {"rookie_cookies": mock_rookie_cookies}),
             patch_session_login_dual(
                 "get_storage_path",
                 return_value=tmp_path / "storage.json",
@@ -1208,11 +1266,11 @@ class TestLoginBrowserCookies:
 
     def test_locked_db_shows_close_browser_hint(self, runner, tmp_path):
         """Shows close-browser hint when DB is locked."""
-        mock_rookiepy = MagicMock()
-        mock_rookiepy.load = MagicMock(side_effect=OSError("database is locked"))
+        mock_rookie_cookies = MagicMock()
+        mock_rookie_cookies.load = MagicMock(side_effect=OSError("database is locked"))
 
         with (
-            patch.dict("sys.modules", {"rookiepy": mock_rookiepy}),
+            patch.dict("sys.modules", {"rookie_cookies": mock_rookie_cookies}),
             patch_session_login_dual(
                 "get_storage_path",
                 return_value=tmp_path / "storage.json",
@@ -1233,7 +1291,7 @@ class TestLoginBrowserCookies:
                 "value": "mysid",
                 "path": "/",
                 "secure": True,
-                "expires": 9999,
+                "expires": 4102444800,
                 "http_only": False,
             },
             {
@@ -1242,7 +1300,7 @@ class TestLoginBrowserCookies:
                 "value": "test_1psidts",
                 "path": "/",
                 "secure": True,
-                "expires": 9999,
+                "expires": 4102444800,
                 "http_only": False,
             },
             {
@@ -1251,7 +1309,7 @@ class TestLoginBrowserCookies:
                 "value": "ts",
                 "path": "/",
                 "secure": True,
-                "expires": 9999,
+                "expires": 4102444800,
                 "http_only": False,
             },
             {
@@ -1260,7 +1318,7 @@ class TestLoginBrowserCookies:
                 "value": "apisid",
                 "path": "/",
                 "secure": True,
-                "expires": 9999,
+                "expires": 4102444800,
                 "http_only": False,
             },
             {
@@ -1269,15 +1327,15 @@ class TestLoginBrowserCookies:
                 "value": "sapisid",
                 "path": "/",
                 "secure": True,
-                "expires": 9999,
+                "expires": 4102444800,
                 "http_only": False,
             },
         ]
-        mock_rookiepy = MagicMock()
-        mock_rookiepy.load = MagicMock(return_value=mock_cookies)
+        mock_rookie_cookies = MagicMock()
+        mock_rookie_cookies.load = MagicMock(return_value=mock_cookies)
 
         with (
-            patch.dict("sys.modules", {"rookiepy": mock_rookiepy}),
+            patch.dict("sys.modules", {"rookie_cookies": mock_rookie_cookies}),
             patch_session_login_dual("get_storage_path", return_value=storage_file),
             patch_session_login_dual("_sync_server_language_to_config"),
             patch_session_login_dual(
@@ -1292,13 +1350,13 @@ class TestLoginBrowserCookies:
 
     def test_unknown_browser_shows_error(self, runner, tmp_path):
         """Unknown browser name shows a clear error."""
-        mock_rookiepy = MagicMock()
-        mock_rookiepy.load = MagicMock(
+        mock_rookie_cookies = MagicMock()
+        mock_rookie_cookies.load = MagicMock(
             side_effect=AttributeError("module has no attribute 'netscape'")
         )
 
         with (
-            patch.dict("sys.modules", {"rookiepy": mock_rookiepy}),
+            patch.dict("sys.modules", {"rookie_cookies": mock_rookie_cookies}),
             patch_session_login_dual(
                 "get_storage_path",
                 return_value=tmp_path / "storage.json",
@@ -1314,7 +1372,7 @@ class TestLoginBrowserCookies:
     def test_firefox_container_syntax_invokes_extractor(self, runner, tmp_path):
         """``--browser-cookies firefox::<name>`` calls the container extractor.
 
-        rookiepy must NOT be touched on this path — that's the whole point
+        rookie-cookies must NOT be touched on this path — that's the whole point
         of the bypass.
         """
         storage_file = tmp_path / "storage.json"
@@ -1325,7 +1383,7 @@ class TestLoginBrowserCookies:
                 "value": "work_sid",
                 "path": "/",
                 "secure": True,
-                "expires": 9999,
+                "expires": 4102444800,
                 "http_only": False,
                 "same_site": 0,
             },
@@ -1335,14 +1393,14 @@ class TestLoginBrowserCookies:
                 "value": "ts",
                 "path": "/",
                 "secure": True,
-                "expires": 9999,
+                "expires": 4102444800,
                 "http_only": False,
                 "same_site": 0,
             },
         ]
-        mock_rookiepy = MagicMock()
+        mock_rookie_cookies = MagicMock()
         with (
-            patch.dict("sys.modules", {"rookiepy": mock_rookiepy}),
+            patch.dict("sys.modules", {"rookie_cookies": mock_rookie_cookies}),
             patch.object(
                 firefox_containers,
                 "find_firefox_profile_path",
@@ -1369,15 +1427,15 @@ class TestLoginBrowserCookies:
             result = runner.invoke(cli, ["login", "--browser-cookies", "firefox::Work"])
         assert result.exit_code == 0, result.output
         mock_extract.assert_called_once()
-        # rookiepy must NOT have been called for the firefox:: path.
-        mock_rookiepy.firefox.assert_not_called()
-        mock_rookiepy.load.assert_not_called()
+        # rookie-cookies must NOT have been called for the firefox:: path.
+        mock_rookie_cookies.firefox.assert_not_called()
+        mock_rookie_cookies.load.assert_not_called()
         # The container's SID should land in the saved storage state.
         data = json.loads(storage_file.read_text())
         assert any(c["name"] == "SID" and c["value"] == "work_sid" for c in data["cookies"])
 
     def test_firefox_container_none_passes_literal_none(self, runner, tmp_path):
-        """``firefox::none`` resolves to ``"none"`` and skips rookiepy."""
+        """``firefox::none`` resolves to ``"none"`` and skips rookie-cookies."""
         storage_file = tmp_path / "storage.json"
         mock_cookies = [
             {
@@ -1386,7 +1444,7 @@ class TestLoginBrowserCookies:
                 "value": "default_sid",
                 "path": "/",
                 "secure": True,
-                "expires": 9999,
+                "expires": 4102444800,
                 "http_only": False,
                 "same_site": 0,
             },
@@ -1396,13 +1454,14 @@ class TestLoginBrowserCookies:
                 "value": "ts",
                 "path": "/",
                 "secure": True,
-                "expires": 9999,
+                "expires": 4102444800,
                 "http_only": False,
                 "same_site": 0,
             },
         ]
+        mock_rookie_cookies = MagicMock()
         with (
-            patch.dict("sys.modules", {"rookiepy": MagicMock()}),
+            patch.dict("sys.modules", {"rookie_cookies": mock_rookie_cookies}),
             patch.object(
                 firefox_containers,
                 "find_firefox_profile_path",
@@ -1423,6 +1482,7 @@ class TestLoginBrowserCookies:
         ):
             result = runner.invoke(cli, ["login", "--browser-cookies", "firefox::none"])
         assert result.exit_code == 0, result.output
+        assert not mock_rookie_cookies.mock_calls
         # Confirm the extractor was called with the ``"none"`` sentinel.
         _, kwargs = mock_extract.call_args
         positional = mock_extract.call_args.args
@@ -1432,7 +1492,7 @@ class TestLoginBrowserCookies:
     def test_firefox_container_unknown_name_shows_listing(self, runner, tmp_path):
         """Unknown container name shows a helpful error and exits non-zero."""
         with (
-            patch.dict("sys.modules", {"rookiepy": MagicMock()}),
+            patch.dict("sys.modules", {"rookie_cookies": MagicMock()}),
             patch.object(
                 firefox_containers,
                 "find_firefox_profile_path",
@@ -1458,7 +1518,7 @@ class TestLoginBrowserCookies:
     def test_firefox_container_no_firefox_profile_shows_error(self, runner, tmp_path):
         """Missing Firefox install shows a friendly error, not a stack trace."""
         with (
-            patch.dict("sys.modules", {"rookiepy": MagicMock()}),
+            patch.dict("sys.modules", {"rookie_cookies": MagicMock()}),
             patch.object(
                 firefox_containers,
                 "find_firefox_profile_path",
@@ -1482,7 +1542,7 @@ class TestLoginBrowserCookies:
         Regression guard for the polish review (3-way HIGH consensus).
         """
         with (
-            patch.dict("sys.modules", {"rookiepy": MagicMock()}),
+            patch.dict("sys.modules", {"rookie_cookies": MagicMock()}),
             patch_session_login_dual(
                 "get_storage_path",
                 return_value=tmp_path / "storage.json",
@@ -1505,7 +1565,7 @@ class TestLoginBrowserCookies:
                 "value": "x",
                 "path": "/",
                 "secure": True,
-                "expires": 9999,
+                "expires": 4102444800,
                 "http_only": False,
             },
             {
@@ -1514,14 +1574,14 @@ class TestLoginBrowserCookies:
                 "value": "ts",
                 "path": "/",
                 "secure": True,
-                "expires": 9999,
+                "expires": 4102444800,
                 "http_only": False,
             },
         ]
-        mock_rookiepy = MagicMock()
-        mock_rookiepy.firefox = MagicMock(return_value=mock_cookies)
+        mock_rookie_cookies = MagicMock()
+        mock_rookie_cookies.firefox = MagicMock(return_value=mock_cookies)
         with (
-            patch.dict("sys.modules", {"rookiepy": mock_rookiepy}),
+            patch.dict("sys.modules", {"rookie_cookies": mock_rookie_cookies}),
             patch.object(
                 firefox_containers,
                 "find_firefox_profile_path",
@@ -1556,7 +1616,7 @@ class TestLoginBrowserCookies:
                 "value": "x",
                 "path": "/",
                 "secure": True,
-                "expires": 9999,
+                "expires": 4102444800,
                 "http_only": False,
             },
             {
@@ -1565,14 +1625,14 @@ class TestLoginBrowserCookies:
                 "value": "ts",
                 "path": "/",
                 "secure": True,
-                "expires": 9999,
+                "expires": 4102444800,
                 "http_only": False,
             },
         ]
-        mock_rookiepy = MagicMock()
-        mock_rookiepy.firefox = MagicMock(return_value=mock_cookies)
+        mock_rookie_cookies = MagicMock()
+        mock_rookie_cookies.firefox = MagicMock(return_value=mock_cookies)
         with (
-            patch.dict("sys.modules", {"rookiepy": mock_rookiepy}),
+            patch.dict("sys.modules", {"rookie_cookies": mock_rookie_cookies}),
             patch.object(
                 firefox_containers,
                 "find_firefox_profile_path",
@@ -1942,6 +2002,78 @@ class TestAuthRefreshCommand:
         assert "ok" in result.output.lower()
         mock_fetch.assert_awaited_once()
 
+    def test_auth_refresh_allow_headless_is_lazy_opt_in(self, runner, mock_storage_path):
+        """The command forwards the one-invocation L3 permission to auth recovery."""
+        with patch.object(
+            auth_module, "fetch_tokens_with_domains", new_callable=AsyncMock
+        ) as mock_fetch:
+            mock_fetch.return_value = ("csrf_ok", "session_ok")
+            result = runner.invoke(cli, ["auth", "refresh", "--allow-headless"])
+
+        assert result.exit_code == 0, result.output
+        assert mock_fetch.await_args.kwargs == {"allow_headless": True}
+
+    def test_auth_refresh_omitted_headless_flag_forwards_false(self, runner, mock_storage_path):
+        with patch.object(
+            auth_module,
+            "fetch_tokens_with_domains",
+            new_callable=AsyncMock,
+            return_value=("csrf_ok", "session_ok"),
+        ) as mock_fetch:
+            result = runner.invoke(cli, ["auth", "refresh"])
+
+        assert result.exit_code == 0, result.output
+        assert mock_fetch.await_args.kwargs == {"allow_headless": False}
+
+    def test_auth_refresh_allow_headless_conflicts_with_browser_cookies(
+        self, runner, mock_storage_path
+    ):
+        result = runner.invoke(
+            cli, ["auth", "refresh", "--allow-headless", "--browser-cookies", "chrome"]
+        )
+
+        assert result.exit_code == 1
+        assert result.stdout == ""
+        assert result.stderr.strip() == (
+            "Error: --allow-headless only applies to the stored-session refresh path; "
+            "omit --browser-cookies."
+        )
+
+    def test_auth_refresh_json_browser_conflict_wins_over_allow_headless(
+        self, runner, mock_storage_path
+    ):
+        result = runner.invoke(
+            cli,
+            [
+                "auth",
+                "refresh",
+                "--allow-headless",
+                "--browser-cookies",
+                "chrome",
+                "--json",
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert result.stderr == ""
+        assert json.loads(result.stdout) == {
+            "error": True,
+            "code": "json_unsupported_with_browser_cookies",
+            "message": (
+                "--json is not supported with --browser-cookies; use the default "
+                "keepalive refresh with --json instead."
+            ),
+        }
+
+    def test_auth_refresh_help_describes_lazy_headless_recovery(self, runner):
+        result = runner.invoke(cli, ["auth", "refresh", "--help"])
+
+        assert result.exit_code == 0, result.output
+        assert "--allow-headless" in result.output
+        assert "Does not launch or attach to a browser unless ordinary refresh fails." in " ".join(
+            result.output.split()
+        )
+
     def test_auth_refresh_json_success(self, runner, mock_storage_path):
         """--json emits a single structured keepalive result on stdout."""
         with patch.object(
@@ -2053,7 +2185,7 @@ class TestAuthRefreshCommand:
         block; it now relies on the wrapping ``with handle_errors():``.
         """
         with patch_session_login_dual("_refresh_from_browser_cookies") as mock_refresh:
-            mock_refresh.side_effect = RuntimeError("rookiepy could not read cookies")
+            mock_refresh.side_effect = RuntimeError("rookie-cookies could not read cookies")
             result = runner.invoke(cli, ["auth", "refresh", "--browser-cookies", "chrome"])
         assert result.exit_code == 2  # unexpected error per error_handler policy
         assert "Traceback (most recent call last)" not in result.output
@@ -2062,7 +2194,7 @@ class TestAuthRefreshCommand:
         assert "Error: RuntimeError" not in result.output
         # Friendly Unexpected-error message + the original detail.
         assert "Unexpected error" in result.output
-        assert "rookiepy could not read cookies" in result.output
+        assert "rookie-cookies could not read cookies" in result.output
 
     def test_auth_refresh_verify_success(self, runner, mock_storage_path):
         """``--verify`` runs a passive token fetch after refresh; exit 0 on success."""
@@ -2151,6 +2283,26 @@ class TestAuthRefreshCommand:
         # otherwise we'd be doing a server-side rotation that gets lost.
         mock_fetch.assert_not_awaited()
 
+    def test_auth_refresh_storage_override_beats_env_auth(self, runner, monkeypatch, tmp_path):
+        storage = tmp_path / "explicit.json"
+        storage.write_text(json.dumps({"cookies": []}), encoding="utf-8")
+        monkeypatch.setenv("NOTEBOOKLM_AUTH_JSON", '{"cookies":[]}')
+
+        with patch.object(
+            auth_module,
+            "fetch_tokens_with_domains",
+            new_callable=AsyncMock,
+            return_value=("csrf_ok", "session_ok"),
+        ) as mock_fetch:
+            result = runner.invoke(
+                cli,
+                ["--storage", str(storage), "auth", "refresh", "--allow-headless"],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert mock_fetch.await_args.args[0] == storage.resolve()
+        assert mock_fetch.await_args.kwargs == {"allow_headless": True}
+
     def test_auth_refresh_propagates_global_profile_flag(self, runner, tmp_path):
         """`notebooklm --profile work auth refresh` resolves the work profile.
 
@@ -2205,7 +2357,7 @@ class TestAuthRefreshCommand:
             json.dumps({"account": {"authuser": 1, "email": "bob@gmail.com"}}),
             encoding="utf-8",
         )
-        mock_rk = _multiaccount_rookiepy_mock()
+        mock_rk = _multiaccount_rookie_cookies_mock()
 
         async def _enum(*args, **kwargs):
             from notebooklm.auth import Account
@@ -2213,7 +2365,7 @@ class TestAuthRefreshCommand:
             return [Account(authuser=0, email="bob@gmail.com", is_default=True)]
 
         with (
-            patch.dict("sys.modules", {"rookiepy": mock_rk}),
+            patch.dict("sys.modules", {"rookie_cookies": mock_rk}),
             patch_session_login_dual("get_storage_path", return_value=storage),
             patch.object(auth_module, "enumerate_accounts", new=_enum),
             patch_session_login_dual("_sync_server_language_to_config") as mock_sync,
@@ -2250,7 +2402,7 @@ class TestAuthRefreshCommand:
             json.dumps({"account": {"authuser": 1, "email": "bob@gmail.com"}}),
             encoding="utf-8",
         )
-        mock_rk = _multiaccount_rookiepy_mock()
+        mock_rk = _multiaccount_rookie_cookies_mock()
 
         async def _enum(*args, **kwargs):
             from notebooklm.auth import Account
@@ -2258,7 +2410,7 @@ class TestAuthRefreshCommand:
             return [Account(authuser=0, email="alice@example.com", is_default=True)]
 
         with (
-            patch.dict("sys.modules", {"rookiepy": mock_rk}),
+            patch.dict("sys.modules", {"rookie_cookies": mock_rk}),
             patch_session_login_dual("get_storage_path", return_value=storage),
             patch.object(auth_module, "enumerate_accounts", new=_enum),
             patch_session_login_dual(
@@ -2299,7 +2451,7 @@ class TestAuthInspect:
         from notebooklm.cli.services.login import _enumerate_one_jar
         from tests._fixtures.login_io import make_recording_io
 
-        raw_cookies = _multiaccount_rookiepy_mock().chrome.return_value
+        raw_cookies = _multiaccount_rookie_cookies_mock().chrome.return_value
         accounts = [Account(authuser=0, email="alice@example.com", is_default=True)]
 
         def fake_run_async(awaitable):
@@ -2317,7 +2469,7 @@ class TestAuthInspect:
         from notebooklm.cli.services.login import _enumerate_one_jar
         from notebooklm.cli.services.login.outcomes import NetworkFailure
 
-        raw_cookies = _multiaccount_rookiepy_mock().chrome.return_value
+        raw_cookies = _multiaccount_rookie_cookies_mock().chrome.return_value
 
         async def fail_enumerate(*args, **kwargs):
             raise httpx.RequestError("offline")
@@ -2376,7 +2528,7 @@ class TestAuthInspect:
         assert "No signed-in Google accounts found in chrome" in message
 
     def test_inspect_lists_accounts(self, runner):
-        mock_rk = _multiaccount_rookiepy_mock()
+        mock_rk = _multiaccount_rookie_cookies_mock()
 
         async def _enum(*args, **kwargs):
             from notebooklm.auth import Account
@@ -2392,7 +2544,7 @@ class TestAuthInspect:
         # ``cli.runtime.run_async``, #1393); mocking ``enumerate_accounts`` is
         # enough — the real ``run_async`` drives the (already-async) stub.
         with (
-            patch.dict("sys.modules", {"rookiepy": mock_rk}),
+            patch.dict("sys.modules", {"rookie_cookies": mock_rk}),
             patch.object(auth_module, "enumerate_accounts", new=_enum),
         ):
             result = runner.invoke(cli, ["auth", "inspect", "--browser", "chrome"])
@@ -2403,7 +2555,7 @@ class TestAuthInspect:
         assert "authuser" not in result.output
 
     def test_inspect_json_output(self, runner):
-        mock_rk = _multiaccount_rookiepy_mock()
+        mock_rk = _multiaccount_rookie_cookies_mock()
 
         async def _enum(*args, **kwargs):
             from notebooklm.auth import Account
@@ -2411,7 +2563,7 @@ class TestAuthInspect:
             return [Account(authuser=0, email="alice@example.com", is_default=True)]
 
         with (
-            patch.dict("sys.modules", {"rookiepy": mock_rk}),
+            patch.dict("sys.modules", {"rookie_cookies": mock_rk}),
             patch.object(auth_module, "enumerate_accounts", new=_enum),
         ):
             result = runner.invoke(cli, ["auth", "inspect", "--browser", "chrome", "--json"])
@@ -2420,3 +2572,33 @@ class TestAuthInspect:
         assert data["accounts"][0]["email"] == "alice@example.com"
         assert "authuser" not in data["accounts"][0]
         assert data["accounts"][0]["is_default"] is True
+
+
+def test_cli_binding_rule_matches_cookie_policy() -> None:
+    """``cli/_cookie_import`` must not drift from the canonical binding rule.
+
+    The CLI keeps its own copy because ``tests/_guardrails/test_cli_boundary.py``
+    forbids importing ``_private`` names out of public modules. That copy already
+    drifted once: it kept ``OSID or APISID+SAPISID`` after the canonical rule
+    gained its ``LSID`` conjunct (#1977), so ``import-cookies`` would have
+    accepted a set the client cannot authenticate with.
+
+    Exhaustive over the four cookies the rule mentions, so a change to either
+    side that the other does not mirror fails here rather than in the field.
+    """
+    from itertools import combinations
+
+    from notebooklm._auth.cookie_policy import _has_valid_secondary_binding
+    from notebooklm.cli._cookie_import import _has_usable_secondary_binding
+
+    names = ("OSID", "APISID", "SAPISID", "LSID")
+    for r in range(len(names) + 1):
+        for combo in combinations(names, r):
+            state = {
+                "cookies": [
+                    {"name": n, "value": "v", "domain": ".google.com", "path": "/"} for n in combo
+                ]
+            }
+            assert _has_usable_secondary_binding(state) == _has_valid_secondary_binding(
+                set(combo)
+            ), f"CLI and cookie_policy disagree for {combo!r}"

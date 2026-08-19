@@ -73,6 +73,65 @@ def test_poll_transitions_to_completed(authed_client: TestClient, fake_client: F
     assert done.json()["status"] == "completed"
 
 
+@pytest.mark.parametrize(
+    "state",
+    [
+        GenerationState.PENDING,
+        GenerationState.IN_PROGRESS,
+        GenerationState.UNKNOWN,
+        GenerationState.SUGGESTED,
+        GenerationState.PENDING_REVIEW,
+    ],
+    ids=lambda s: s.value,
+)
+def test_poll_still_running_states_keep_the_task_in_the_registry(
+    authed_client: TestClient, fake_client: FakeClient, state: GenerationState
+) -> None:
+    """#2127: none of these says generation finished, so none may evict the task.
+
+    Evicting on a non-terminal state would make the *next* benign NOT_FOUND poll
+    (post-create lag, transient delisting) 404 instead of projecting — so the
+    second half of each case is the one that matters. ``PENDING`` / ``IN_PROGRESS``
+    are included because the route stopped naming them once it switched to
+    ``is_terminal``; they must reach the same branch as the rare states.
+    """
+    task_id = _generate_audio(authed_client)
+    fake_client.poll_states[("nb-1", task_id)] = state
+    resp = authed_client.get(f"/v1/notebooks/nb-1/artifacts/{task_id}")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == state.value
+
+    fake_client.poll_states[("nb-1", task_id)] = GenerationState.NOT_FOUND
+    lagged = authed_client.get(f"/v1/notebooks/nb-1/artifacts/{task_id}")
+    assert lagged.status_code == 200, f"{state.value} evicted the task from the registry"
+    assert lagged.json()["status"] == "not_found"
+
+
+@pytest.mark.parametrize("state", ["completed", "failed", "removed"])
+def test_poll_terminal_states_do_evict_the_task_from_the_registry(
+    authed_client: TestClient, fake_client: FakeClient, state: str
+) -> None:
+    """The mirror of the test above: a terminal poll MUST drop the registry entry.
+
+    Without this, ``pending.drop`` could become a no-op (or a refactor could
+    return before reaching it) and every other server test would stay green,
+    while a finished task's id resolved 200 forever instead of 404ing once the
+    post-generate lag window is over.
+
+    Passing the state as a plain ``str`` also exercises the route's
+    raw-string-permissive path — ``GenerationStatus.status`` is documented to
+    accept one, and the route's ``is_terminal`` check resolves by hashing.
+    """
+    task_id = _generate_audio(authed_client)
+    fake_client.poll_states[("nb-1", task_id)] = state
+    authed_client.get(f"/v1/notebooks/nb-1/artifacts/{task_id}")
+
+    # Registry entry is gone, so a later NOT_FOUND is an unknown id, not a lag.
+    fake_client.poll_states[("nb-1", task_id)] = GenerationState.NOT_FOUND
+    after = authed_client.get(f"/v1/notebooks/nb-1/artifacts/{task_id}")
+    assert after.status_code == 404, f"{state} left the task in the pending registry"
+
+
 def test_poll_removed_is_410(authed_client: TestClient, fake_client: FakeClient) -> None:
     task_id = _generate_audio(authed_client)
     fake_client.poll_states[("nb-1", task_id)] = GenerationState.REMOVED
@@ -99,6 +158,27 @@ def test_download_completed_artifact_streams_bytes(
     resp = authed_client.post("/v1/notebooks/nb-1/artifacts/download", json={"type": "audio"})
     assert resp.status_code == 200
     assert resp.content == fake_client.download_bytes
+
+
+def test_download_audio_advertises_m4a_and_audio_mp4(
+    authed_client: TestClient, fake_client: FakeClient
+) -> None:
+    """Audio streams as ``.m4a`` / ``audio/mp4``, never ``.mp3`` / ``audio/mpeg`` (#2034).
+
+    ``media_type`` is asserted because the route sets it EXPLICITLY from the shared
+    ``_app.download`` table: the stdlib ``mimetypes`` map that ``FileResponse``
+    would otherwise consult has no builtin ``.m4a`` row (``.mp3`` it does have), so
+    a guessed type would degrade to ``FileResponse``'s
+    ``"application/octet-stream"`` fallback on a host without ``/etc/mime.types``.
+    Asserting the exact header therefore also pins this test to be independent of
+    whichever mime database the CI runner happens to ship (#2034).
+    """
+    fake_client.artifacts_store["nb-1"] = {"a1": make_artifact("a1", "audio")}
+    resp = authed_client.post("/v1/notebooks/nb-1/artifacts/download", json={"type": "audio"})
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "audio/mp4"
+    assert ".m4a" in resp.headers["content-disposition"]
+    assert ".mp3" not in resp.headers["content-disposition"]
 
 
 def test_download_not_ready_is_409(authed_client: TestClient) -> None:
@@ -205,6 +285,31 @@ def test_download_with_output_format_streams(
     )
     assert resp.status_code == 200
     assert resp.content == fake_client.download_bytes
+
+
+def test_download_pptx_is_not_served_as_pdf(
+    authed_client: TestClient, fake_client: FakeClient
+) -> None:
+    """A ``--format pptx`` deck streams as ``.pptx``, not the spec-default ``.pdf``.
+
+    The route spools to ``artifact<ext>`` and then serves that basename as the
+    download name + derives Content-Type from its suffix. Naming the spool file
+    from ``spec.extension`` mislabelled every non-default format — a PPTX deck was
+    handed out as ``artifact.pdf`` / ``application/pdf``. Same defect class as the
+    ``.mp3``/AAC mislabel in #2034, on the format axis instead of the type axis.
+    """
+    fake_client.artifacts_store["nb-1"] = {"d1": make_artifact("d1", "slide-deck")}
+    resp = authed_client.post(
+        "/v1/notebooks/nb-1/artifacts/download",
+        json={"type": "slide-deck", "output_format": "pptx"},
+    )
+    assert resp.status_code == 200
+    assert ".pptx" in resp.headers["content-disposition"]
+    assert ".pdf" not in resp.headers["content-disposition"]
+    assert (
+        resp.headers["content-type"]
+        == "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    )
 
 
 def test_download_unexpected_output_path_is_rejected(
