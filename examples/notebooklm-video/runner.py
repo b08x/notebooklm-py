@@ -37,6 +37,14 @@ def parse_args() -> argparse.Namespace:
         help="Actually invoke notebooklm-py to create notebook and generate video (default is dry-run compilation preview).",
     )
     parser.add_argument(
+        "-n",
+        "--notebook-id",
+        type=str,
+        default=None,
+        help="Target an existing NotebookLM UUID instead of creating a new notebook. "
+        "Skips document upload (existing notebook's sources are used as-is).",
+    )
+    parser.add_argument(
         "--out",
         type=str,
         default="generated_video_overview.mp4",
@@ -45,29 +53,37 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-async def execute_video_pipeline(compiled: Any, output_path: str) -> None:
+async def execute_video_pipeline(
+    compiled: Any, output_path: str, notebook_id: str | None = None
+) -> None:
     """Async I/O execution backend using notebooklm-py."""
     print("Initializing async NotebookLM client from local storage...")
     async with NotebookLMClient.from_storage() as client:
-        print(f"\n[1/5] Creating notebook: '{compiled.project_title}'...")
-        notebook = await client.notebooks.create(compiled.project_title)
-        print(f"      Notebook initialized with ID: {notebook.id}")
+        if notebook_id:
+            print(f"\n[1/5] Binding to existing notebook: {notebook_id}...")
+            notebook = await client.notebooks.get(notebook_id)
+            print(f"      Bound to notebook: '{notebook.title}' (ID: {notebook.id})")
+            print("\n[2/5] Skipping document upload — using existing notebook's indexed sources.")
+        else:
+            print(f"\n[1/5] Creating notebook: '{compiled.project_title}'...")
+            notebook = await client.notebooks.create(compiled.project_title)
+            print(f"      Notebook initialized with ID: {notebook.id}")
 
-        print(f"\n[2/5] Uploading and ingesting {len(compiled.documents)} document sources...")
-        for doc in compiled.documents:
-            if doc.startswith("http://") or doc.startswith("https://"):
-                print(f"      Ingesting remote web URL: {doc}")
-                await client.sources.add_url(notebook.id, doc)
-            else:
-                p = Path(doc).resolve()
-                if p.exists():
-                    print(f"      Uploading local file source: {p.name}")
-                    await client.sources.add_file(notebook.id, str(p))
+            print(f"\n[2/5] Uploading and ingesting {len(compiled.documents)} document sources...")
+            for doc in compiled.documents:
+                if doc.startswith("http://") or doc.startswith("https://"):
+                    print(f"      Ingesting remote web URL: {doc}")
+                    await client.sources.add_url(notebook.id, doc)
                 else:
-                    print(f"      [Warning] Source path not found, skipping: {doc}")
+                    p = Path(doc).resolve()
+                    if p.exists():
+                        print(f"      Uploading local file source: {p.name}")
+                        await client.sources.add_file(notebook.id, str(p))
+                    else:
+                        print(f"      [Warning] Source path not found, skipping: {doc}")
 
-        # Give backend indexing brief buffer
-        await asyncio.sleep(4.0)
+            # Give backend indexing brief buffer
+            await asyncio.sleep(4.0)
 
         print("\n[3/5] Dispatching compiled prompts to Video Studio...")
         format_enum = getattr(VideoFormat, compiled.video_format.upper(), VideoFormat.EXPLAINER)
@@ -114,7 +130,7 @@ async def execute_video_pipeline(compiled: Any, output_path: str) -> None:
             await client.artifacts.download_video(
                 notebook.id,
                 output_path=output_path,
-                artifact_id=final_status.artifact_id,
+                artifact_id=final_status.task_id,
             )
             print("      Download successful! Production complete.")
         else:
@@ -150,7 +166,7 @@ def main() -> None:
         print(f"  uv run examples/notebooklm-video/runner.py {project_file} --execute\n")
     else:
         # Asynchronous execution pipeline (I/O bound)
-        asyncio.run(execute_video_pipeline(compiled, args.out))
+        asyncio.run(execute_video_pipeline(compiled, args.out, notebook_id=args.notebook_id))
 
 
 if __name__ == "__main__":

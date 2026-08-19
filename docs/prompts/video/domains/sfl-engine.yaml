@@ -1,0 +1,29 @@
+name: sfl-engine
+description: Concepts and metaphors for stance-filtered RAG, systemic functional linguistics annotation, and rhetorical-firewall security architecture.
+concept_mapping:
+  ideational payload: sealed evidence crate — verified facts, participants, and processes, untouched by opinion
+  interpersonal payload: a separate translucent overlay of tone, mood, and persuasion riding above the evidence crate
+  clause: a single sealed capsule entering the pipeline, carrying both an evidence crate and a tone overlay
+  two-pass annotation pipeline: twin scanning gates — a fast mechanical gate (spaCy) that reads structure, then a discerning sentient gate (LLM) that reads tone
+  mood / modality / tenor: colored warning lights on the tone overlay indicating certainty, formality, and persuasive pressure
+  stance filter: a security checkpoint that strips or dims the tone overlay before anything passes through
+  rhetorical firewall: a glass containment wall separating the evidence crates from their tone overlays at the moment of retrieval
+  context poisoning: a tone overlay bleeding color and static into the evidence crate, corrupting it with unearned certainty or urgency
+  hybrid retrieval (RRF): two searchlights — one scanning by meaning, one scanning by exact keyword — merging their beams into a single ranked path
+  pgvector / embedding space: a vast dark warehouse of floating capsules, positioned by how similar their meaning is to their neighbors
+  LLM synthesis: a control room downstream that only receives evidence crates, never the tone overlay, once the firewall has done its work
+domain_rules:
+  - Always keep the ideational (fact) and interpersonal (stance) visual layers physically and chromatically separated — never let them merge except at the moment of "poisoning" being depicted as a failure state
+  - Depict the rhetorical firewall as an active, visible checkpoint/boundary, not passive background scenery
+  - Show retrieval as two distinct search mechanisms converging, not a single monolithic search
+  - Treat "sterile vacuum" and similar absolute-safety claims as an aspirational design goal to visualize with restraint, not a proven guarantee — avoid implying the system is unbreakable
+tags:
+  - retrieval augmented generation
+  - rag security
+  - systemic functional linguistics
+  - prompt injection
+  - context poisoning
+  - stance detection
+  - hybrid search
+  - pgvector
+  - nlp pipeline

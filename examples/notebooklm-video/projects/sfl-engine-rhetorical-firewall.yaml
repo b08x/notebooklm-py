@@ -1,0 +1,23 @@
+# Complementary video overview for the SFL Engine notebook (existing notebook,
+# targeted via -n/--notebook-id — no new sources are uploaded).
+
+title: "SFL Engine: The Rhetorical Firewall"
+style: "laboratory-notebook"
+domain: "sfl-engine"
+voice: "technical-explainer"
+audience: "Senior software engineers and RAG/LLM security practitioners"
+length: "8-10 min"
+video_format: "explainer"
+documents: []
+custom_instructions: >
+  Open by visually separating a single clause into two physically distinct layers: the
+  ideational payload (sealed evidence crate) and the interpersonal payload (translucent
+  tone overlay). Show the two-pass annotation pipeline as twin gates — a fast mechanical
+  spaCy gate reading structure, then a discerning LLM gate reading mood, modality, and
+  tenor. Depict standard RAG as a single fused search beam where a poisoned tone overlay
+  bleeds directly into the evidence crate reaching the LLM. Then show SFL Engine's
+  rhetorical firewall as a glass containment boundary: hybrid retrieval's two searchlights
+  (vector similarity and keyword/RRF) sweep the pgvector warehouse of floating capsules,
+  and only ideational payloads that pass the stance filter reach the downstream synthesis
+  control room. Close by visually flagging that "sterile vacuum" is a design goal, not a
+  proven guarantee — show the firewall as sturdy but not absolute.

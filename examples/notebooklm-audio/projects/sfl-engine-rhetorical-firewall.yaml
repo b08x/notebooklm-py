@@ -1,0 +1,46 @@
+# SFL Engine — Rhetorical Firewall diagnostic session.
+# Live auto-extraction is enabled: title/scope/vocabulary/topics below are the
+# thematic fallback if RAG harvesting from the notebook's sources comes up short.
+
+notebook_id: "3da35aa6-8b7e-433d-9092-dfd29e9678b4"
+title: "SFL Engine"
+topic: "the Rhetorical Firewall — separating ideational fact from interpersonal stance to defend RAG pipelines against context poisoning"
+source_type: "notebook"
+auto_extract: true
+template: "mr-and-mrs-language-model"
+
+include_telemetry: true
+include_escalations: true
+include_style_module: true
+
+lexical_dictionary:
+  agreement: "[State 1: ideational payload verified — facticity checkpoint passed]"
+  confusion: "[State 2: mood/modality misclassification — interpersonal payload desynchronized from clause]"
+  frustration: "[State 3: stance filter starvation — RRF fusion exhausted under adversarial rhetorical load]"
+  brainstorm: "[State 4: unconstrained metafunction drift — speculative tenor annotation with no ground truth]"
+
+telemetry:
+  scaling_var: "adversarial rhetorical stance density"
+  coefficient: 1.15
+  unstructured_goal: "unfiltered persuasion payload passthrough"
+
+escalations:
+  - compound: "State 2 (Confusion) + State 3 (Frustration)"
+    diagnostic: "Cascading stance-filter failure allows social-proof and authority cues to reach the LLM's context window unfiltered"
+    tier: "Severity 1 (Fatal)"
+  - compound: "State 1 (Agreement) + State 4 (Tangent)"
+    diagnostic: "Ideational payload verified correct while interpersonal annotation drifts into unverified speculative tenor"
+    tier: "Severity 2 (Elevated)"
+
+topics:
+  - "Mechanism 1: The two-pass annotation pipeline — spaCy syntactic parsing (Pass 1) versus LLM semantic annotation of mood, modality, and tenor (Pass 2)"
+  - "Mechanism 2: Why fusing fact and stance into one retrieval object creates a context-poisoning attack surface in standard RAG"
+  - "Mechanism 3: How Reciprocal Rank Fusion and scalar stance filters exclude persuasive/manipulative clauses before synthesis"
+
+query_guidance:
+  - "What architectural invariant keeps the ideational payload trustworthy even when the interpersonal payload is adversarial?"
+  - "Where does the 'sterile vacuum' framing overstate what the Rhetorical Firewall can actually guarantee?"
+
+catchphrase: "Facticity confirmed! Stance payload rejected at the firewall!"
+audio_format: "deep-dive"
+audio_length: "default"

@@ -94,7 +94,7 @@ async def execute_audio_pipeline(
             await client.artifacts.download_audio(
                 target_id,
                 output_path=output_path,
-                artifact_id=final_status.artifact_id,
+                artifact_id=final_status.task_id,
             )
             print("  Download successful! Diagnostic session audio saved.")
         else:
