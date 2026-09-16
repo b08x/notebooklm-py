@@ -90,6 +90,7 @@ from .session_cmd import register_session_commands
 from .share_cmd import share
 from .skill_cmd import skill
 from .source_cmd import source
+from .tui_cmd import register_tui_command
 
 __all__ = [
     # Command groups (subcommand style)
@@ -114,6 +115,7 @@ __all__ = [
     "register_notebook_commands",
     "register_chat_commands",
     "register_doctor_command",
+    "register_tui_command",
     # Console
     "console",
     # Async

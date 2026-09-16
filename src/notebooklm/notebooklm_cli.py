@@ -110,6 +110,7 @@ from .cli import (
     register_notebook_commands,
     # Register functions for top-level commands
     register_session_commands,
+    register_tui_command,
     research,
     share,
     skill,
@@ -245,6 +246,7 @@ register_session_commands(cli)
 register_notebook_commands(cli)
 register_chat_commands(cli)
 register_doctor_command(cli)
+register_tui_command(cli)
 
 # Register command groups (subcommand style)
 cli.add_command(source)
