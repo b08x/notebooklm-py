@@ -31,6 +31,9 @@ try:
 except ImportError:
     pass
 
+if not os.environ.get("LANGFUSE_HOST") and os.environ.get("LANGFUSE_BASE_URL"):
+    os.environ["LANGFUSE_HOST"] = os.environ["LANGFUSE_BASE_URL"]
+
 import dspy
 
 from .._preprocessing.fact_check import FactCheckAdapter
