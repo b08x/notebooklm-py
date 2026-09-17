@@ -1,5 +1,6 @@
 from notebooklm._preprocessing.chunkers import HybridChunker, StructuralCoherenceChunker
 
+
 def test_hybrid_chunker():
     chunker = HybridChunker(max_chunk_size=4)
     text = "Hello\n\nWorld\n\nThis is a long paragraph"

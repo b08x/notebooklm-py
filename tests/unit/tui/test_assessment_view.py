@@ -1,8 +1,8 @@
-import pytest
-from unittest.mock import MagicMock
-from notebooklm.tui.state import TUIState, View
-from notebooklm.tui.views.assessment_view import AssessmentView
 from rich.layout import Layout
+
+from notebooklm.tui.state import TUIState
+from notebooklm.tui.views.assessment_view import AssessmentView
+
 
 def test_assessment_view_render():
     state = TUIState()

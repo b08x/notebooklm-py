@@ -1,5 +1,7 @@
-from notebooklm._preprocessing.annotators import SpacyAnnotator, BERTopicAnnotator, DoclingPIIFilter
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
+
+from notebooklm._preprocessing.annotators import BERTopicAnnotator, DoclingPIIFilter, SpacyAnnotator
+
 
 def test_spacy_annotator():
     # If spacy is not installed, it falls back to empty lists.

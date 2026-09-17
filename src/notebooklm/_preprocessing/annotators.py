@@ -1,4 +1,5 @@
-from typing import Dict, Any, List
+from typing import Any
+
 
 class SpacyAnnotator:
     def __init__(self, model: str = "en_core_web_sm"):
@@ -15,7 +16,7 @@ class SpacyAnnotator:
             except Exception:
                 self.nlp = None
 
-    def annotate(self, text: str) -> Dict[str, Any]:
+    def annotate(self, text: str) -> dict[str, Any]:
         self._load_model()
         if self.nlp:
             doc = self.nlp(text)
@@ -43,7 +44,7 @@ class BERTopicAnnotator:
             except ImportError:
                 self.topic_model = None
 
-    def annotate(self, docs: List[str]) -> List[int]:
+    def annotate(self, docs: list[str]) -> list[int]:
         self._load_model()
         if self.topic_model:
             topics, _ = self.topic_model.fit_transform(docs)

@@ -1,5 +1,6 @@
 import os
 
+
 class FactCheckAdapter:
     def __init__(self):
         self.framework_path = os.environ.get("FACT_CHECK_FRAMEWORK_PATH", os.path.expanduser("~/.syncopated/skills/fact-check"))

@@ -1,6 +1,7 @@
-from notebooklm._preprocessing.fact_check import FactCheckAdapter
 from unittest.mock import patch
-import os
+
+from notebooklm._preprocessing.fact_check import FactCheckAdapter
+
 
 def test_fact_check_adapter():
     adapter = FactCheckAdapter()

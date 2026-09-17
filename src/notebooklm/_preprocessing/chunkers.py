@@ -1,5 +1,5 @@
 import re
-from typing import List
+
 
 class HybridChunker:
     """
@@ -8,7 +8,7 @@ class HybridChunker:
     def __init__(self, max_chunk_size: int = 1000):
         self.max_chunk_size = max_chunk_size
 
-    def chunk(self, text: str) -> List[str]:
+    def chunk(self, text: str) -> list[str]:
         paragraphs = text.split("\n\n")
         chunks = []
         current_chunk = []
@@ -25,10 +25,10 @@ class HybridChunker:
             else:
                 current_chunk.append(p)
                 current_length += len(p)
-        
+
         if current_chunk:
             chunks.append("\n\n".join(current_chunk))
-            
+
         return chunks
 
 
@@ -36,6 +36,6 @@ class StructuralCoherenceChunker:
     """
     Structural Coherence chunking using a systemic functional approach.
     """
-    def chunk(self, text: str) -> List[str]:
+    def chunk(self, text: str) -> list[str]:
         sentences = re.split(r'(?<=[.!?])\s+', text.strip())
         return [s for s in sentences if s]

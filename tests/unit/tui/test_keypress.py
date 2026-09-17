@@ -50,6 +50,6 @@ def test_handle_key_assessment_toggle():
     state = TUIState()
     assert handle_key("A", state) is True
     assert state.current_view == View.ASSESSMENT
-    
+
     assert handle_key("\x1b", state) is True  # Escape
     assert state.current_view == View.NOTEBOOK_LIST

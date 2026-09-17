@@ -4,7 +4,7 @@ import subprocess
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import httpx
 
@@ -13,7 +13,7 @@ class TranscriptionAdapter(ABC):
     """Abstract base class for audio transcription adapters."""
 
     @abstractmethod
-    def transcribe(self, audio_path: str) -> Dict[str, Any]:
+    def transcribe(self, audio_path: str) -> dict[str, Any]:
         """
         Transcribe the audio file at the given path.
 
@@ -25,12 +25,12 @@ class TranscriptionAdapter(ABC):
 
 
 class DeepgramAdapter(TranscriptionAdapter):
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: str | None = None):
         self.api_key = api_key or os.environ.get("DEEPGRAM_API_KEY")
         if not self.api_key:
             raise ValueError("Deepgram API key is required")
 
-    def transcribe(self, audio_path: str) -> Dict[str, Any]:
+    def transcribe(self, audio_path: str) -> dict[str, Any]:
         url = "https://api.deepgram.com/v1/listen?diarize=true"
         headers = {
             "Authorization": f"Token {self.api_key}",
@@ -55,12 +55,12 @@ class DeepgramAdapter(TranscriptionAdapter):
 
 
 class AssemblyAIAdapter(TranscriptionAdapter):
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: str | None = None):
         self.api_key = api_key or os.environ.get("ASSEMBLYAI_API_KEY")
         if not self.api_key:
             raise ValueError("AssemblyAI API key is required")
 
-    def transcribe(self, audio_path: str) -> Dict[str, Any]:
+    def transcribe(self, audio_path: str) -> dict[str, Any]:
         headers = {"authorization": self.api_key}
         with httpx.Client(timeout=300.0) as client:
             with open(audio_path, "rb") as f:
@@ -97,12 +97,12 @@ class AssemblyAIAdapter(TranscriptionAdapter):
 
 
 class SpeechmaticsAdapter(TranscriptionAdapter):
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: str | None = None):
         self.api_key = api_key or os.environ.get("SPEECHMATICS_API_KEY")
         if not self.api_key:
             raise ValueError("Speechmatics API key is required")
 
-    def transcribe(self, audio_path: str) -> Dict[str, Any]:
+    def transcribe(self, audio_path: str) -> dict[str, Any]:
         url = "https://asr.api.speechmatics.com/v2/jobs"
         headers = {"Authorization": f"Bearer {self.api_key}"}
 
@@ -157,19 +157,19 @@ class SpeechmaticsAdapter(TranscriptionAdapter):
 
 
 class TranscribeCppAdapter(TranscriptionAdapter):
-    def __init__(self, model_path: Optional[str] = None, executable_path: str = "main"):
+    def __init__(self, model_path: str | None = None, executable_path: str = "main"):
         self.model_path = model_path
         self.executable_path = executable_path
         if not self.model_path:
             raise ValueError("model_path is required for transcribe.cpp")
 
-    def transcribe(self, audio_path: str) -> Dict[str, Any]:
+    def transcribe(self, audio_path: str) -> dict[str, Any]:
         cmd = [self.executable_path, "-m", self.model_path, "-f", audio_path, "-oj"]
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
             json_path = f"{audio_path}.json"
             if os.path.exists(json_path):
-                with open(json_path, "r") as f:
+                with open(json_path) as f:
                     data = json.load(f)
                 try:
                     os.remove(json_path)
@@ -197,6 +197,6 @@ class TranscriptionService:
     def __init__(self, adapter: TranscriptionAdapter):
         self.adapter = adapter
 
-    def transcribe_audio(self, audio_path: str) -> Dict[str, Any]:
+    def transcribe_audio(self, audio_path: str) -> dict[str, Any]:
         return self.adapter.transcribe(audio_path)
 
