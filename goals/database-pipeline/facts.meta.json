@@ -1,0 +1,38 @@
+[
+  {
+    "id": "fact-1",
+    "text": "Add SQLAlchemy 2.0, asyncpg, pgvector, and Alembic as project dependencies.",
+    "recommendedAutomatedVerification": true,
+    "automatedVerification": true
+  },
+  {
+    "id": "fact-2",
+    "text": "Configure Alembic to manage async database migrations.",
+    "recommendedAutomatedVerification": true,
+    "automatedVerification": true
+  },
+  {
+    "id": "fact-3",
+    "text": "Implement a `Clause` SQLAlchemy model that matches the sfl-engine clauses schema (including tokens and groups as JSONB).",
+    "recommendedAutomatedVerification": true,
+    "automatedVerification": true
+  },
+  {
+    "id": "fact-4",
+    "text": "Implement an `Embedding` SQLAlchemy model with a pgvector column (768 dims) and an HNSW index, mirroring sfl-engine.",
+    "recommendedAutomatedVerification": true,
+    "automatedVerification": true
+  },
+  {
+    "id": "fact-5",
+    "text": "Implement a database connection manager that provides async SQLAlchemy sessions.",
+    "recommendedAutomatedVerification": true,
+    "automatedVerification": true
+  },
+  {
+    "id": "fact-6",
+    "text": "Scaffold a new `notebooklm-tui` console script entrypoint in pyproject.toml.",
+    "recommendedAutomatedVerification": true,
+    "automatedVerification": true
+  }
+]

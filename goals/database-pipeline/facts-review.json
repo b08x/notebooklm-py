@@ -1,0 +1,55 @@
+{
+  "stage": "facts",
+  "title": "Database Pipeline (sfl-engine backend)",
+  "goalSlug": "database-pipeline",
+  "facts": [
+    {
+      "id": "fact-1",
+      "text": "Add SQLAlchemy 2.0, asyncpg, pgvector, and Alembic as project dependencies.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-2",
+      "text": "Configure Alembic to manage async database migrations.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-3",
+      "text": "Implement a `Clause` SQLAlchemy model that matches the sfl-engine clauses schema (including tokens and groups as JSONB).",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-4",
+      "text": "Implement an `Embedding` SQLAlchemy model with a pgvector column (768 dims) and an HNSW index, mirroring sfl-engine.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-5",
+      "text": "Implement a database connection manager that provides async SQLAlchemy sessions.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-6",
+      "text": "Scaffold a new `notebooklm-tui` console script entrypoint in pyproject.toml.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    }
+  ]
+}

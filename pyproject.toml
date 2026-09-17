@@ -31,6 +31,10 @@ dependencies = [
     "click>=8.0.0,<9",
     "rich>=13.0.0,<16",
     "filelock>=3.13,<4",
+    "sqlalchemy>=2.0",
+    "asyncpg",
+    "pgvector",
+    "alembic",
 ]
 
 [project.urls]
@@ -100,6 +104,7 @@ assessment = [
 notebooklm = "notebooklm.notebooklm_cli:main"
 notebooklm-mcp = "notebooklm.mcp.__main__:main"
 notebooklm-server = "notebooklm.server.__main__:main"
+notebooklm-tui = "notebooklm.tui.__main__:main"
 
 [build-system]
 requires = ["hatchling", "hatch-fancy-pypi-readme"]

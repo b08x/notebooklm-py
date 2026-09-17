@@ -1,0 +1,6 @@
+- Add SQLAlchemy 2.0, asyncpg, pgvector, and Alembic as project dependencies.
+- Configure Alembic to manage async database migrations.
+- Implement a `Clause` SQLAlchemy model that matches the sfl-engine clauses schema (including tokens and groups as JSONB).
+- Implement an `Embedding` SQLAlchemy model with a pgvector column (768 dims) and an HNSW index, mirroring sfl-engine.
+- Implement a database connection manager that provides async SQLAlchemy sessions.
+- Scaffold a new `notebooklm-tui` console script entrypoint in pyproject.toml.
