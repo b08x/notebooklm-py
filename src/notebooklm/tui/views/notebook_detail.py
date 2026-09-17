@@ -511,6 +511,10 @@ def _run_assess_audio_overview(
         if state.current_view != View.ASSESSMENT:
             state.previous_view = state.current_view
             state.current_view = View.ASSESSMENT
+            
+        # Automatically trigger fact-checking streaming in the background
+        from notebooklm.tui.views.assessment_view import trigger_fact_check
+        trigger_fact_check(state)
     except Exception as e:
         import logging
 

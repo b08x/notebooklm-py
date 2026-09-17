@@ -349,35 +349,8 @@ async def run_full_assessment(
     ]
 
     if progress_callback:
-        progress_callback(f"Running fact checks for {len(assessment_chunks)} chunks...")
+        progress_callback("Assessment result generation complete.")
 
-    # Run fact checking concurrently but bounded to prevent database connection exhaustion
-    fact_check_tasks = [
-        run_fact_check_for_chunk(c.clause_external_id, c.text) for c in assessment_chunks
-    ]
-    if fact_check_tasks:
-        sem = asyncio.Semaphore(5)
-
-        async def _run_with_sem(task):
-            async with sem:
-                return await task
-
-        wrapped_tasks = [_run_with_sem(t) for t in fact_check_tasks]
-
-        results = []
-        for completed, coro in enumerate(asyncio.as_completed(wrapped_tasks), start=1):
-            res = await coro
-            results.append(res)
-            if progress_callback:
-                progress_callback(f"Fact-checking chunk {completed}/{len(wrapped_tasks)}...")
-
-        # Re-map results to chunks
-        res_map = {res.clause_external_id: res for res in results}
-        for chunk in assessment_chunks:
-            res = res_map.get(chunk.clause_external_id)
-            if res:
-                chunk.fact_check_passed = res.passed
-                chunk.fact_check_citations = res.citations
 
     return AssessmentResult(
         system_instructions=system_instructions,
