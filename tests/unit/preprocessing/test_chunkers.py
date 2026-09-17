@@ -10,6 +10,7 @@ def test_hybrid_chunker():
     assert chunks[1] == "World"
     assert chunks[2] == "This is a long paragraph"
 
+
 def test_structural_coherence_chunker():
     chunker = StructuralCoherenceChunker()
     text = "First sentence. Second sentence! Third sentence?"
@@ -18,3 +19,8 @@ def test_structural_coherence_chunker():
     assert chunks[0] == "First sentence."
     assert chunks[1] == "Second sentence!"
     assert chunks[2] == "Third sentence?"
+
+
+def test_structural_coherence_chunker_defaults_to_en_core_web_md():
+    chunker = StructuralCoherenceChunker()
+    assert chunker.model == "en_core_web_md"

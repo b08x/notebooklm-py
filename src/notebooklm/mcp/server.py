@@ -65,6 +65,7 @@ def register_all(mcp: FastMCP) -> None:
     """
     from .tools import (
         chat,
+        clauses,
         meta,
         notebooks,
         notes,
@@ -84,6 +85,7 @@ def register_all(mcp: FastMCP) -> None:
         studio,
         research,
         sharing,
+        clauses,
         meta,
     ):
         module.register(mcp)

@@ -18,6 +18,7 @@ def dummy_audio(tmp_path):
     p.write_bytes(b"dummy audio data")
     return str(p)
 
+
 @patch("httpx.Client")
 def test_deepgram_adapter(mock_client_class, dummy_audio):
     mock_client = MagicMock()
@@ -25,15 +26,7 @@ def test_deepgram_adapter(mock_client_class, dummy_audio):
 
     mock_response = MagicMock()
     mock_response.json.return_value = {
-        "results": {
-            "channels": [
-                {
-                    "alternatives": [
-                        {"transcript": "deepgram transcription text"}
-                    ]
-                }
-            ]
-        }
+        "results": {"channels": [{"alternatives": [{"transcript": "deepgram transcription text"}]}]}
     }
     mock_client.post.return_value = mock_response
 
@@ -44,6 +37,7 @@ def test_deepgram_adapter(mock_client_class, dummy_audio):
     assert result["text"] == "deepgram transcription text"
     assert result["provider"] == "deepgram"
     assert "diarization" in result
+
 
 @patch("httpx.Client")
 def test_assemblyai_adapter(mock_client_class, dummy_audio):
@@ -62,7 +56,7 @@ def test_assemblyai_adapter(mock_client_class, dummy_audio):
     mock_poll_resp.json.return_value = {
         "status": "completed",
         "text": "assemblyai transcription text",
-        "utterances": []
+        "utterances": [],
     }
     mock_client.get.return_value = mock_poll_resp
 
@@ -73,6 +67,7 @@ def test_assemblyai_adapter(mock_client_class, dummy_audio):
     assert result["text"] == "assemblyai transcription text"
     assert result["provider"] == "assemblyai"
     assert "diarization" in result
+
 
 @patch("httpx.Client")
 def test_speechmatics_adapter(mock_client_class, dummy_audio):
@@ -89,14 +84,8 @@ def test_speechmatics_adapter(mock_client_class, dummy_audio):
     mock_transcript_resp = MagicMock()
     mock_transcript_resp.json.return_value = {
         "results": [
-            {
-                "type": "word",
-                "alternatives": [{"content": "speechmatics"}]
-            },
-            {
-                "type": "word",
-                "alternatives": [{"content": "transcription"}]
-            }
+            {"type": "word", "alternatives": [{"content": "speechmatics"}]},
+            {"type": "word", "alternatives": [{"content": "transcription"}]},
         ]
     }
 
@@ -109,6 +98,7 @@ def test_speechmatics_adapter(mock_client_class, dummy_audio):
     assert result["text"] == "speechmatics transcription"
     assert result["provider"] == "speechmatics"
     assert "diarization" in result
+
 
 @patch("subprocess.run")
 def test_transcribecpp_adapter(mock_run, tmp_path):
@@ -129,6 +119,13 @@ def test_transcribecpp_adapter(mock_run, tmp_path):
     assert "diarization" in result
 
     mock_run.assert_called_once()
-    assert mock_run.call_args[0][0] == ["main", "-m", "ggml-model.bin", "-f", str(audio_path), "-oj"]
+    assert mock_run.call_args[0][0] == [
+        "main",
+        "-m",
+        "ggml-model.bin",
+        "-f",
+        str(audio_path),
+        "-oj",
+    ]
 
     assert not json_path.exists()

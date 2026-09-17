@@ -1,14 +1,12 @@
-from rich.console import Group
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.table import Table
-from rich.text import Text
 
 from ..state import TUIState
 from ..views.compiler_view import load_compiler_configs
 
 
-def render_compiler(state: TUIState) -> Panel:
+def render_compiler(state: TUIState) -> tuple[Panel, Panel]:
     if "configs" not in state.compiler_state:
         load_compiler_configs(state)
 
@@ -27,17 +25,16 @@ def render_compiler(state: TUIState) -> Panel:
     if not configs:
         table.add_row("No YAML configurations found.")
 
+    results_panel = Panel(table, title="Compiler Configs", border_style="border", style="main")
+
     preview_text = state.compiler_state.get(
         "preview", "Press Enter to compile the selected project."
     )
-
-    return Panel(
-        Group(
-            table,
-            Text("\nPreview:\n", style="info"),
-            Syntax(preview_text, "markdown", word_wrap=True, theme="monokai"),
-        ),
-        title="Prompt Compiler",
+    detail_panel = Panel(
+        Syntax(preview_text, "markdown", word_wrap=True, theme="monokai"),
+        title="Preview / Output",
         border_style="border",
         style="main",
     )
+
+    return results_panel, detail_panel

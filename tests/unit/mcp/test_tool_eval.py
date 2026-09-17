@@ -31,8 +31,14 @@ pytest.importorskip("fastmcp")
 #: to ~36.0k). Move these DOWN as the surface gets leaner; a rise means
 #: description/param bloat that must be justified, not rubber-stamped.
 SCHEMA_CHAR_BUDGET = (
-    39_400  # total serialized inputSchema + description chars (current 39_377; +23 slack)
+    39_800  # total serialized inputSchema + description chars (current 39_788; +12 slack)
 )
+# audio-assessment-pipeline goal: added `search_clauses` (semantic search over
+# this project's own ingested-clauses store — separate from `chat_ask`, which
+# stays wired to NotebookLM's own chat/citations). A new tool's own name +
+# params + minimal description is unavoidable surface, not bloat on an existing
+# tool; trimmed the docstring to the terse minimum before ratcheting up.
+# Net 39_400 -> 39_788 (+388).
 # #2129 added the genuine listable FANTASY_MAP and FILE artifact types to the
 # `studio_list.kind` enum. Their two required enum strings move the surface from
 # 39_349 to 39_377 (+28); ratcheted to 39_400 with the existing ~20-char slack.

@@ -1,4 +1,5 @@
 import concurrent.futures
+from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Any
@@ -13,6 +14,7 @@ class View(Enum):
     GENERATE = auto()
     COMPILER = auto()
     ASSESSMENT = auto()
+    LOGS = auto()
 
 
 @dataclass
@@ -34,3 +36,13 @@ class TUIState:
     detail_menu_index: int = 0
     scroll_offset: int = 0
     assessment_state: dict[str, Any] = field(default_factory=dict)
+    editing_context: bool = False
+    context_edit_buffer: str = ""
+    context_overrides: dict[str, str] = field(default_factory=dict)
+    log_records: deque = field(default_factory=lambda: deque(maxlen=500))
+    selecting_sources: bool = False
+    ingest_sources: list[Any] = field(default_factory=list)
+    ingest_selected: set[str] = field(default_factory=set)
+    ingest_cursor: int = 0
+    source_fetch_task: concurrent.futures.Future | None = None
+    ingest_progress: dict[str, Any] = field(default_factory=dict)

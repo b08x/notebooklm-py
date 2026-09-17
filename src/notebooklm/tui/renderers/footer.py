@@ -8,7 +8,10 @@ from ..state import TUIState
 
 
 def render_footer(state: TUIState) -> Panel:
-    hints = " [q] Quit | [c] Chat | [p] Compiler | [Tab] Focus | [j/k] Navigate "
+    hints = (
+        " [q] Quit | [n] Notebook | [c] Chat | [p] Compiler | [A] Assess | [L] Logs | "
+        "[Tab] Focus | [j/k] Navigate | [Esc] Back "
+    )
 
     table = Table.grid(expand=True)
     table.add_column(justify="left", ratio=1)
@@ -20,7 +23,16 @@ def render_footer(state: TUIState) -> Panel:
 
     right: RenderableType
 
-    if state.background_task and not state.background_task.done():
+    progress = state.ingest_progress
+    if state.background_task and not state.background_task.done() and progress.get("total_sources"):
+        done = progress.get("done_sources", 0)
+        total = progress.get("total_sources", 0)
+        title = progress.get("current_title", "")
+        label = f"Ingesting {done}/{total}"
+        if title:
+            label += f": {title}"
+        right = Spinner("dots", text=label)
+    elif state.background_task and not state.background_task.done():
         right = Spinner("dots", text="Working...")
     elif state.error_message:
         right = Text(state.error_message, style="error")

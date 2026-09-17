@@ -27,7 +27,7 @@ from notebooklm._app.download_specs import DOWNLOAD_FORMAT_NAMES, DOWNLOAD_SPECS
 pytest.importorskip("fastmcp")
 
 
-#: The complete, pinned tool surface. 33 tools across 8 domains. Adding or
+#: The complete, pinned tool surface. 34 tools across 9 domains. Adding or
 #: removing a tool MUST update this set (and the ceiling below if it grows).
 EXPECTED_TOOLS: frozenset[str] = frozenset(
     {
@@ -70,6 +70,8 @@ EXPECTED_TOOLS: frozenset[str] = frozenset(
         "share_set_access",
         "share_set_user",
         "share_remove_user",
+        # Clauses (1)
+        "search_clauses",
         # Meta (1)
         "server_info",
     }
@@ -83,8 +85,10 @@ EXPECTED_TOOLS: frozenset[str] = frozenset(
 #: source-add composites (source_add_and_wait, source_upload_bytes) later re-grew it,
 #: then #1890 folded them BACK into source_add (wait= / bytes_base64=) for 34, and
 #: #1896 folded studio_get_prompt into studio_list (each artifact's generation_prompt
-#: rides the summary listing / the item= fetch) for 33. The ceiling has headroom, but
-#: an accidental explosion still trips the gate.
+#: rides the summary listing / the item= fetch) for 33; the audio-assessment goal's
+#: ``search_clauses`` tool (semantic search over ingested clauses, separate from
+#: ``chat_ask``) brought it to 34. The ceiling has headroom, but an accidental
+#: explosion still trips the gate.
 TOOL_CEILING = 40
 
 #: The destructive tools — each carries ``destructiveHint`` AND a ``confirm``
@@ -114,6 +118,7 @@ READ_ONLY_TOOLS: frozenset[str] = frozenset(
         "research_status",
         "share_status",
         "suggest_prompts",
+        "search_clauses",
         "server_info",
     }
 )

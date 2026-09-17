@@ -95,9 +95,15 @@ dev = [
 all = ["notebooklm-py[browser,dev,headless,markdown,mcp,server]"]
 assessment = [
     "spacy>=3.0.0,<4",
+    "en_core_web_md @ https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl",
     "bertopic>=0.16.0,<1",
     "docling>=2.0.0,<3",
-    "dspy-ai>=2.4.0"
+    "dspy-ai>=2.4.0",
+    # bertopic/docling otherwise pull a numpy whose .pyi uses PEP 695 `type`
+    # statements unconditionally; mypy's `python_version = "3.10"` (this repo's
+    # documented minimum) then fails to parse numpy's own stub before ever
+    # reaching our code. Pin below the version that introduced that stub shape.
+    "numpy<2.3",
 ]
 
 [project.scripts]
@@ -109,6 +115,11 @@ notebooklm-tui = "notebooklm.tui.__main__:main"
 [build-system]
 requires = ["hatchling", "hatch-fancy-pypi-readme"]
 build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+# `assessment`'s en_core_web_md pin is a direct wheel URL (spaCy models are
+# published as regular wheels, not to PyPI) rather than a PyPI package name.
+allow-direct-references = true
 
 [tool.hatch.metadata.hooks.fancy-pypi-readme]
 content-type = "text/markdown"

@@ -26,9 +26,10 @@ class TranscriptionAdapter(ABC):
 
 class DeepgramAdapter(TranscriptionAdapter):
     def __init__(self, api_key: str | None = None):
-        self.api_key = api_key or os.environ.get("DEEPGRAM_API_KEY")
-        if not self.api_key:
+        resolved_key = api_key or os.environ.get("DEEPGRAM_API_KEY")
+        if not resolved_key:
             raise ValueError("Deepgram API key is required")
+        self.api_key: str = resolved_key
 
     def transcribe(self, audio_path: str) -> dict[str, Any]:
         url = "https://api.deepgram.com/v1/listen?diarize=true"
@@ -45,7 +46,9 @@ class DeepgramAdapter(TranscriptionAdapter):
             data = response.json()
 
             channels = data.get("results", {}).get("channels", [])
-            text = channels[0].get("alternatives", [{}])[0].get("transcript", "") if channels else ""
+            text = (
+                channels[0].get("alternatives", [{}])[0].get("transcript", "") if channels else ""
+            )
 
             return {
                 "text": text,
@@ -56,9 +59,10 @@ class DeepgramAdapter(TranscriptionAdapter):
 
 class AssemblyAIAdapter(TranscriptionAdapter):
     def __init__(self, api_key: str | None = None):
-        self.api_key = api_key or os.environ.get("ASSEMBLYAI_API_KEY")
-        if not self.api_key:
+        resolved_key = api_key or os.environ.get("ASSEMBLYAI_API_KEY")
+        if not resolved_key:
             raise ValueError("AssemblyAI API key is required")
+        self.api_key: str = resolved_key
 
     def transcribe(self, audio_path: str) -> dict[str, Any]:
         headers = {"authorization": self.api_key}
@@ -98,9 +102,10 @@ class AssemblyAIAdapter(TranscriptionAdapter):
 
 class SpeechmaticsAdapter(TranscriptionAdapter):
     def __init__(self, api_key: str | None = None):
-        self.api_key = api_key or os.environ.get("SPEECHMATICS_API_KEY")
-        if not self.api_key:
+        resolved_key = api_key or os.environ.get("SPEECHMATICS_API_KEY")
+        if not resolved_key:
             raise ValueError("Speechmatics API key is required")
+        self.api_key: str = resolved_key
 
     def transcribe(self, audio_path: str) -> dict[str, Any]:
         url = "https://asr.api.speechmatics.com/v2/jobs"
@@ -116,7 +121,7 @@ class SpeechmaticsAdapter(TranscriptionAdapter):
                 },
             }
             with open(audio_path, "rb") as f:
-                files = {
+                files: dict[str, tuple[str | None, Any, str]] = {
                     "data_file": (Path(audio_path).name, f, "audio/mpeg"),
                     "config": (None, json.dumps(config), "application/json"),
                 }
@@ -158,10 +163,10 @@ class SpeechmaticsAdapter(TranscriptionAdapter):
 
 class TranscribeCppAdapter(TranscriptionAdapter):
     def __init__(self, model_path: str | None = None, executable_path: str = "main"):
-        self.model_path = model_path
-        self.executable_path = executable_path
-        if not self.model_path:
+        if not model_path:
             raise ValueError("model_path is required for transcribe.cpp")
+        self.model_path: str = model_path
+        self.executable_path = executable_path
 
     def transcribe(self, audio_path: str) -> dict[str, Any]:
         cmd = [self.executable_path, "-m", self.model_path, "-f", audio_path, "-oj"]
@@ -188,7 +193,9 @@ class TranscribeCppAdapter(TranscriptionAdapter):
                     "provider": "transcribe_cpp",
                 }
         except subprocess.CalledProcessError as e:
-            raise Exception(f"transcribe.cpp failed with return code {e.returncode}: {e.stderr}")
+            raise Exception(
+                f"transcribe.cpp failed with return code {e.returncode}: {e.stderr}"
+            ) from e
 
 
 class TranscriptionService:
@@ -199,4 +206,3 @@ class TranscriptionService:
 
     def transcribe_audio(self, audio_path: str) -> dict[str, Any]:
         return self.adapter.transcribe(audio_path)
-

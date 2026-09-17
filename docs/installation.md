@@ -385,7 +385,7 @@ Source of truth: `pyproject.toml` `[project.optional-dependencies]`.
 | Extra | What it adds | When you need it | pip command | uv (in your project) |
 |---|---|---|---|---|
 | (none) | `httpx`, `click`, `rich`, `filelock` | All RPC operations, all CLI commands except `login`. Suffices when you ship a `storage_state.json`. | `pip install notebooklm-py` | `uv add notebooklm-py` |
-| `assessment` | `spacy`, `nltk`, `rouge-score`, `librosa` | Assessment and FACT check framework. Requires system prerequisites (spaCy model, Ollama, transcribe.cpp). | `pip install "notebooklm-py[assessment]"` | `uv add "notebooklm-py[assessment]"` |
+| `assessment` | `spacy`, `en_core_web_md` (provisioned as a direct wheel dependency), `bertopic`, `docling`, `dspy-ai` | Audio Overview assessment pipeline: NLP preprocessing (chunking, entity annotation), topic modeling, PII filtering, and DSPy-based scoring/fact-check. Requires system prerequisites (Ollama, transcribe.cpp). | `pip install "notebooklm-py[assessment]"` | `uv add "notebooklm-py[assessment]"` |
 | `browser` | `playwright>=1.40.0` | `notebooklm login` (interactive). | `pip install "notebooklm-py[browser]"` | `uv add "notebooklm-py[browser]"` |
 | `cookies` | `rookiepy>=0.1.0` | `notebooklm login --browser-cookies <browser>`, `notebooklm auth inspect`. | `pip install "notebooklm-py[cookies]"` | `uv add "notebooklm-py[cookies]"` |
 | `headless` | `gpsoauth>=1.1.0` | `notebooklm login --master-token` — headless auth that mints/refreshes web cookies from a durable master token, no per-session browser. Pure-Python (in `all`). See [§ D](#d-headless-server-or-ci). | `pip install "notebooklm-py[headless]"` | `uv add "notebooklm-py[headless]"` |
@@ -486,19 +486,30 @@ curl -H "Authorization: Bearer $TOKEN" -F 'file=@./notes.pdf' \
 If you installed the `[assessment]` extra, you will need to provision the following system-level dependencies:
 
 1. **spaCy model:**
-   Required for NLP processing and tokenization.
-   ```bash
-   python -m spacy download en_core_web_sm
-   ```
+   `en_core_web_md` is provisioned automatically as a direct wheel dependency of the
+   `[assessment]` extra — `uv sync --extra assessment` (or `pip install "notebooklm-py[assessment]"`)
+   installs it, no separate `spacy download` step needed.
 
 2. **Ollama:**
-   Required for local LLM inference in FACT check and factual consistency scoring.
+   Required for local embeddings only (`IngestionService`/clause search) — **not** for
+   chat-completion inference; see the OpenRouter point below for that.
    - Install from [ollama.com](https://ollama.com) or via curl:
+     <!-- not mirrored: end-user system-package install for an external tool (Ollama), not a repo contributor setup step -->
      ```bash
      curl -fsSL https://ollama.com/install.sh | sh
      ```
+   - Pull the embedding model: `ollama pull embeddinggemma` (override with
+     `EMBEDDING_MODEL/OLLAMA_URL` — see [python-api.md](python-api.md)).
 
-3. **transcribe.cpp (Whisper):**
+3. **OpenRouter:**
+   Required for the chat-completion LLM calls — assessment scoring, fact-check,
+   and clause-search answering (`_app.assessment.setup_dspy_router`,
+   `_app.clause_search.search_clauses`). Set `OPENROUTER_API_KEY`; the default
+   model (`z-ai/glm-5.3-flash`, override via `NOTEBOOKLM_ASSESSMENT_MODEL`) is a
+   low-cost pick. Any other litellm-routable provider works too via
+   `NOTEBOOKLM_ASSESSMENT_MODEL_PROVIDER`/`NOTEBOOKLM_ASSESSMENT_MODEL`.
+
+4. **transcribe.cpp (Whisper):**
    Required for local audio transcription fallback if cloud STT API keys are not provided.
    - Build from [ggerganov/whisper.cpp](https://github.com/ggerganov/whisper.cpp) and ensure the executable is available in your FACT framework configuration.
 

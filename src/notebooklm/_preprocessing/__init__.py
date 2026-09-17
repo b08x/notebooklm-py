@@ -1,3 +1,4 @@
+from .pipeline import Chunk, PreprocessingPipeline
 from .transcription import (
     AssemblyAIAdapter,
     DeepgramAdapter,
@@ -14,4 +15,6 @@ __all__ = [
     "SpeechmaticsAdapter",
     "TranscribeCppAdapter",
     "TranscriptionService",
+    "PreprocessingPipeline",
+    "Chunk",
 ]

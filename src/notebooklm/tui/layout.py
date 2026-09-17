@@ -8,10 +8,8 @@ def build_layout() -> Layout:
         Layout(name="header", size=3), Layout(name="body"), Layout(name="footer", size=3)
     )
 
-    layout["body"].split_row(Layout(name="sidebar", ratio=1), Layout(name="main", ratio=1))
+    layout["body"].split_row(Layout(name="sidebar", ratio=1), Layout(name="content", ratio=3))
 
-    layout["sidebar"].split_column(
-        Layout(name="notebooks", ratio=3), Layout(name="commands", ratio=1)
-    )
+    layout["content"].split_column(Layout(name="results", ratio=1), Layout(name="detail", ratio=1))
 
     return layout

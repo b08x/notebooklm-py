@@ -1,16 +1,10 @@
 from rich.panel import Panel
-from rich.table import Table
 from rich.tree import Tree
 
 from ..state import TUIState
 
 
-def render_sidebar_notebooks(state: TUIState) -> Panel:
-    table = Table(show_header=True, expand=True, show_edge=False, box=None)
-    table.add_column("Name")
-    table.add_column("Sources", justify="right")
-    table.add_column("Modified", justify="right")
-
+def render_sidebar(state: TUIState) -> Panel:
     import datetime
 
     if state.sort_key == "name":
@@ -44,42 +38,30 @@ def render_sidebar_notebooks(state: TUIState) -> Panel:
     # Slice notebooks for pagination
     notebooks = notebooks[state.scroll_offset : state.scroll_offset + visible_rows]
 
+    tree = Tree("📚 [b]Notebooks[/b]")
+
     for nb in notebooks:
         title = getattr(nb, "title", "Unknown")
         is_selected = nb.id == state.selected_notebook
-        title = f"▶ {title}" if is_selected else f"  {title}"
         sources = str(getattr(nb, "sources_count", 0))
-        mod_at = getattr(nb, "modified_at", None)
-        modified = mod_at.strftime("%Y-%m-%d") if mod_at else "Unknown"
 
-        is_selected = nb.id == state.selected_notebook
-        style = "selected" if is_selected else ""
+        style = "selected" if is_selected else "foreground"
+        prefix = "▶" if is_selected else " "
+        node_label = f"[{style}]{prefix} {title} ({sources} sources)[/]"
 
-        # Explicitly style the text strings so Rich definitely renders the colors
-        if is_selected:
-            title = f"[{style}]{title}[/]"
-            sources = f"[{style}]{sources}[/]"
-            modified = f"[{style}]{modified}[/]"
-        else:
-            title = f"[foreground]{title}[/]"
-            sources = f"[info]{sources}[/]"
-            modified = f"[muted]{modified}[/]"
-
-        table.add_row(title, sources, modified)
+        tree.add(node_label)
 
     if not state.notebooks:
-        table.add_row("No notebooks found.", "", "")
+        tree.add("[muted]No notebooks found.[/]")
 
-    return Panel(table, title="Notebooks", border_style="border")
+    tree.add("")
+    commands = tree.add("⚙️  [b]Commands[/b]")
+    commands.add("[Enter] Select")
+    commands.add("[c] Chat")
+    commands.add("[p] Prompt Compiler")
+    commands.add("[s] Sort Notebooks")
+    commands.add("[A] Assessment")
+    commands.add("[r] Refresh")
+    commands.add("[q] Quit")
 
-
-def render_sidebar_commands(state: TUIState) -> Panel:
-    tree = Tree("Commands")
-    tree.add("[Enter] Select")
-    tree.add("[c] Chat")
-    tree.add("[p] Prompt Compiler")
-    tree.add("[s] Sort Notebooks")
-    tree.add("[r] Refresh")
-    tree.add("[q] Quit")
-
-    return Panel(tree, title="Actions", border_style="border")
+    return Panel(tree, title="Corpus & Actions", border_style="border")

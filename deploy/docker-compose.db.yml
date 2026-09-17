@@ -1,0 +1,33 @@
+# Local Postgres + pgvector for the database-pipeline (src/notebooklm/db/).
+# Standalone from docker-compose.yml (the notebooklm-mcp server stack) — this
+# just backs local dev/testing of the async SQLAlchemy models and Alembic
+# migrations, so it is not wired into that stack's profiles or network.
+#
+#   docker compose -f deploy/docker-compose.db.yml up -d
+#   DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5435/notebooklm \
+#     uv run alembic upgrade head
+#
+# Host port defaults to 5435 (not 5432) to avoid colliding with any other
+# local Postgres. Override via POSTGRES_HOST_PORT if 5435 is also taken.
+services:
+  db:
+    image: ankane/pgvector
+    container_name: notebooklm-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: "trust"
+      POSTGRES_USER: ${NOTEBOOKLM_POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${NOTEBOOKLM_POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${NOTEBOOKLM_POSTGRES_DB:-notebooklm}
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5435}:5432"
+    volumes:
+      - notebooklm-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-notebooklm}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  notebooklm-db-data:

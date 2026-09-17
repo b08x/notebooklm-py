@@ -72,7 +72,11 @@ def _is_forbidden_notebooklm_child(child: str) -> bool:
     ``_auth``, …). ``_app`` is allowed to import only the *public* surface
     (``exceptions`` / ``types`` / ``client`` / ``urls`` / ``auth`` /
     ``migration`` / ``artifacts`` / …, none of which start with ``_``), so any
-    underscore-prefixed sibling is rejected.
+    underscore-prefixed sibling is rejected — with one deliberate exception:
+    ``_preprocessing`` is a standalone domain library (chunking/annotation/
+    transcription/embedding/ingestion) with no dependency back on the client
+    runtime internals this rule actually guards against, so ``_app`` orchestration
+    modules (e.g. ``assessment.py``) are allowed to depend on it.
     """
     if not child:
         return False
@@ -88,6 +92,10 @@ def _is_forbidden_notebooklm_child(child: str) -> bool:
     # ``from .events import ...`` form. Only a *sideways* reach into a different
     # ``notebooklm._*`` runtime internal is forbidden.
     if child == "_app":
+        return False
+    # ``_preprocessing`` is a self-contained domain library, not a client-runtime
+    # internal — see docstring above.
+    if child == "_preprocessing":
         return False
     return child.startswith("_")
 

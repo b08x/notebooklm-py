@@ -89,7 +89,7 @@ Unit (`tests/unit/`, no network; includes `_app`, CLI, server, and guardrail tes
 
 ## Docs
 
-`docs/`: installation · cli-reference · python-api · configuration · troubleshooting · development · architecture · mcp-guide · rpc-development · rpc-reference · stability · adr/.
+`docs/`: installation · cli-reference · tui-reference · python-api · configuration · troubleshooting · development · architecture · mcp-guide · rpc-development · rpc-reference · stability · adr/.
 
 ## Pull Request Workflow (required)
 
