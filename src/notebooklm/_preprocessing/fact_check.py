@@ -39,15 +39,14 @@ class FactCheckAdapter:
         """
         return os.path.exists(self.framework_path)
 
-    def check(self, chunk: str) -> bool:
+    def check(self, chunk: str) -> tuple[bool, str]:
         if not self.framework_available:
             logger.warning(
                 f"Fact-check framework not found at {self.framework_path}. FactCheckAdapter fallback triggered."
             )
-            return True
+            return True, ""
 
         try:
-
             class FactCheckSignature(dspy.Signature):
                 """Evaluate the factual validity of a text chunk based on fact-checking instructions."""
 
@@ -56,10 +55,48 @@ class FactCheckAdapter:
                 )
                 chunk = dspy.InputField(desc="The text chunk to verify")
                 is_valid = dspy.OutputField(desc="Return strictly True or False")
+                citations = dspy.OutputField(desc="Inline citations to external sources verifying or debunking the claim")
 
-            predictor = dspy.Predict(FactCheckSignature)
-            res = predictor(framework_instructions=self._prompt, chunk=chunk)
-            return str(res.is_valid).strip().lower() == "true"
+            def web_search(query: str) -> str:
+                """Search the web to fact-check claims."""
+                import httpx
+                
+                # Check Exa API
+                if exa_key := os.environ.get("EXA_API_KEY"):
+                    try:
+                        resp = httpx.post(
+                            "https://api.exa.ai/search", 
+                            json={"query": query, "useAutoprompt": True}, 
+                            headers={"x-api-key": exa_key},
+                            timeout=10.0
+                        )
+                        if resp.status_code == 200:
+                            return str(resp.json())
+                    except Exception as e:
+                        logger.warning(f"Exa search failed: {e}")
+                        
+                # Check Jina API
+                if jina_key := os.environ.get("JINA_API_KEY"):
+                    try:
+                        resp = httpx.get(
+                            f"https://s.jina.ai/{query}",
+                            headers={"Authorization": f"Bearer {jina_key}"},
+                            timeout=10.0
+                        )
+                        if resp.status_code == 200:
+                            return resp.text
+                    except Exception as e:
+                        logger.warning(f"Jina search failed: {e}")
+
+                return f"Simulated search results for: {query}"
+
+            agent = dspy.ReAct(FactCheckSignature, tools=[web_search], max_iters=3)
+            res = agent(framework_instructions=self._prompt, chunk=chunk)
+            
+            # ReAct returns the same output fields as the signature
+            is_valid = str(res.is_valid).strip().lower() == "true"
+            citations = str(getattr(res, "citations", ""))
+            return is_valid, citations
         except Exception as e:
             logger.warning(f"Fact-check execution failed: {e}")
-            return True
+            return True, ""

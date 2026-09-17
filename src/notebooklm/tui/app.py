@@ -26,8 +26,10 @@ def update_layout(layout, state):
     layout["footer"].update(render_footer(state))
 
 
-def run_tui() -> None:
+def run_tui(download_dir: str | None = None) -> None:
     state = TUIState()
+    if download_dir:
+        state.download_dir = download_dir
 
     # Route logging into the Logs view (`L`) instead of stdout/stderr, which
     # would corrupt the full-screen Live render below.
@@ -35,7 +37,18 @@ def run_tui() -> None:
 
     console = Console(theme=THEME)
 
+    import json
+    from pathlib import Path
+
+    cache_file = Path.home() / ".notebooklm" / "tui_cache.json"
+    if cache_file.exists():
+        try:
+            state.notebook_summaries = json.loads(cache_file.read_text())
+        except Exception:
+            pass
+
     # Load initial state
+
     with console.status("Loading notebooks...", spinner="dots"):
         load_notebooks_sync(state)
 
@@ -68,6 +81,10 @@ def run_tui() -> None:
                     state.summary_task = None
                     state_changed = True
 
+                if state.stats_task and state.stats_task.done():
+                    state.stats_task = None
+                    state_changed = True
+
                 if state.source_fetch_task and state.source_fetch_task.done():
                     state.source_fetch_task = None
                     state_changed = True
@@ -83,8 +100,53 @@ def run_tui() -> None:
                 ):
                     state_changed = True
 
+                # Auto-refresh if tokens replenish enough to unpause, or meter changes
+                state.update_tokens()
+                if not hasattr(state, "_last_rendered_tokens"):
+                    state._last_rendered_tokens = int(state.api_tokens)
+                elif int(state.api_tokens) != state._last_rendered_tokens:
+                    state._last_rendered_tokens = int(state.api_tokens)
+                    state_changed = True
+                elif state.current_view == View.NOTEBOOK_LIST and state.selected_notebook:
+                    import time
+
+                    current_summary = state.notebook_summaries.get(state.selected_notebook)
+
+                    # Unpause logic
+                    if current_summary == "Paused: Waiting for API capacity...":
+                        if state.api_tokens >= 1.0:
+                            state_changed = True
+
+                    # Debounce expiry logic
+                    elif current_summary == "Waiting for scroll...":
+                        if time.time() - state.last_selection_time >= 0.5:
+                            state_changed = True
+
                 if state_changed:
                     update_layout(layout, state)
                     live.refresh()
         except KeyboardInterrupt:
             pass
+        finally:
+            import json
+            from pathlib import Path
+
+            cache_file = Path.home() / ".notebooklm" / "tui_cache.json"
+            try:
+                cache_file.parent.mkdir(parents=True, exist_ok=True)
+                # Only save actual summaries, not placeholders
+                to_save = {
+                    k: v
+                    for k, v in state.notebook_summaries.items()
+                    if not v.startswith("Loading")
+                    and not v.startswith("Paused")
+                    and not v.startswith("Waiting for scroll")
+                    and "Error loading summary" not in v
+                }
+                if cache_file.exists():
+                    existing = json.loads(cache_file.read_text())
+                    existing.update(to_save)
+                    to_save = existing
+                cache_file.write_text(json.dumps(to_save))
+            except Exception:
+                pass

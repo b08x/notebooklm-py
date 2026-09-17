@@ -14,23 +14,29 @@ logger = logging.getLogger(__name__)
 
 
 async def resolve_notebook_context(client: Any, notebook_id: str) -> str | None:
-    """Fetch NotebookLM's own AI-generated notebook summary for contextual embedding.
-
-    This is the same free ``GetNotebookSummary`` RPC the TUI already calls for
-    its sidebar preview (``client.notebooks.get_summary``) — reusing it as a
-    per-chunk context prefix (Anthropic-style contextual retrieval) avoids a
-    separate paid per-chunk LLM call to generate that context. Best-effort:
-    returns ``None`` (no context prefix) on an empty summary or a failed fetch,
-    so ingestion can proceed without it.
-    """
+    """Fetch NotebookLM's own AI-generated notebook summary for contextual embedding."""
     try:
         summary = await client.notebooks.get_summary(notebook_id)
+        if isinstance(summary, str):
+            return summary.strip() or None
     except Exception:
         logger.warning("Could not fetch notebook summary for contextual embedding", exc_info=True)
-        return None
-    if not isinstance(summary, str):
-        return None
-    return summary.strip() or None
+    return None
+
+async def resolve_source_context(client: Any, notebook_id: str, source_id: str) -> str | None:
+    """Fetch NotebookLM's own AI-generated source summary for contextual embedding.
+
+    Reusing it as a per-chunk context prefix avoids a separate paid per-chunk LLM
+    call to generate that context. Best-effort: returns ``None`` on an empty
+    summary or a failed fetch, so ingestion can proceed without it.
+    """
+    try:
+        guide = await client.sources.get_guide(notebook_id, source_id)
+        if hasattr(guide, "summary") and isinstance(guide.summary, str):
+            return guide.summary.strip() or None
+    except Exception:
+        logger.warning("Could not fetch source summary for contextual embedding", exc_info=True)
+    return None
 
 
 class IngestionService:
@@ -41,8 +47,8 @@ class IngestionService:
     persists any already-resolved text (e.g. an audio overview transcript)
     under a caller-supplied ``document_id``.
 
-    Chunks are embedded with the notebook's summary prepended as context
-    (``resolve_notebook_context``), unless ``use_notebook_context=False`` or a
+    Chunks are embedded with the source's summary prepended as context
+    (``resolve_source_context``), unless ``use_source_context=False`` or a
     caller passes its own ``context`` override (e.g. a user-edited summary from
     the TUI, or ``""`` to force no context). The prefix is embedding-input only
     — ``Clause.text`` always stores the unprefixed chunk.
@@ -54,14 +60,14 @@ class IngestionService:
         embedder: EmbeddingAdapter | None = None,
         chunker: Any | None = None,
         embedding_model_name: str = "embeddinggemma-300m",
-        use_notebook_context: bool = True,
+        use_source_context: bool = True,
         embed_batch_size: int = 32,
     ):
         self.client = client
         self.embedder = embedder or OllamaEmbeddingAdapter()
         self.chunker = chunker or StructuralCoherenceChunker()
         self.embedding_model_name = embedding_model_name
-        self.use_notebook_context = use_notebook_context
+        self.use_source_context = use_source_context
         #: A single ``/api/embed`` request holds all its texts in memory for the
         #: whole request/response round trip; capping the batch size bounds how
         #: long any one request can legitimately take, so a slow/remote Ollama
@@ -69,12 +75,12 @@ class IngestionService:
         #: partway through a large document.
         self.embed_batch_size = embed_batch_size
 
-    async def _resolve_context(self, notebook_id: str, explicit_context: str | None) -> str | None:
+    async def _resolve_context(self, notebook_id: str, source_id: str, explicit_context: str | None) -> str | None:
         if explicit_context is not None:
             return explicit_context.strip() or None
-        if not self.use_notebook_context:
+        if not self.use_source_context:
             return None
-        return await resolve_notebook_context(self.client, notebook_id)
+        return await resolve_source_context(self.client, notebook_id, source_id)
 
     async def ingest_source(
         self,
@@ -86,12 +92,28 @@ class IngestionService:
         on_progress: Callable[[int, int], None] | None = None,
     ) -> int:
         """Chunk, embed, and persist one source's text. Returns clauses written."""
-        fulltext = await self.client.sources.get_fulltext(notebook_id, source_id)
-        resolved_context = await self._resolve_context(notebook_id, context)
+        import os
+
+        from sqlalchemy import select
+
+        from notebooklm.db.models import LocalAsset
+
+        # Check local cache first
+        result = await session.execute(select(LocalAsset).where(LocalAsset.asset_id == source_id))
+        local_asset = result.scalar_one_or_none()
+
+        if local_asset and os.path.exists(local_asset.local_path):
+            with open(local_asset.local_path, encoding="utf-8") as f:
+                content = f.read()
+        else:
+            fulltext = await self.client.sources.get_fulltext(notebook_id, source_id)
+            content = fulltext.content
+
+        resolved_context = await self._resolve_context(notebook_id, source_id, context)
         return await self.ingest_text(
             session,
             document_id=source_id,
-            text=fulltext.content,
+            text=content,
             context=resolved_context,
             on_progress=on_progress,
         )

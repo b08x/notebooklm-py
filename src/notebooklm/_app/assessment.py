@@ -162,6 +162,11 @@ _TRANSCRIPTION_ADAPTERS: dict[str, type[TranscriptionAdapter]] = {
 
 def _build_transcription_adapter() -> TranscriptionAdapter:
     provider = os.environ.get(TRANSCRIBE_PROVIDER_ENV, "deepgram").lower()
+
+    # Auto-fallback to local transcribe_cpp if Deepgram is requested but no key is provided
+    if provider == "deepgram" and not os.environ.get("DEEPGRAM_API_KEY"):
+        provider = "transcribe_cpp"
+
     adapter_cls = _TRANSCRIPTION_ADAPTERS.get(provider)
     if adapter_cls is None:
         raise ValueError(
@@ -181,6 +186,7 @@ class AssessmentChunk:
     entities: list[tuple[str, str]] = field(default_factory=list)
     #: ``None`` = not yet fact-checked. Set by :func:`run_fact_check_for_chunk`.
     fact_check_passed: bool | None = None
+    fact_check_citations: str | None = None
 
     @property
     def formatted(self) -> str:
@@ -197,6 +203,7 @@ class AssessmentResult:
     audio_metadata: str
     transcript: str
     chunks: list[AssessmentChunk]
+    sfl_metrics: dict[str, Any] | None = None
 
 
 async def run_full_assessment(
@@ -214,35 +221,56 @@ async def run_full_assessment(
     transcribes it with a configurable :class:`TranscriptionAdapter`, ingests the
     transcript as a source under ``notebook_id`` (keyed by ``artifact_id``,
     alongside the notebook's regular sources' clauses), and runs it through
-    :class:`PreprocessingPipeline`. Fact-checking is not run here — chunks start
-    unchecked; see :func:`run_fact_check_for_chunk`.
-
-    Chunk embeddings are contextualized with the notebook's own AI-generated
-    summary (free, via :func:`resolve_notebook_context`) unless
-    ``context_override`` is given (a user-edited summary, or ``""`` for no
-    context) — this avoids a separate paid LLM call just to generate that
-    per-chunk context.
+    :class:`PreprocessingPipeline`.
+    Runs SFL analysis and fact checking for all chunks.
     """
     await get_artifact(client, notebook_id, artifact_id)
     system_instructions = await get_artifact_prompt(client, notebook_id, artifact_id) or ""
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        audio_path = os.path.join(tmpdir, f"{artifact_id}.audio")
-        await client.artifacts.download_audio(notebook_id, audio_path, artifact_id)
+    from sqlalchemy import select
 
+    from ..db.models import LocalAsset
+
+    result = await session.execute(select(LocalAsset).where(LocalAsset.asset_id == artifact_id))
+    local_asset = result.scalar_one_or_none()
+
+    if local_asset and os.path.exists(local_asset.local_path):
+        audio_path = local_asset.local_path
         adapter = _build_transcription_adapter()
         transcription: dict[str, Any] = await asyncio.to_thread(
             TranscriptionService(adapter).transcribe_audio, audio_path
         )
+    else:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            audio_path = os.path.join(tmpdir, f"{artifact_id}.audio")
+            await client.artifacts.download_audio(notebook_id, audio_path, artifact_id)
+
+            adapter = _build_transcription_adapter()
+            transcription = await asyncio.to_thread(
+                TranscriptionService(adapter).transcribe_audio, audio_path
+            )
 
     transcript = transcription.get("text", "")
+    diarization = transcription.get("diarization")
+
+    # Persist the transcript to disk for the user
+    artifacts_dir = os.path.expanduser("~/NotebookLM/artifacts")
+    os.makedirs(artifacts_dir, exist_ok=True)
+    transcript_path = os.path.join(artifacts_dir, f"{artifact_id}_transcript.txt")
+    with open(transcript_path, "w", encoding="utf-8") as f:
+        f.write(transcript)
+
     audio_metadata = json.dumps(
         {
             "provider": transcription.get("provider"),
-            "diarization": transcription.get("diarization"),
+            "diarization": diarization,
+            "transcript_path": transcript_path,
         },
         default=str,
     )
+
+    from .._preprocessing.sfl_engine import analyze_transcript
+    sfl_metrics = analyze_transcript(transcript, diarization=diarization)
 
     pipeline = PreprocessingPipeline()
     processed_chunks = pipeline.process(transcript)
@@ -271,11 +299,23 @@ async def run_full_assessment(
         for i, c in enumerate(processed_chunks)
     ]
 
+    # Run fact checking concurrently
+    fact_check_tasks = [
+        run_fact_check_for_chunk(c.clause_external_id, c.text)
+        for c in assessment_chunks
+    ]
+    if fact_check_tasks:
+        results = await asyncio.gather(*fact_check_tasks)
+        for chunk, res in zip(assessment_chunks, results):
+            chunk.fact_check_passed = res.passed
+            chunk.fact_check_citations = res.citations
+
     return AssessmentResult(
         system_instructions=system_instructions,
         audio_metadata=audio_metadata,
         transcript=transcript,
         chunks=assessment_chunks,
+        sfl_metrics=sfl_metrics,
     )
 
 
@@ -286,6 +326,71 @@ class ScoringResult:
     chunks: list[Any]
     score: str
     feedback: str
+
+
+def generate_assessment_report(
+    artifact_id: str,
+    assessment_state: dict,
+    scoring_result: ScoringResult,
+    output_dir: str
+) -> str:
+    """Generates a detailed Markdown report containing SFL metrics, LLM scoring, and fact-check results."""
+    import os
+    from datetime import datetime
+
+    os.makedirs(output_dir, exist_ok=True)
+    report_path = os.path.join(output_dir, f"fact_check_report_{artifact_id}.md")
+
+    lines = [
+        "# Fact-Check and Assessment Report",
+        f"**Artifact ID**: `{artifact_id}`",
+        f"**Date**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        "",
+        "## 1. Score & Feedback (DSPy Evaluator)",
+        f"**Score**: {scoring_result.score}/10",
+        "",
+        f"**Feedback**: {scoring_result.feedback}",
+        "",
+        "## 2. Systemic Functional Linguistics (SFL) Analysis",
+    ]
+
+    metrics = assessment_state.get('sfl_metrics') or {}
+    lines.append(f"- **Total Clauses**: {metrics.get('total_clauses', 'N/A')}")
+    lines.append(f"- **Speaker Shifts**: {metrics.get('speaker_shifts', 'N/A')}")
+    lines.append(f"- **Pragmatic Intentions**: {metrics.get('pragmatic_intentions', 'N/A')}")
+    lines.append(f"- **Semiotics Analyzed**: {metrics.get('semiotics', 'N/A')}")
+    lines.append("")
+
+    lines.append("## 3. Fact-Check Citations and Warnings")
+
+    chunks = assessment_state.get('chunks', [])
+    failed_chunks = [c for c in chunks if getattr(c, 'fact_check_passed', None) is False]
+
+    if failed_chunks:
+        lines.append("### ⚠️ Data Quality Warnings (Failed Claims)")
+        for chunk in failed_chunks:
+            lines.append(f"> **Chunk**: {chunk.text}")
+            lines.append(f"> **Citations/Verification**: {getattr(chunk, 'fact_check_citations', 'No citations found.')}")
+            lines.append("")
+    else:
+        lines.append("✅ *All verifiable claims passed or no explicit failures detected.*")
+        lines.append("")
+
+    lines.append("### Full Contextual Chunk Verification")
+    for idx, chunk in enumerate(chunks):
+        passed = getattr(chunk, 'fact_check_passed', None)
+        status = "✅ PASS" if passed is True else "❌ FAIL" if passed is False else "❓ UNVERIFIED"
+        lines.append(f"#### Chunk {idx + 1} ({status})")
+        lines.append(f"{chunk.text}")
+        citations = getattr(chunk, 'fact_check_citations', None)
+        if citations:
+            lines.append(f"\n*Citations*: {citations}")
+        lines.append("")
+
+    with open(report_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+    return report_path
 
 
 def run_assessment_scoring(
@@ -327,10 +432,10 @@ class FactCheckResult:
     clause_external_id: str
     passed: bool
     framework_available: bool
+    citations: str
 
 
 async def run_fact_check_for_chunk(
-    session: AsyncSession,
     clause_external_id: str,
     text: str,
 ) -> FactCheckResult:
@@ -343,22 +448,24 @@ async def run_fact_check_for_chunk(
     fact-check result.
     """
     from sqlalchemy import update
-
     from ..db.models import Clause
+    from ..db.session import async_session_maker
 
     checker = FactCheckAdapter()
     framework_available = checker.framework_available
-    passed = await asyncio.to_thread(checker.check, text)
+    passed, citations = await asyncio.to_thread(checker.check, text)
 
-    await session.execute(
-        update(Clause)
-        .where(Clause.external_id == clause_external_id)
-        .values(fact_check_passed=passed)
-    )
-    await session.commit()
+    async with async_session_maker() as session:
+        await session.execute(
+            update(Clause)
+            .where(Clause.external_id == clause_external_id)
+            .values(fact_check_passed=passed)
+        )
+        await session.commit()
 
     return FactCheckResult(
         clause_external_id=clause_external_id,
         passed=passed,
         framework_available=framework_available,
+        citations=citations
     )

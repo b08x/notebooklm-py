@@ -31,7 +31,39 @@ def _render_ingest_progress(progress: dict) -> Text:
     return body
 
 
+def _render_artifact_selection(state: TUIState) -> tuple[Panel, Panel]:
+    rows = Text()
+    if not state.audio_artifacts:
+        rows.append("No audio artifacts found for this notebook.", style="muted")
+    else:
+        for i, artifact in enumerate(state.audio_artifacts):
+            artifact_title = getattr(artifact, "title", None) or artifact.id
+            cursor = "▶ " if i == state.artifact_cursor else "  "
+            style = "selected" if i == state.artifact_cursor else "foreground"
+            rows.append(f"{cursor}{artifact_title}\n", style=style)
+
+    picker_panel = Panel(
+        rows,
+        title="Select Audio Overview to Assess",
+        border_style="border",
+        style="main",
+        padding=(1, 2),
+    )
+    hint = Panel(
+        Align.center(
+            "[j/k] move  ·  [Enter] start assessment  ·  [Esc] cancel",
+            vertical="middle",
+        ),
+        title="Details",
+        border_style="border",
+    )
+    return picker_panel, hint
+
+
 def render_main(state: TUIState) -> tuple[Panel, Panel]:
+    if state.selecting_artifact:
+        return _render_artifact_selection(state)
+
     if state.editing_context:
         buffer_text = Text(f"{state.context_edit_buffer}█", style="foreground")
         edit_panel = Panel(
@@ -61,6 +93,8 @@ def render_main(state: TUIState) -> tuple[Panel, Panel]:
             for i, src in enumerate(state.ingest_sources):
                 checked = "x" if src.id in state.ingest_selected else " "
                 src_title = getattr(src, "title", None) or src.id
+                if src.id in getattr(state, "ingest_completed", set()):
+                    src_title += " (already ingested)"
                 cursor = "▶ " if i == state.ingest_cursor else "  "
                 style = "selected" if i == state.ingest_cursor else "foreground"
                 rows.append(f"{cursor}[{checked}] {src_title}\n", style=style)
@@ -94,6 +128,10 @@ def render_main(state: TUIState) -> tuple[Panel, Panel]:
         from ..views.assessment_view import AssessmentView
 
         return AssessmentView(state).render()
+    elif state.current_view == View.VISUAL_ASSESSMENT:
+        from ..views.visual_assessment_view import VisualAssessmentView
+
+        return VisualAssessmentView(state).render()
     elif state.current_view == View.LOGS:
         return render_logs(state)
 
@@ -107,6 +145,10 @@ def render_main(state: TUIState) -> tuple[Panel, Panel]:
             )
             return empty_panel, Panel("", border_style="border")
 
+        # Fetch stats in background if needed
+        from ..views.notebook_detail import fetch_stats_if_needed
+        fetch_stats_if_needed(state)
+
         nb = next((n for n in state.notebooks if n.id == state.selected_notebook), None)
         title = getattr(nb, "title", "Unknown Notebook") if nb else "Unknown Notebook"
 
@@ -115,6 +157,7 @@ def render_main(state: TUIState) -> tuple[Panel, Panel]:
             "2. Download Assets (Sources, Overviews)",
             "3. Ingest Sources into Database (Pipeline)",
             "4. Assess Audio Overview",
+            "5. Assess Visual Artifacts",
         ]
         has_override = state.selected_notebook in state.context_overrides
         context_hint = (
@@ -130,7 +173,7 @@ def render_main(state: TUIState) -> tuple[Panel, Panel]:
             else:
                 menu_text.append(f"  {item}\n", style="foreground")
 
-        title_text = Text(title, style="bold primary", justify="center")
+        title_text = Text(title, style="bold_primary", justify="center")
 
         actions_panel = Panel(
             Group(
@@ -145,10 +188,65 @@ def render_main(state: TUIState) -> tuple[Panel, Panel]:
             padding=(2, 4),
         )
 
+        # Build details panel
+        detail_group = []
+        stats = state.notebook_stats.get(state.selected_notebook)
+
+        if stats:
+            if stats.get("loading"):
+                detail_group.append(Text("\nLoading statistics...", style="muted", justify="center"))
+            elif "error" in stats:
+                detail_group.append(Text(f"\nFailed to load stats: {stats['error']}", style="error", justify="center"))
+            else:
+                from rich.table import Table
+
+                table = Table(show_header=False, box=None, padding=(0, 2))
+                table.add_column("Key", style="bold_info", justify="right")
+                table.add_column("Value", style="foreground")
+
+                table.add_row("Sources", str(stats.get("source_count", 0)))
+                table.add_row("Artifacts", str(stats.get("artifact_count", 0)))
+
+                types = stats.get("artifact_types", [])
+                if types:
+                    from collections import Counter
+                    counts = Counter(types)
+                    types_str = ", ".join(f"{k} ({v})" for k, v in counts.items())
+                    table.add_row("Artifact Types", types_str)
+
+                detail_group.append(Text("\nNotebook Statistics", style="bold_accent", justify="center"))
+                detail_group.append(Text(""))
+                detail_group.append(Align.center(table))
+
+        # Check if download is running
+        downloading = bool(
+            state.background_task
+            and not state.background_task.done()
+            and state.download_progress
+        )
+        if downloading or state.download_progress.get("done"):
+            from rich.progress_bar import ProgressBar
+
+            prog = state.download_progress
+            phase = prog.get("phase", "...")
+            percent = prog.get("percent", 0.0)
+
+            detail_group.append(Text("\n\n[Download Status]", style="bold_primary", justify="center"))
+            detail_group.append(Text(f"{phase}", style="info", justify="center"))
+            bar = ProgressBar(total=1.0, completed=percent, width=50)
+            detail_group.append(Align.center(bar))
+
+            if prog.get("done"):
+                detail_group.append(Text("\n(Download Complete)", style="muted", justify="center"))
+
+        if not detail_group:
+            detail_group.append(Align.center("Select an action to proceed.", vertical="middle"))
+
         return actions_panel, Panel(
-            Align.center("Select an action to proceed.", vertical="middle"),
+            Group(*detail_group),
             title="Details",
             border_style="border",
+            style="main"
         )
 
     if state.current_view == View.NOTEBOOK_LIST:
@@ -179,7 +277,7 @@ def render_main(state: TUIState) -> tuple[Panel, Panel]:
         sources = str(getattr(nb, "sources_count", 0))
         summary_text = state.notebook_summaries.get(state.selected_notebook, "Loading summary...")
 
-        title_text = Text(title, style="bold accent", justify="center")
+        title_text = Text(title, style="bold_accent", justify="center")
         sources_text = Text(f"{sources} Sources", style="info", justify="center")
 
         # We put the list/actions in results and summary in detail

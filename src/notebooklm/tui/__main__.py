@@ -10,9 +10,14 @@ def tui_cli():
 
 
 @tui_cli.command()
-def start():
+@click.option(
+    "--download-dir", type=click.Path(), default=None, help="Directory to download assets into"
+)
+def start(download_dir):
     """Start the TUI application."""
-    click.echo("Starting TUI...")
+    from notebooklm.tui import run_tui
+
+    run_tui(download_dir=download_dir)
 
 
 @tui_cli.command()

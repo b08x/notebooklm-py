@@ -32,6 +32,12 @@ THEME = Theme(
         "warning": f"bold {COLORS['warning']}",
         "info": f"{COLORS['secondary']}",
         "muted": f"{COLORS['muted']}",
+        # Bold variants
+        "bold_primary": f"bold {COLORS['primary']}",
+        "bold_info": f"bold {COLORS['secondary']}",
+        "bold_accent": f"bold {COLORS['accent']}",
+        "primary": f"{COLORS['primary']}",
+        "accent": f"{COLORS['accent']}",
         # Selection highlight (very visible)
         "selected": f"bold {COLORS['background']} on {COLORS['accent']}",
     }

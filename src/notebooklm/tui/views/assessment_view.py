@@ -1,7 +1,5 @@
 import concurrent.futures
-import re
 
-from rich.console import Group
 from rich.panel import Panel
 from rich.text import Text
 
@@ -45,10 +43,29 @@ def trigger_assessment_grading(state):
             res = future.result()
             state.assessment_state["chunks"] = res.chunks
             state.assessment_state["llm_score"] = f"Score: {res.score}\nFeedback: {res.feedback}"
+
+            # Generate the markdown report
+            import os
+
+            from notebooklm._app.assessment import generate_assessment_report
+
+            artifact_id = state.assessment_state.get("artifact_id", "unknown_artifact")
+            download_dir = getattr(state, "download_dir", None) or os.path.expanduser("~/NotebookLM")
+            artifacts_dir = os.path.join(download_dir, "artifacts")
+
+            report_path = generate_assessment_report(
+                artifact_id=artifact_id,
+                assessment_state=state.assessment_state,
+                scoring_result=res,
+                output_dir=artifacts_dir
+            )
+
+            state.assessment_state["llm_score"] += f"\n\nReport saved to:\n{report_path}"
         except Exception as e:
             err_str = str(e)
             if len(err_str) > 200:
                 err_str = err_str[:197] + "..."
+            import re
             err_str = re.sub(r"\x1b\[[0-9;]*m", "", err_str)
             state.assessment_state["llm_score"] = f"Error: {err_str}"
 
@@ -77,15 +94,13 @@ def trigger_fact_check(state):
 
         async def _run_all():
             from notebooklm._app.assessment import run_fact_check_for_chunk
-            from notebooklm.db.session import async_session_maker
 
             results = []
-            async with async_session_maker() as session:
-                for chunk in chunks_with_ids:
-                    result = await run_fact_check_for_chunk(
-                        session, chunk.clause_external_id, chunk.text
-                    )
-                    results.append(result)
+            for chunk in chunks_with_ids:
+                result = await run_fact_check_for_chunk(
+                    chunk.clause_external_id, chunk.text
+                )
+                results.append(result)
             return results
 
         return asyncio.run(_run_all())
@@ -141,6 +156,35 @@ class AssessmentView:
 
     def render(self) -> tuple[Panel, Panel]:
         assessment_state = getattr(self.state, "assessment_state", {})
+
+        if assessment_state.get("is_loading"):
+            loading_message = assessment_state.get("loading_message", "Loading...")
+            import time
+            start_time = assessment_state.setdefault("start_time", time.time())
+            elapsed = time.time() - start_time
+            mins, secs = divmod(int(elapsed), 60)
+            timer_str = f"{mins:02d}:{secs:02d}"
+
+            frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+            frame = frames[int(elapsed * 10) % len(frames)]
+
+            from rich.align import Align
+            from rich.console import Group
+            from rich.text import Text
+
+            content = Group(
+                Align.center(Text(f"{frame} {loading_message}", style="yellow bold")),
+                Align.center(Text(f"\nElapsed time: {timer_str}", style="dim")),
+                Align.center(Text("\nThis may take a minute depending on hardware...", style="dim italic"))
+            )
+
+            loading_panel = Panel(
+                Align.center(content, vertical="middle"),
+                title="Assessment in Progress",
+                border_style="yellow",
+                style="main",
+            )
+            return loading_panel, Panel("", border_style="border")
         audio_meta = assessment_state.get("audio_metadata", "No Audio Metadata Available.")
         sys_inst = assessment_state.get("system_instructions", "No System Instructions Available.")
         chunks = assessment_state.get("chunks", ["No Source Chunks Available."])

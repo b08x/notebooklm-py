@@ -21,6 +21,19 @@ class Base(DeclarativeBase):
     pass
 
 
+class LocalAsset(Base):
+    __tablename__ = "local_assets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    notebook_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
+    asset_id: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
+    asset_type: Mapped[str] = mapped_column(String, nullable=False)  # 'source' or 'artifact'
+    local_path: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class Clause(Base):
     __tablename__ = "clauses"
 

@@ -117,6 +117,42 @@ def handle_key(key: str, state: TUIState) -> bool:
             return True
         return True
 
+    if getattr(state, "selecting_artifact", False):
+        if key == "\x1b":  # Escape cancels the selection
+            state.selecting_artifact = False
+            return True
+        elif key in ("j", "k") and getattr(state, "audio_artifacts", []):
+            if key == "j":
+                state.artifact_cursor = min(state.artifact_cursor + 1, len(state.audio_artifacts) - 1)
+            else:
+                state.artifact_cursor = max(state.artifact_cursor - 1, 0)
+            return True
+        elif key == "\r" or key == "\n":
+            if not getattr(state, "audio_artifacts", []):
+                return True
+            selected_artifact = state.audio_artifacts[state.artifact_cursor]
+            state.selecting_artifact = False
+
+            # Start assessment
+            import concurrent.futures
+
+            from .views.notebook_detail import _run_assess_audio_overview
+
+            state.assessment_state = {
+                "is_loading": True,
+                "loading_message": "Transcribing and assessing audio overview...",
+            }
+            state.previous_view = state.current_view
+            state.current_view = View.ASSESSMENT
+
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            context_override = state.context_overrides.get(state.selected_notebook)
+            state.background_task = executor.submit(
+                _run_assess_audio_overview, state, state.selected_notebook, context_override, selected_artifact.id
+            )
+            return True
+        return True
+
     if state.current_view == View.CHAT:
         if key == "\x1b" or key == "\t":  # Escape or Tab
             if state.previous_view:
@@ -183,6 +219,12 @@ def handle_key(key: str, state: TUIState) -> bool:
 
             trigger_fact_check(state)
             return True
+    elif state.current_view == View.VISUAL_ASSESSMENT:
+        if key == "\x1b":  # Escape
+            if state.previous_view:
+                state.current_view = state.previous_view
+                state.previous_view = None
+            return True
 
     if key == "q":
         return False
@@ -213,6 +255,10 @@ def handle_key(key: str, state: TUIState) -> bool:
                 from .views.notebook_detail import start_assess_audio_overview
 
                 start_assess_audio_overview(state)
+            elif state.detail_menu_index == 4:
+                from .views.visual_assessment_view import start_assess_visual_artifacts
+                start_assess_visual_artifacts(state)
+            else:
                 state.previous_view = state.current_view
                 state.current_view = View.NOTEBOOK_LIST
     elif key == "p":
