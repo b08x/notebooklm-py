@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Textual User Interface (TUI)**: A rich terminal interface (`notebooklm tui`) for managing notebooks, sources, and generating audio assessments.
+- **Audio Assessments**: Generate customized, interactive audio assessments and grading rubrics from your sources.
+- **Transcription**: Native transcription capabilities for audio files.
+- Added `[assessment]` extra to install the dependencies required for the TUI and audio assessment features (e.g. `uv tool install "notebooklm-py[browser,assessment]"`).
+
 ## [0.8.1] - 2026-08-14
 
 ### Added

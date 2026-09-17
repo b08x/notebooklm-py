@@ -385,6 +385,7 @@ Source of truth: `pyproject.toml` `[project.optional-dependencies]`.
 | Extra | What it adds | When you need it | pip command | uv (in your project) |
 |---|---|---|---|---|
 | (none) | `httpx`, `click`, `rich`, `filelock` | All RPC operations, all CLI commands except `login`. Suffices when you ship a `storage_state.json`. | `pip install notebooklm-py` | `uv add notebooklm-py` |
+| `assessment` | `spacy`, `nltk`, `rouge-score`, `librosa` | Assessment and FACT check framework. Requires system prerequisites (spaCy model, Ollama, transcribe.cpp). | `pip install "notebooklm-py[assessment]"` | `uv add "notebooklm-py[assessment]"` |
 | `browser` | `playwright>=1.40.0` | `notebooklm login` (interactive). | `pip install "notebooklm-py[browser]"` | `uv add "notebooklm-py[browser]"` |
 | `cookies` | `rookiepy>=0.1.0` | `notebooklm login --browser-cookies <browser>`, `notebooklm auth inspect`. | `pip install "notebooklm-py[cookies]"` | `uv add "notebooklm-py[cookies]"` |
 | `headless` | `gpsoauth>=1.1.0` | `notebooklm login --master-token` — headless auth that mints/refreshes web cookies from a durable master token, no per-session browser. Pure-Python (in `all`). See [§ D](#d-headless-server-or-ci). | `pip install "notebooklm-py[headless]"` | `uv add "notebooklm-py[headless]"` |
@@ -479,6 +480,27 @@ curl -H "Authorization: Bearer $TOKEN" -F 'file=@./notes.pdf' \
 ---
 
 ## Post-install steps
+
+### System prerequisites (`assessment` extra)
+
+If you installed the `[assessment]` extra, you will need to provision the following system-level dependencies:
+
+1. **spaCy model:**
+   Required for NLP processing and tokenization.
+   ```bash
+   python -m spacy download en_core_web_sm
+   ```
+
+2. **Ollama:**
+   Required for local LLM inference in FACT check and factual consistency scoring.
+   - Install from [ollama.com](https://ollama.com) or via curl:
+     ```bash
+     curl -fsSL https://ollama.com/install.sh | sh
+     ```
+
+3. **transcribe.cpp (Whisper):**
+   Required for local audio transcription fallback if cloud STT API keys are not provided.
+   - Build from [ggerganov/whisper.cpp](https://github.com/ggerganov/whisper.cpp) and ensure the executable is available in your FACT framework configuration.
 
 ### `playwright install chromium` — when required, when auto-installed
 

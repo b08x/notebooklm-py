@@ -29,11 +29,13 @@
 
 ## What You Can Build
 
+🖥️ **Terminal User Interface (TUI)** - A rich, interactive console application (`notebooklm tui`) for managing your notebooks, sources, and generating audio assessments without leaving your terminal.
+
 🤖 **AI Agent Tools** - Integrate NotebookLM into Claude Code, Codex, and other LLM agents. Ships with a root [NotebookLM skill](SKILL.md) for GitHub and `npx skills add` discovery, local `notebooklm skill install` support for Claude Code and `.agents` skill directories, and repo-level Codex guidance in [`AGENTS.md`](AGENTS.md).
 
 📚 **Research Automation** - Bulk-import sources (URLs, PDFs, YouTube, Google Drive), run web/Drive research queries with auto-import, and extract insights programmatically. Build repeatable research pipelines.
 
-🎙️ **Content Generation** - Generate Audio Overviews (podcasts), videos, slide decks, quizzes, flashcards, infographics, data tables, mind maps, and study guides. Full control over formats, styles, and output.
+🎙️ **Content Generation** - Generate Audio Overviews (podcasts), videos, slide decks, quizzes, flashcards, infographics, data tables, mind maps, and study guides. Full control over formats, styles, and output. Now includes native transcription and interactive audio assessments.
 
 📥 **Downloads & Export** - Download all generated artifacts locally (MP3, MP4, PDF, PNG, CSV, JSON, Markdown). Export to Google Docs/Sheets. **Features the web UI doesn't offer**: batch downloads, quiz/flashcard export in multiple formats, mind map JSON extraction.
 
@@ -131,7 +133,7 @@ The full install guide — six personas (agent, end-user, library, headless, con
 **Quickest start** (CLI users and AI agents) — install the CLI with `uv tool` (recommended) or `pipx`:
 
 ```bash
-uv tool install "notebooklm-py[browser]"   # or: pipx install "notebooklm-py[browser]"
+uv tool install "notebooklm-py[browser,assessment]"   # or: pipx install "notebooklm-py[browser,assessment]"
 notebooklm login                           # first run auto-downloads Chromium (~170 MB), then Google sign-in
 notebooklm auth check --test --json        # verify: expect "status": "ok"
 ```
@@ -142,7 +144,7 @@ notebooklm auth check --test --json        # verify: expect "status": "ok"
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install "notebooklm-py[browser]"
+pip install "notebooklm-py[browser,assessment]"
 ```
 
 **As a library** (embedded in your app — no Playwright, no Chromium):

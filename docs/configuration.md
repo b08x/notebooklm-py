@@ -208,6 +208,10 @@ remains an unconditional forced re-mint.
 | `NOTEBOOKLM_QUIET_DEPRECATIONS` | Suppress the project's public-API `DeprecationWarning`s (the one-off warnings routed through `warn_deprecated`, e.g. awaiting `from_storage(...)`). Set to a truthy value (`1` / `true` / `yes` / `on`, case-insensitive) to silence them; see `docs/deprecations.md`. | (warnings emitted) |
 | `NOTEBOOKLM_FUTURE_ERRORS` | **Retired (removed in v0.8.0; ignored).** It was the v0.7.0 forward-compat preview gate for the v0.8.0 error contract; now that every break it staged is the default, the flag is a no-op — setting it has no effect. See `docs/deprecations.md`. | (ignored) |
 | `NOTEBOOKLM_VCR_RECORD_ERRORS` | Synthetic-error injection mode for VCR test cassettes (`429`, `5xx`, `expired_csrf`) | - |
+| `NOTEBOOKLM_ASSESSMENT_MODEL` | Default Ollama model used for assessment tasks (e.g. `llama3`) | - |
+| `FACT_CHECK_FRAMEWORK_PATH` | Path to the local factual consistency checking framework for the assessment extra | - |
+| `OPENAI_API_KEY` | STT API key for Whisper cloud transcription (assessment extra) | - |
+| `DEEPGRAM_API_KEY` | STT API key for Deepgram transcription (assessment extra) | - |
 
 ### Public config API vs internal resolvers
 

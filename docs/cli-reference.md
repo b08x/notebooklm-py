@@ -42,6 +42,7 @@ See [Configuration](configuration.md) for full env-var precedence and CI/CD setu
 - **Chat commands** - Querying and conversation management
 - **Grouped commands** - `source`, `label`, `collection`, `artifact`, `agent`, `generate`, `download`, `note`, `share`, `research`, `language`, `skill`, `auth`, `profile`, `mcp`
 - **Utility commands** - `metadata`, `doctor`
+- **TUI commands** - `tui`
 
 ---
 
@@ -439,8 +440,30 @@ Show bundled instructions for supported agent environments.
 
 `agent show codex` prefers the root [`AGENTS.md`](../AGENTS.md) file when running from a source checkout, so the CLI mirrors the same instructions Codex sees in the repository.
 
-### Features Beyond the Web UI
+### TUI Commands (`notebooklm tui`)
 
+Launch the interactive Terminal User Interface (TUI).
+
+```bash
+notebooklm tui
+```
+
+**Global Keybindings:**
+- `q`: Quit the application
+- `c` or `Tab`: Open Chat view
+- `p`: Open Compiler view
+- `A` (Shift+A): Open Assessment view
+- `Esc`: Return to previous view
+- `s`: Toggle sort order (by name or modified date) in Notebook List view
+- `j` / `k` (or Down/Up Arrow): Navigate in lists
+
+**Audio Assessment View Keybindings:**
+- `j` / `Down Arrow`: Scroll down
+- `k` / `Up Arrow`: Scroll up
+- `Enter` / `Return`: Confirm / update score and feedback state
+- `Esc`: Return to previous view
+
+### Features Beyond the Web UI
 These CLI capabilities are not available in NotebookLM's web interface:
 
 | Feature | Command | Description |
