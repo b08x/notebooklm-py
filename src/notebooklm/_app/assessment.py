@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
 #: (see ``NOTEBOOKLM_ASSESSMENT_EMBED_PROVIDER``/``_EMBED_MODEL`` below); this repo's
 #: local Ollama host is embeddings-only and has no chat models pulled.
 DEFAULT_MODEL_PROVIDER = "openrouter"
-DEFAULT_MODEL = "z-ai/glm-5.3-flash"
+DEFAULT_MODEL = "deepseek/deepseek-v4-flash-0731"
 
 
 def setup_dspy_router():
@@ -216,11 +216,12 @@ async def run_full_assessment(
     *,
     context_override: str | None = None,
     progress_callback=None,
+    state_callback=None,
 ) -> AssessmentResult:
     # Initialize the DSPy router for this parent thread,
     # so background tasks can inherit the LM via dspy.context.
     setup_dspy_router()
-    
+
     """Resolve, transcribe, ingest, and preprocess a notebook's audio overview.
 
     Downloads the artifact via the existing ``client.artifacts.download_audio``
@@ -348,10 +349,95 @@ async def run_full_assessment(
         for i, c in enumerate(processed_chunks)
     ]
 
-    if progress_callback:
-        progress_callback("Assessment result generation complete.")
+    # Run fact checking concurrently but bounded to prevent database connection exhaustion
+    fact_check_tasks = [
+        run_fact_check_for_chunk(c.clause_external_id, c.text) for c in assessment_chunks
+    ]
+    if fact_check_tasks:
+        sem = asyncio.Semaphore(5)
 
+        def _extract_speaker(chunk_text: str) -> str:
+            prefix = chunk_text[:40].strip()
 
+            if provider == "assemblyai" and isinstance(diarization, list):
+                for utt in diarization:
+                    if prefix in utt.get("text", ""):
+                        return f"[Speaker {utt.get('speaker', '?')}] "
+            elif provider == "deepgram" and isinstance(diarization, dict):
+                try:
+                    words = diarization["results"]["channels"][0]["alternatives"][0]["words"]
+                    prefix_word = prefix.split()[0].strip('.,?!')
+                    for w in words:
+                        if w.get("punctuated_word", "").strip('.,?!') == prefix_word:
+                            return f"[Speaker {w.get('speaker', '?')}] "
+                except Exception:
+                    pass
+            elif provider == "speechmatics" and isinstance(diarization, dict):
+                try:
+                    results = diarization.get("results", [])
+                    prefix_word = prefix.split()[0].strip('.,?!')
+                    for r in results:
+                        if r.get("type") == "word" and r.get("alternatives"):
+                            content = r["alternatives"][0].get("content", "").strip('.,?!')
+                            if content == prefix_word and r["alternatives"][0].get("speaker"):
+                                return f"[{r['alternatives'][0]['speaker']}] "
+                except Exception:
+                    pass
+
+            return ""
+
+        async def _run_with_sem(task, chunk_text):
+            speaker_prefix = _extract_speaker(chunk_text)
+            display_text = f"{speaker_prefix}{chunk_text}"
+
+            if state_callback:
+                state_callback("current_chunk_text", display_text[:200] + "...")
+            async with sem:
+                res = await task
+
+            if state_callback:
+                # Emit rich dict for UI to render
+                state_callback("ticker_stream_append", {
+                    "passed": res.passed,
+                    "text": display_text.strip(),
+                    "citations": res.citations.replace('\n', ' ').strip() if res.citations else ""
+                })
+
+            return res
+
+        wrapped_tasks = [_run_with_sem(t, c.text) for t, c in zip(fact_check_tasks, assessment_chunks)]
+
+        results = []
+        passed_count = 0
+        failed_count = 0
+        total_tasks = len(wrapped_tasks)
+        for completed, coro in enumerate(asyncio.as_completed(wrapped_tasks), start=1):
+            res = await coro
+            results.append(res)
+
+            if res.passed:
+                passed_count += 1
+            else:
+                failed_count += 1
+
+            if state_callback:
+                state_callback("metrics", {
+                    "completed": completed,
+                    "total": total_tasks,
+                    "passed": passed_count,
+                    "failed": failed_count,
+                })
+
+            if progress_callback:
+                progress_callback(f"Fact-checking chunk {completed}/{total_tasks}...")
+
+        # Re-map results to chunks
+        res_map = {res.clause_external_id: res for res in results}
+        for chunk in assessment_chunks:
+            res = res_map.get(chunk.clause_external_id)
+            if res:
+                chunk.fact_check_passed = res.passed
+                chunk.fact_check_citations = res.citations
     return AssessmentResult(
         system_instructions=system_instructions,
         audio_metadata=audio_metadata,

@@ -466,6 +466,11 @@ async def _assess_audio_overview_async(
             artifact = max(audio_artifacts, key=lambda a: getattr(a, "created_at", None) or 0)
             artifact_id = artifact.id
 
+        def state_cb(key: str, value: Any):
+            if progress_cb:
+                # Use a specific prefix or format so the caller knows it's state
+                progress_cb({"type": "state_update", "key": key, "value": value})
+
         result = await run_full_assessment(
             client,
             session,
@@ -473,6 +478,7 @@ async def _assess_audio_overview_async(
             artifact_id,
             context_override=context_override,
             progress_callback=progress_cb,
+            state_callback=state_cb,
         )
         return {
             "assessment_state": {
@@ -492,10 +498,21 @@ def _run_assess_audio_overview(
     context_override: str | None = None,
     artifact_id: str | None = None,
 ) -> None:
-    def cb(msg: str):
+    def cb(msg: Any):
         if "assessment_state" not in state.__dict__:
             state.assessment_state = {}
-        state.assessment_state["loading_message"] = msg
+
+        if isinstance(msg, dict) and msg.get("type") == "state_update":
+            key = msg["key"]
+            value = msg["value"]
+            if key == "ticker_stream_append":
+                if "ticker_stream" not in state.assessment_state:
+                    state.assessment_state["ticker_stream"] = []
+                state.assessment_state["ticker_stream"].append(value)
+            else:
+                state.assessment_state[key] = value
+        else:
+            state.assessment_state["loading_message"] = msg
 
     try:
         cb(f"Assessing audio overview for {notebook_id}...")
@@ -511,7 +528,7 @@ def _run_assess_audio_overview(
         if state.current_view != View.ASSESSMENT:
             state.previous_view = state.current_view
             state.current_view = View.ASSESSMENT
-            
+
         # Automatically trigger fact-checking streaming in the background
         from notebooklm.tui.views.assessment_view import trigger_fact_check
         trigger_fact_check(state)

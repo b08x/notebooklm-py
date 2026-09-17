@@ -1,7 +1,6 @@
 import concurrent.futures
 import time
 
-from rich.align import Align
 from rich.console import Group
 from rich.panel import Panel
 from rich.text import Text
@@ -102,11 +101,11 @@ def trigger_fact_check(state):
             from notebooklm._app.assessment import run_fact_check_for_chunk
 
             sem = asyncio.Semaphore(5)
-            
+
             async def _run_with_sem(chunk):
                 # Update status
                 state.assessment_state["fact_check_status"] = f"Checking: {chunk.text[:50]}..."
-                
+
                 async with sem:
                     result = await run_fact_check_for_chunk(
                         chunk.clause_external_id, chunk.text
@@ -116,10 +115,10 @@ def trigger_fact_check(state):
                 return result
 
             tasks = [_run_with_sem(chunk) for chunk in chunks_with_ids]
-            
+
             results = []
             framework_available = True
-            
+
             for completed, coro in enumerate(asyncio.as_completed(tasks), start=1):
                 res = await coro
                 results.append(res)
@@ -176,28 +175,107 @@ class AssessmentView:
         assessment_state = getattr(self.state, "assessment_state", {})
 
         if assessment_state.get("is_loading"):
-            loading_message = assessment_state.get("loading_message", "Loading...")
+            from rich.table import Table
+
             start_time = assessment_state.setdefault("start_time", time.time())
             elapsed = time.time() - start_time
             mins, secs = divmod(int(elapsed), 60)
             timer_str = f"{mins:02d}:{secs:02d}"
 
-            frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-            frame = frames[int(elapsed * 10) % len(frames)]
+            metrics = assessment_state.get("metrics", {})
+            completed = metrics.get("completed", 0)
+            total = metrics.get("total", 0)
+            passed = metrics.get("passed", 0)
+            failed = metrics.get("failed", 0)
 
-            # Local imports removed to avoid UnboundLocalError
+            progress_pct = (completed / total * 100) if total > 0 else 0
+            accuracy_pct = (passed / completed * 100) if completed > 0 else 100
 
-            content = Group(
-                Align.center(Text(f"{frame} {loading_message}", style="yellow bold")),
-                Align.center(Text(f"\nElapsed time: {timer_str}", style="dim")),
-                Align.center(Text("\nThis may take a minute depending on hardware...", style="dim italic"))
+            def make_bar(pct, width=20, fill="█", empty="░"):
+                filled = int((pct / 100) * width)
+                return fill * filled + empty * (width - filled)
+
+            # Header Table
+            header_table = Table(show_header=False, box=None, expand=True, padding=(0, 2))
+            header_table.add_column(justify="left")
+            header_table.add_column(justify="left")
+
+            acc_bar_str = make_bar(accuracy_pct, 23, "█", "░")
+
+            r1_c1 = Text.from_markup(f"[bold cyan] [✔] CHUNK PROGRESS [/] [blue]▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬[/] {int(progress_pct)}% [[white]{completed}/{total}[/]]")
+            r1_c2 = Text.from_markup(f"[bold yellow] [⏱] ELAPSED TIME [/]  [white]{timer_str}[/]")
+
+            r2_c1 = Text.from_markup(f"[bold green] [★] ACCURACY RATIO [/] [green]{acc_bar_str}[/] {int(accuracy_pct)}%")
+            r2_c2 = Text.from_markup(f"[bold red] [⚠] UNVERIFIED   [/]  [white]{failed} Claims[/]")
+
+            header_table.add_row(r1_c1, r1_c2)
+            header_table.add_row(r2_c1, r2_c2)
+
+            # Active claim panel
+            current_chunk = assessment_state.get("current_chunk_text", "Waiting for chunks...")
+            active_claim = Panel(
+                Text(f'"{current_chunk}"', style="white italic", justify="left"),
+                title="📝 ACTIVE TRANSCRIPT CLAIM",
+                title_align="left",
+                border_style="cyan",
+                padding=(1, 2)
+            )
+
+            # Stream panel
+            ticker_stream = assessment_state.get("ticker_stream", [])
+            stream_items = []
+
+            # Show the most recent 4 items
+            for i, item in enumerate(reversed(ticker_stream[-4:])):
+                # Fallback to dict get if it's new format, otherwise handle old string format safely during reload
+                if isinstance(item, dict):
+                    is_passed = item.get("passed", True)
+                    cit = item.get("citations", "")
+                else:
+                    is_passed = "✓" in item
+                    cit = item
+
+                mark = "✓ VERIFIED" if is_passed else "✗ CONTRADICTION FOUND"
+                color = "green" if is_passed else "red"
+                conf = "94" if is_passed else "--"
+
+                p_text = Text()
+                p_text.append(f" PANEL [{completed - i:03d}] ────────────────────────────────────────────────── [ CONFIDENCE: {conf}% ] \n", style="blue bold")
+                p_text.append(f" {mark}\n", style=f"bold {color}")
+
+                if cit:
+                    p_text.append(f" Source: {cit[:150]}...\n", style="white")
+                else:
+                    p_text.append(" Checking external knowledge bases and indexed sources...\n", style="dim")
+
+                stream_items.append(p_text)
+
+            if not stream_items:
+                stream_items.append(
+                    Text(" ⏳ EVALUATING CURRENT CHUNK\n Checking external knowledge bases and indexed sources...", style="dim")
+                )
+
+            stream_panel = Panel(
+                Group(*stream_items),
+                title="📚 VERIFIED EVIDENCE LOG STREAM",
+                title_align="left",
+                border_style="blue",
+                padding=(1, 2)
+            )
+
+            layout_group = Group(
+                header_table,
+                Text(""),
+                active_claim,
+                stream_panel
             )
 
             loading_panel = Panel(
-                Align.center(content, vertical="middle"),
-                title="Assessment in Progress",
-                border_style="yellow",
+                layout_group,
+                title="NotebookLM Assessment",
+                border_style="magenta",
                 style="main",
+                padding=(0, 1)
             )
             return loading_panel, Panel("", border_style="border")
         audio_meta = assessment_state.get("audio_metadata", "No Audio Metadata Available.")

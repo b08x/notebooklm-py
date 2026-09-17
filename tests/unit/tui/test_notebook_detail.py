@@ -182,6 +182,7 @@ async def test_assess_audio_overview_async_populates_assessment_state():
         system_instructions="Be accurate",
         audio_metadata='{"provider": "deepgram"}',
         chunks=[SimpleNamespace(text="chunk 1")],
+        sfl_metrics={"total_clauses": 10},
     )
 
     with (

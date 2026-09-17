@@ -41,6 +41,7 @@ def _stub_pipeline_and_transcription():
         patch.object(
             assessment_module.IngestionService, "ingest_chunks", new=AsyncMock(return_value=1)
         ) as mock_ingest_chunks,
+        patch.object(assessment_module, "setup_dspy_router", return_value=(MagicMock(), MagicMock())),
     ):
         yield mock_ingest_chunks
 
@@ -50,7 +51,10 @@ async def test_run_full_assessment_defaults_to_notebook_summary_context(
     _stub_pipeline_and_transcription,
 ):
     client = _make_client()
-    session = MagicMock()
+    session = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    session.execute.return_value = mock_result
 
     with patch.object(
         assessment_module,
@@ -69,7 +73,10 @@ async def test_run_full_assessment_context_override_skips_auto_fetch(
     _stub_pipeline_and_transcription,
 ):
     client = _make_client()
-    session = MagicMock()
+    session = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    session.execute.return_value = mock_result
 
     with patch.object(
         assessment_module, "resolve_notebook_context", new=AsyncMock()
@@ -87,7 +94,10 @@ async def test_run_full_assessment_empty_override_disables_context(
     _stub_pipeline_and_transcription,
 ):
     client = _make_client()
-    session = MagicMock()
+    session = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    session.execute.return_value = mock_result
 
     with patch.object(
         assessment_module, "resolve_notebook_context", new=AsyncMock()
