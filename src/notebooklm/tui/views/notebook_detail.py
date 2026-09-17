@@ -449,6 +449,7 @@ async def _assess_audio_overview_async(
     context_override: str | None = None,
     artifact_id: str | None = None,
     progress_cb=None,
+    state=None,
 ) -> dict:
     from notebooklm._app.assessment import run_full_assessment
     from notebooklm.db.session import async_session_maker
@@ -468,8 +469,30 @@ async def _assess_audio_overview_async(
 
         def state_cb(key: str, value: Any):
             if progress_cb:
-                # Use a specific prefix or format so the caller knows it's state
                 progress_cb({"type": "state_update", "key": key, "value": value})
+
+        def hitl_cb(chunk_text: str, sfl_context: str) -> bool:
+            import time
+            if state and getattr(state, "assessment_state", {}).get("auto_skip_meta", False):
+                return True
+
+            if progress_cb:
+                progress_cb({"type": "state_update", "key": "hitl_prompt", "value": {"chunk": chunk_text, "sfl": sfl_context, "decision": None}})
+
+            # Spin wait for UI to set decision or auto_skip
+            while state:
+                if state.assessment_state.get("auto_skip_meta", False):
+                    state.assessment_state["hitl_prompt"] = None
+                    return True
+
+                prompt_state = state.assessment_state.get("hitl_prompt")
+                if prompt_state and prompt_state.get("decision") is None:
+                    time.sleep(0.1)
+                else:
+                    decision = prompt_state.get("decision") if prompt_state else False
+                    state.assessment_state["hitl_prompt"] = None
+                    return decision
+            return False
 
         result = await run_full_assessment(
             client,
@@ -479,7 +502,9 @@ async def _assess_audio_overview_async(
             context_override=context_override,
             progress_callback=progress_cb,
             state_callback=state_cb,
+            hitl_callback=hitl_cb,
         )
+
         return {
             "assessment_state": {
                 "artifact_id": artifact_id,
@@ -517,7 +542,7 @@ def _run_assess_audio_overview(
     try:
         cb(f"Assessing audio overview for {notebook_id}...")
         outcome = asyncio.run(
-            _assess_audio_overview_async(notebook_id, context_override, artifact_id, cb)
+            _assess_audio_overview_async(notebook_id, context_override, artifact_id, cb, state)
         )
         if "error" in outcome:
             state.error_message = outcome["error"]

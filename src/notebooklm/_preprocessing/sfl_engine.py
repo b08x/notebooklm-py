@@ -6,36 +6,49 @@ import dspy
 
 logger = logging.getLogger(__name__)
 
-class SFLPass1Signature(dspy.Signature):
-    """Pass 1: Syntactic and Ideational Analysis. Identify participants, processes, and circumstances."""
-
-    utterance = dspy.InputField(desc="The spoken utterance to analyze.")
-    analysis = dspy.OutputField(desc="JSON formatted syntactic/ideational analysis containing keys: participants, processes, circumstances")
+try:
+    import spacy
+    nlp = spacy.load("en_core_web_md")
+except Exception as e:
+    logger.warning(f"Failed to load spacy model 'en_core_web_md': {e}")
+    nlp = None
 
 class SFLPass2Signature(dspy.Signature):
     """Pass 2: Interpersonal and Textual Analysis. Identify mood, modality, tenor, and thematic structure."""
 
     utterance = dspy.InputField(desc="The spoken utterance to analyze.")
-    pass1_analysis = dspy.InputField(desc="The ideational analysis from Pass 1.")
+    pass1_analysis = dspy.InputField(desc="The deterministic ideational analysis (participants, processes, circumstances).")
     analysis = dspy.OutputField(desc="JSON formatted interpersonal analysis containing keys: mood, modality, tenor")
 
 class SFLEngine(dspy.Module):
     def __init__(self):
         super().__init__()
-        self.pass1 = dspy.ChainOfThought(SFLPass1Signature)
         self.pass2 = dspy.ChainOfThought(SFLPass2Signature)
 
     def forward(self, utterance: str) -> dict[str, Any]:
-        p1 = self.pass1(utterance=utterance)
-        p2 = self.pass2(utterance=utterance, pass1_analysis=p1.analysis)
+        p1_dict = {"participants": [], "processes": [], "circumstances": []}
+
+        if nlp:
+            doc = nlp(utterance)
+            p1_dict["participants"] = [chunk.text for chunk in doc.noun_chunks]
+            p1_dict["processes"] = [tok.lemma_ for tok in doc if tok.pos_ == 'VERB']
+
+            circumstances = []
+            for tok in doc:
+                if tok.dep_ == 'prep':
+                    circumstances.append(" ".join([t.text for t in tok.subtree]))
+                elif tok.pos_ == 'ADV':
+                    circumstances.append(tok.text)
+            p1_dict["circumstances"] = circumstances
+
+        p1_analysis_str = json.dumps(p1_dict)
+        p2 = self.pass2(utterance=utterance, pass1_analysis=p1_analysis_str)
 
         try:
             # We assume the LLM outputs valid JSON in the output field, but we should strip backticks if any
-            p1_dict = json.loads(p1.analysis.strip("`").removeprefix("json\n"))
             p2_dict = json.loads(p2.analysis.strip("`").removeprefix("json\n"))
         except Exception as e:
-            logger.warning(f"Failed to parse SFL output: {e}")
-            p1_dict = {"error": "parse failed"}
+            logger.warning(f"Failed to parse SFL pass 2 output: {e}")
             p2_dict = {"error": "parse failed", "tenor": "neutral", "modality": "neutral"}
 
         return {
@@ -97,7 +110,7 @@ def analyze_transcript(transcript: str, diarization: dict[str, Any] | None = Non
         previous_tenor = tenor
 
     # Calculate dominant tenor
-    for sp, data in profiles.items():
+    for data in profiles.values():
         if data["tenors"]:
             data["dominant_tenor"] = max(set(data["tenors"]), key=data["tenors"].count)
 

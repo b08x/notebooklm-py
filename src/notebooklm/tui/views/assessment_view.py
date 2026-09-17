@@ -1,9 +1,12 @@
 import concurrent.futures
 import time
 
+from rich import box
 from rich.console import Group
+from rich.layout import Layout
 from rich.panel import Panel
 from rich.text import Text
+from rich.tree import Tree
 
 from notebooklm._app.assessment import run_assessment_scoring
 
@@ -100,30 +103,25 @@ def trigger_fact_check(state):
         async def _run_all():
             from notebooklm._app.assessment import run_fact_check_for_chunk
 
-            sem = asyncio.Semaphore(5)
-
-            async def _run_with_sem(chunk):
-                # Update status
-                state.assessment_state["fact_check_status"] = f"Checking: {chunk.text[:50]}..."
-
-                async with sem:
-                    result = await run_fact_check_for_chunk(
-                        chunk.clause_external_id, chunk.text
-                    )
-                # Stream the result to the chunk immediately
-                chunk.fact_check_passed = result.passed
-                return result
-
-            tasks = [_run_with_sem(chunk) for chunk in chunks_with_ids]
+            sys_inst = state.assessment_state.get("system_instructions", "")
+            context = state.assessment_state.get("notebook_context", "")
 
             results = []
             framework_available = True
 
-            for completed, coro in enumerate(asyncio.as_completed(tasks), start=1):
-                res = await coro
-                results.append(res)
-                framework_available = framework_available and res.framework_available
-                state.assessment_state["fact_check_status"] = f"Completed {completed}/{len(tasks)} checks..."
+            for completed, chunk in enumerate(chunks_with_ids, start=1):
+                # Update status
+                state.assessment_state["fact_check_status"] = f"Checking: {chunk.text[:50]}..."
+
+                result = await run_fact_check_for_chunk(
+                    chunk.clause_external_id, chunk.text, sys_inst, context
+                )
+
+                # Stream the result to the chunk immediately
+                chunk.fact_check_passed = result.passed
+                results.append(result)
+                framework_available = framework_available and result.framework_available
+                state.assessment_state["fact_check_status"] = f"Completed {completed}/{len(chunks_with_ids)} checks..."
 
             return framework_available
 
@@ -171,7 +169,7 @@ class AssessmentView:
     def __init__(self, state):
         self.state = state
 
-    def render(self) -> tuple[Panel, Panel]:
+    def render(self):
         assessment_state = getattr(self.state, "assessment_state", {})
 
         if assessment_state.get("is_loading"):
@@ -191,93 +189,157 @@ class AssessmentView:
             progress_pct = (completed / total * 100) if total > 0 else 0
             accuracy_pct = (passed / completed * 100) if completed > 0 else 100
 
-            def make_bar(pct, width=20, fill="█", empty="░"):
-                filled = int((pct / 100) * width)
-                return fill * filled + empty * (width - filled)
+            def make_sparkline(pct, width=20):
+                chars = " ▂▃▄▅▆▇█"
+                pct = max(0, min(100, pct))
+                total_eighths = int((pct / 100) * width * 8)
+                full_blocks = total_eighths // 8
+                remainder = total_eighths % 8
+
+                res = "█" * full_blocks
+                if full_blocks < width:
+                    res += chars[remainder]
+                    res += " " * (width - full_blocks - 1)
+                return res
 
             # Header Table
             header_table = Table(show_header=False, box=None, expand=True, padding=(0, 2))
             header_table.add_column(justify="left")
             header_table.add_column(justify="left")
 
-            acc_bar_str = make_bar(accuracy_pct, 23, "█", "░")
+            acc_bar_str = make_sparkline(accuracy_pct, 23)
+            prog_bar_str = make_sparkline(progress_pct, 23)
 
-            r1_c1 = Text.from_markup(f"[bold cyan] [✔] CHUNK PROGRESS [/] [blue]▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬[/] {int(progress_pct)}% [[white]{completed}/{total}[/]]")
-            r1_c2 = Text.from_markup(f"[bold yellow] [⏱] ELAPSED TIME [/]  [white]{timer_str}[/]")
+            r1_c1 = Text.from_markup(f"[bold primary] [✔] CHUNK PROGRESS [/] [primary]{prog_bar_str}[/] {int(progress_pct)}% [[foreground]{completed}/{total}[/]]")
+            r1_c2 = Text.from_markup(f"[bold accent] [⏱] ELAPSED TIME [/]  [foreground]{timer_str}[/]")
 
-            r2_c1 = Text.from_markup(f"[bold green] [★] ACCURACY RATIO [/] [green]{acc_bar_str}[/] {int(accuracy_pct)}%")
-            r2_c2 = Text.from_markup(f"[bold red] [⚠] UNVERIFIED   [/]  [white]{failed} Claims[/]")
+            r2_c1 = Text.from_markup(f"[bold success] [★] ACCURACY RATIO [/] [success]{acc_bar_str}[/] {int(accuracy_pct)}%")
+            r2_c2 = Text.from_markup(f"[bold error] [⚠] UNVERIFIED   [/]  [foreground]{failed} Claims[/]")
 
             header_table.add_row(r1_c1, r1_c2)
             header_table.add_row(r2_c1, r2_c2)
 
-            # Active claim panel
-            current_chunk = assessment_state.get("current_chunk_text", "Waiting for chunks...")
-            active_claim = Panel(
-                Text(f'"{current_chunk}"', style="white italic", justify="left"),
-                title="📝 ACTIVE TRANSCRIPT CLAIM",
-                title_align="left",
-                border_style="cyan",
+            header_panel = Panel(
+                header_table,
+                box=box.ROUNDED,
+                border_style="primary",
                 padding=(1, 2)
             )
+
+            # Active claim panel
+            hitl_prompt = assessment_state.get("hitl_prompt")
+            if hitl_prompt:
+                chunk_text = hitl_prompt.get("chunk", "")
+                active_claim = Panel(
+                    Text.from_markup(f"[warning]Meta-Dialogue / Satire Detected![/]\n\n[foreground italic]\"{chunk_text}\"[/]\n\n[bold]Skip fact-checking for this chunk?[/]\nPress [bold success]y[/] to bypass, [bold error]n[/] to force fact-check, or [bold accent]s[/] to toggle Auto-Skip."),
+                    title="⚠ HUMAN-IN-THE-LOOP REQUIRED",
+                    title_align="left",
+                    border_style="warning",
+                    box=box.HEAVY,
+                    padding=(1, 2)
+                )
+            else:
+                current_chunk = assessment_state.get("current_chunk_text", "Waiting for chunks...")
+                active_claim = Panel(
+                    Text(f'"{current_chunk}"', style="foreground italic", justify="left"),
+                    title="📝 ACTIVE TRANSCRIPT CLAIM",
+                    title_align="left",
+                    border_style="primary",
+                    box=box.ROUNDED,
+                    padding=(1, 2)
+                )
 
             # Stream panel
             ticker_stream = assessment_state.get("ticker_stream", [])
-            stream_items = []
+            log_tree = Tree("")
+            log_tree.hide_root = True
 
-            # Show the most recent 4 items
-            for i, item in enumerate(reversed(ticker_stream[-4:])):
-                # Fallback to dict get if it's new format, otherwise handle old string format safely during reload
-                if isinstance(item, dict):
-                    is_passed = item.get("passed", True)
-                    cit = item.get("citations", "")
-                else:
-                    is_passed = "✓" in item
-                    cit = item
+            items_to_show = list(reversed(ticker_stream[-6:])) if ticker_stream else []
 
-                mark = "✓ VERIFIED" if is_passed else "✗ CONTRADICTION FOUND"
-                color = "green" if is_passed else "red"
-                conf = "94" if is_passed else "--"
+            if not items_to_show:
+                node = log_tree.add(Text("⏳ EVALUATING CURRENT CHUNK", style="muted"))
+                node.add(Text("Checking external knowledge bases and indexed sources...", style="muted"))
+            else:
+                for i, item in enumerate(items_to_show):
+                    if isinstance(item, dict):
+                        is_passed = item.get("passed", True)
+                        cit = item.get("citations", "")
+                    else:
+                        is_passed = "✓" in item
+                        cit = item
 
-                p_text = Text()
-                p_text.append(f" PANEL [{completed - i:03d}] ────────────────────────────────────────────────── [ CONFIDENCE: {conf}% ] \n", style="blue bold")
-                p_text.append(f" {mark}\n", style=f"bold {color}")
+                    mark = "✓ VERIFIED" if is_passed else "✗ CONTRADICTION FOUND"
+                    color = "success" if is_passed else "error"
+                    conf = "94" if is_passed else "--"
 
-                if cit:
-                    p_text.append(f" Source: {cit[:150]}...\n", style="white")
-                else:
-                    p_text.append(" Checking external knowledge bases and indexed sources...\n", style="dim")
+                    node_text = Text.from_markup(f"[bold {color}]{mark}[/] [muted]─[/] [bold primary]CONFIDENCE: {conf}%[/] [muted]─ PANEL \\[{completed - i:03d}][/]")
+                    node = log_tree.add(node_text)
 
-                stream_items.append(p_text)
-
-            if not stream_items:
-                stream_items.append(
-                    Text(" ⏳ EVALUATING CURRENT CHUNK\n Checking external knowledge bases and indexed sources...", style="dim")
-                )
+                    if cit:
+                        node.add(Text(f"Source: {cit[:150]}...", style="foreground"))
+                    else:
+                        node.add(Text("Checking external knowledge bases and indexed sources...", style="muted"))
 
             stream_panel = Panel(
-                Group(*stream_items),
+                log_tree,
                 title="📚 VERIFIED EVIDENCE LOG STREAM",
                 title_align="left",
-                border_style="blue",
+                border_style="muted",
+                box=box.ROUNDED,
                 padding=(1, 2)
             )
 
-            layout_group = Group(
-                header_table,
-                Text(""),
-                active_claim,
-                stream_panel
+            assessment_dash = Layout()
+            assessment_dash.split_column(
+                Layout(header_panel, name="header", size=6),
+                Layout(name="body")
+            )
+            assessment_dash["body"].split_row(
+                Layout(active_claim, name="claim_pane"),
+                Layout(stream_panel, name="log_pane")
             )
 
-            loading_panel = Panel(
-                layout_group,
-                title="NotebookLM Assessment",
-                border_style="magenta",
-                style="main",
-                padding=(0, 1)
-            )
-            return loading_panel, Panel("", border_style="border")
+            current_sfl = assessment_state.get("current_chunk_sfl")
+            if current_sfl:
+                from rich.table import Table
+
+                sfl_table = Table(show_header=True, box=box.SIMPLE_HEAD, expand=True)
+                sfl_table.add_column("Metafunction", style="muted", width=15)
+                sfl_table.add_column("Parsing / Tagging", style="foreground")
+
+                ideational = current_sfl.get("ideational", {})
+                interpersonal = current_sfl.get("interpersonal", {})
+
+                parts = ideational.get("participants", [])
+                procs = ideational.get("processes", [])
+                circs = ideational.get("circumstances", [])
+
+                sfl_table.add_row("Participants", f"[primary]{', '.join(parts) if parts else 'None'}[/]")
+                sfl_table.add_row("Processes", f"[success]{', '.join(procs) if procs else 'None'}[/]")
+                sfl_table.add_row("Circumstances", f"[warning]{', '.join(circs) if circs else 'None'}[/]")
+                sfl_table.add_row("Tenor", f"[accent]{interpersonal.get('tenor', 'N/A')}[/]")
+                sfl_table.add_row("Mood", f"[accent]{interpersonal.get('mood', 'N/A')}[/]")
+                sfl_table.add_row("Modality", f"[accent]{interpersonal.get('modality', 'N/A')}[/]")
+
+                sfl_panel = Panel(
+                    sfl_table,
+                    title="🔍 SFL METAFUNCTION TAGGING",
+                    title_align="left",
+                    border_style="magenta",
+                    box=box.ROUNDED,
+                    padding=(1, 2)
+                )
+            else:
+                sfl_panel = Panel(
+                    Text("Waiting for SFL parsing...", style="muted"),
+                    title="🔍 SFL METAFUNCTION TAGGING",
+                    title_align="left",
+                    border_style="muted",
+                    box=box.ROUNDED,
+                    padding=(1, 2)
+                )
+
+            return assessment_dash, sfl_panel
         audio_meta = assessment_state.get("audio_metadata", "No Audio Metadata Available.")
         sys_inst = assessment_state.get("system_instructions", "No System Instructions Available.")
         chunks = assessment_state.get("chunks", ["No Source Chunks Available."])

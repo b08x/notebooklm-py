@@ -39,7 +39,7 @@ class FactCheckAdapter:
         """
         return os.path.exists(self.framework_path)
 
-    def check(self, chunk: str) -> tuple[bool, str]:
+    def check(self, chunk: str, system_instructions: str = "", notebook_context: str = "", sfl_context: str = "") -> tuple[bool, str]:
         if not self.framework_available:
             logger.warning(
                 f"Fact-check framework not found at {self.framework_path}. FactCheckAdapter fallback triggered."
@@ -48,10 +48,19 @@ class FactCheckAdapter:
 
         try:
             class FactCheckSignature(dspy.Signature):
-                """Evaluate the factual validity of a text chunk based on fact-checking instructions."""
+                """Evaluate the factual validity of a text chunk based on fact-checking instructions, notebook context, and SFL intent/subtext."""
 
                 framework_instructions = dspy.InputField(
                     desc="Instructions from the fact-checking framework"
+                )
+                system_instructions = dspy.InputField(
+                    desc="System instructions / perspective given for the audio generation"
+                )
+                notebook_context = dspy.InputField(
+                    desc="Contextual sources / notebook data"
+                )
+                sfl_context = dspy.InputField(
+                    desc="Systemic Functional Linguistics (SFL) metadata (intent, tenor, subtext) - DO NOT penalize analogies, metaphors, or subjective intent as factual errors."
                 )
                 chunk = dspy.InputField(desc="The text chunk to verify")
                 is_valid = dspy.OutputField(desc="Return strictly True or False")
@@ -91,7 +100,13 @@ class FactCheckAdapter:
                 return f"Simulated search results for: {query}"
 
             agent = dspy.ReAct(FactCheckSignature, tools=[web_search], max_iters=3)
-            res = agent(framework_instructions=self._prompt, chunk=chunk)
+            res = agent(
+                framework_instructions=self._prompt,
+                system_instructions=system_instructions,
+                notebook_context=notebook_context,
+                sfl_context=sfl_context,
+                chunk=chunk
+            )
 
             # ReAct returns the same output fields as the signature
             is_valid = str(res.is_valid).strip().lower() == "true"

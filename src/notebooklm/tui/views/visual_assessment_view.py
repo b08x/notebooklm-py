@@ -67,7 +67,7 @@ def _run_vlm_assessment(state: TUIState, notebook_id: str):
             if not image_assets:
                 return {"error": "No local image artifacts found. Download them first!"}
 
-            for idx, asset in enumerate(image_assets):
+            for _idx, asset in enumerate(image_assets):
                 path = Path(asset.local_path)
                 meta_path = path.with_suffix(path.suffix + ".meta.yaml")
 

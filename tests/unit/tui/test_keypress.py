@@ -93,7 +93,7 @@ def test_handle_key_notebook_detail_assess_menu_starts_assessment(monkeypatch):
     assert handle_key("\r", state) is True
 
     mock_start_assess.assert_called_once_with(state)
-    assert state.current_view == View.NOTEBOOK_LIST
+    assert state.current_view == View.ASSESSMENT
 
 
 def test_handle_key_notebook_detail_menu_clamps_to_three():

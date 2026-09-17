@@ -99,6 +99,7 @@ assessment = [
     "bertopic>=0.16.0,<1",
     "docling>=2.0.0,<3",
     "dspy-ai>=2.4.0",
+    "langfuse>=2.0.0",
     # bertopic/docling otherwise pull a numpy whose .pyi uses PEP 695 `type`
     # statements unconditionally; mypy's `python_version = "3.10"` (this repo's
     # documented minimum) then fails to parse numpy's own stub before ever

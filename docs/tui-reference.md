@@ -135,6 +135,9 @@ Displays the chunked/annotated result of an "Assess Audio Overview" run, with pe
 | `j` / `k` | Scroll down/up |
 | `Enter` | Trigger LLM-based assessment grading (scoring) of the current chunks |
 | `f` | Run SIFT fact-checking against the current chunks |
+| `y` | (During HITL prompt) Confirm as meta-dialogue/satire and skip fact-checking |
+| `n` | (During HITL prompt) Reject classifier assumption and force fact-checking |
+| `s` | (During HITL prompt) Toggle Auto-Skip for meta-dialogue (bypasses future prompts) |
 | `Esc` | Return to the previous view |
 
 ## Logs

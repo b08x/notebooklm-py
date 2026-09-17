@@ -25,6 +25,12 @@ import tempfile
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 import dspy
 
 from .._preprocessing.fact_check import FactCheckAdapter
@@ -89,7 +95,20 @@ def setup_dspy_router():
     else:
         embedder = dspy.Embedder(f"{embed_provider}/{embed_model}")
 
-    dspy.settings.configure(lm=lm)
+    callbacks = []
+    if os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY"):
+        try:
+            from langfuse.dspy import LangfuseCallback
+            callbacks.append(LangfuseCallback())
+        except ImportError:
+            import logging
+            logging.getLogger(__name__).warning("LangFuse env vars present but langfuse is not installed.")
+
+    if callbacks:
+        dspy.settings.configure(lm=lm, callbacks=callbacks)
+    else:
+        dspy.settings.configure(lm=lm)
+
     return lm, embedder
 
 
@@ -217,6 +236,7 @@ async def run_full_assessment(
     context_override: str | None = None,
     progress_callback=None,
     state_callback=None,
+    hitl_callback=None,
 ) -> AssessmentResult:
     # Initialize the DSPy router for this parent thread,
     # so background tasks can inherit the LM via dspy.context.
@@ -247,6 +267,34 @@ async def run_full_assessment(
         artifacts_dir = os.path.dirname(local_asset.local_path)
     else:
         artifacts_dir = os.path.expanduser("~/NotebookLM/artifacts")
+
+    def _log_sfl_dataset(chunk_text, sfl_ctx, human_skipped):
+        import json
+        import os
+        path = os.path.join(artifacts_dir, "sfl_meta_dataset.jsonl")
+        try:
+            with open(path, "a") as f:
+                json.dump({"chunk": chunk_text, "sfl": sfl_ctx, "is_meta": True, "human_skipped": human_skipped}, f)
+                f.write("\n")
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to log to SFL dataset: {e}")
+
+        if os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY"):
+            try:
+                from langfuse import Langfuse
+                lf = Langfuse()
+                dataset_name = "sfl-satire-classifier"
+                lf.create_dataset(name=dataset_name)
+                lf.create_dataset_item(
+                    dataset_name=dataset_name,
+                    input={"chunk": chunk_text, "sfl_context": sfl_ctx},
+                    expected_output={"contains_facts": str(not human_skipped)}
+                )
+                lf.flush()
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Failed to log dataset to LangFuse: {e}")
 
     os.makedirs(artifacts_dir, exist_ok=True)
     transcript_path = os.path.join(artifacts_dir, f"{artifact_id}_transcript.txt")
@@ -349,13 +397,8 @@ async def run_full_assessment(
         for i, c in enumerate(processed_chunks)
     ]
 
-    # Run fact checking concurrently but bounded to prevent database connection exhaustion
-    fact_check_tasks = [
-        run_fact_check_for_chunk(c.clause_external_id, c.text) for c in assessment_chunks
-    ]
-    if fact_check_tasks:
-        sem = asyncio.Semaphore(5)
-
+    # Run fact checking sequentially to preserve podcast dialog order
+    if assessment_chunks:
         def _extract_speaker(chunk_text: str) -> str:
             prefix = chunk_text[:40].strip()
 
@@ -386,14 +429,85 @@ async def run_full_assessment(
 
             return ""
 
-        async def _run_with_sem(task, chunk_text):
-            speaker_prefix = _extract_speaker(chunk_text)
-            display_text = f"{speaker_prefix}{chunk_text}"
+        results = []
+        passed_count = 0
+        failed_count = 0
+        total_tasks = len(assessment_chunks)
+
+        from .._preprocessing.sfl_engine import SFLEngine
+        sfl_engine = SFLEngine()
+
+        import dspy
+        class ClaimDetectorSignature(dspy.Signature):
+            """Determine if a spoken chunk contains verifiable factual claims about the real world or source material, or if it is purely subjective, satirical meta-dialogue, or conversational filler."""
+            chunk = dspy.InputField(desc="The text chunk to evaluate")
+            sfl_context = dspy.InputField(desc="SFL intent and tenor")
+            contains_facts = dspy.OutputField(desc="Return strictly True or False")
+
+        for completed, chunk in enumerate(assessment_chunks, start=1):
+            speaker_prefix = _extract_speaker(chunk.text)
+            display_text = f"{speaker_prefix}{chunk.text}"
+
+            # Extract local SFL context
+            try:
+                # Run the DSPy module inside to_thread to avoid blocking
+                def _run_sfl(dt=display_text):
+                    import dspy
+                    with dspy.context(lm=dspy.settings.lm):
+                        return sfl_engine(utterance=dt)
+
+                sfl_res = await asyncio.to_thread(_run_sfl)
+                sfl_context_str = f"Ideational: {sfl_res.get('ideational')} | Interpersonal: {sfl_res.get('interpersonal')}"
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Failed to generate SFL context: {e}")
+                sfl_res = {}
+                sfl_context_str = "SFL analysis unavailable."
 
             if state_callback:
                 state_callback("current_chunk_text", display_text[:200] + "...")
-            async with sem:
-                res = await task
+                state_callback("current_chunk_sfl", sfl_res)
+
+            # Fast Classifier Pass
+            try:
+                def _run_detector(dt=display_text, sc=sfl_context_str):
+                    import dspy
+                    with dspy.context(lm=dspy.settings.lm):
+                        return dspy.Predict(ClaimDetectorSignature)(chunk=dt, sfl_context=sc)
+                det_res = await asyncio.to_thread(_run_detector)
+                has_facts = str(det_res.contains_facts).strip().lower() == "true"
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Failed detector pass: {e}")
+                has_facts = True
+
+            skip_fact_check = False
+            if not has_facts:
+                if hitl_callback:
+                    # hitl_callback is synchronous, runs in thread, blocks until user responds or auto-skip
+                    def _run_hitl(dt=display_text, sc=sfl_context_str):
+                        return hitl_callback(dt, sc)
+                    skip_fact_check = await asyncio.to_thread(_run_hitl)
+                    _log_sfl_dataset(display_text, sfl_context_str, skip_fact_check)
+                else:
+                    skip_fact_check = True
+
+            if skip_fact_check:
+                res = FactCheckResult(
+                    clause_external_id=chunk.clause_external_id,
+                    passed=True,
+                    citations="Bypassed: Classified as subjective/meta-dialogue with no verifiable factual claims.",
+                    framework_available=True
+                )
+            else:
+                res = await run_fact_check_for_chunk(
+                    chunk.clause_external_id,
+                    display_text,
+                    system_instructions,
+                    context,
+                    sfl_context_str
+                )
+            results.append(res)
 
             if state_callback:
                 # Emit rich dict for UI to render
@@ -402,18 +516,6 @@ async def run_full_assessment(
                     "text": display_text.strip(),
                     "citations": res.citations.replace('\n', ' ').strip() if res.citations else ""
                 })
-
-            return res
-
-        wrapped_tasks = [_run_with_sem(t, c.text) for t, c in zip(fact_check_tasks, assessment_chunks)]
-
-        results = []
-        passed_count = 0
-        failed_count = 0
-        total_tasks = len(wrapped_tasks)
-        for completed, coro in enumerate(asyncio.as_completed(wrapped_tasks), start=1):
-            res = await coro
-            results.append(res)
 
             if res.passed:
                 passed_count += 1
@@ -566,6 +668,9 @@ class FactCheckResult:
 async def run_fact_check_for_chunk(
     clause_external_id: str,
     text: str,
+    system_instructions: str = "",
+    notebook_context: str = "",
+    sfl_context: str = "",
 ) -> FactCheckResult:
     """Run :class:`FactCheckAdapter` on one chunk and persist the verdict.
 
@@ -589,7 +694,7 @@ async def run_fact_check_for_chunk(
 
     def _run_with_context():
         with dspy.context(lm=lm):
-            return checker.check(text)
+            return checker.check(text, system_instructions, notebook_context, sfl_context)
 
     passed, citations = await asyncio.to_thread(_run_with_context)
 

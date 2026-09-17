@@ -39,10 +39,7 @@ class PreprocessingPipeline:
         logger.info("Starting preprocessing pipeline")
 
         # 1. PII Filter (if enabled)
-        if self.pii_filter:
-            safe_text = self.pii_filter.filter(text)
-        else:
-            safe_text = text
+        safe_text = self.pii_filter.filter(text) if self.pii_filter else text
 
         # 2. Chunking
         raw_chunks = self.hybrid_chunker.chunk(safe_text)
