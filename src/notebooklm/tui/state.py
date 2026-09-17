@@ -12,6 +12,7 @@ class View(Enum):
     CHAT = auto()
     GENERATE = auto()
     COMPILER = auto()
+    ASSESSMENT = auto()
 
 
 @dataclass
@@ -27,3 +28,9 @@ class TUIState:
     background_task: concurrent.futures.Future | None = None
     error_message: str | None = None
     compiler_state: dict[str, Any] = field(default_factory=dict)
+    notebook_summaries: dict[str, str] = field(default_factory=dict)
+    summary_task: concurrent.futures.Future | None = None
+    last_selection_time: float = 0.0
+    detail_menu_index: int = 0
+    scroll_offset: int = 0
+    assessment_state: dict[str, Any] = field(default_factory=dict)

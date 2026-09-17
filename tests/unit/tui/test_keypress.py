@@ -45,3 +45,11 @@ def test_handle_key_chat_input():
 
     handle_key("\x7f", state)  # backspace
     assert state.chat_input == "h"
+
+def test_handle_key_assessment_toggle():
+    state = TUIState()
+    assert handle_key("A", state) is True
+    assert state.current_view == View.ASSESSMENT
+    
+    assert handle_key("\x1b", state) is True  # Escape
+    assert state.current_view == View.NOTEBOOK_LIST

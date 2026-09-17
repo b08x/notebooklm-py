@@ -1,16 +1,17 @@
 from rich.theme import Theme
 
-# Dark warm palette from b08x.github.io dark mode
+# Omega-13 Logo Variants-selection palette
 COLORS = {
-    "background": "#211C17",
-    "surface": "#2A241D",
-    "foreground": "#ECE3D2",
-    "accent": "#C97A5E",
-    "secondary": "#84A4C0",
-    "success": "#97AC78",
-    "warning": "#DB8A5C",
-    "danger": "#D2715F",
-    "muted": "#968A78",
+    "background": "#1F1F24",
+    "surface": "#4C1D95",
+    "foreground": "#FFFFFF",
+    "primary": "#7C3AED",
+    "accent": "#F0913F",
+    "secondary": "#A855F7",
+    "success": "#33E666",
+    "warning": "#F0913F",
+    "danger": "#B7410E",
+    "muted": "#A855F7",
 }
 
 THEME = Theme(
@@ -23,14 +24,15 @@ THEME = Theme(
         "header": f"bold {COLORS['foreground']} on {COLORS['surface']}",
         "sidebar": f"{COLORS['foreground']} on {COLORS['background']}",
         "main": f"{COLORS['foreground']} on {COLORS['background']}",
-        "footer": f"{COLORS['muted']} on {COLORS['surface']}",
-        "border": COLORS["surface"],
+        "footer": f"{COLORS['muted']} on {COLORS['background']}",
+        "border": COLORS["primary"],
         "prompt": f"bold {COLORS['accent']} on {COLORS['background']}",
         "error": f"bold {COLORS['danger']}",
         "success": f"bold {COLORS['success']}",
         "warning": f"bold {COLORS['warning']}",
         "info": f"{COLORS['secondary']}",
         "muted": f"{COLORS['muted']}",
+        # Selection highlight (very visible)
         "selected": f"bold {COLORS['background']} on {COLORS['accent']}",
     }
 )

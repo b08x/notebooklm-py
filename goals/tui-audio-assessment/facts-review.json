@@ -1,0 +1,71 @@
+{
+  "stage": "facts",
+  "title": "TUI Audio Overview Assessment",
+  "goalSlug": "tui-audio-assessment",
+  "facts": [
+    {
+      "id": "fact-ux-view",
+      "text": "The TUI includes a dedicated fullscreen view for Audio Overview Assessment.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-ux-display",
+      "text": "The assessment view displays the audio output, system instructions, and contextualized source chunks side-by-side.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-grading-hybrid",
+      "text": "The assessment interface uses a hybrid grading model: an automated LLM suggests a score/feedback, and the user can confirm or edit it.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-chunking-hybrid",
+      "text": "The preprocessing pipeline implements a Hybrid Chunker with tokenization-aware refinements on top of hierarchical chunking.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-chunking-coherence",
+      "text": "The preprocessing pipeline applies Structural Coherence chunking using a systemic functional approach.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-nlp-spacy",
+      "text": "The preprocessing pipeline integrates the spaCy NLP Pipeline to extract POS, Lemmatization, and NER from the chunks.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-pii-removal",
+      "text": "The preprocessing pipeline integrates PII removal via Docling.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-fact-checker",
+      "text": "The preprocessing pipeline integrates fact-checker agent validations using the framework at `~/.syncopated/skills/fact-check`.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    }
+  ]
+}

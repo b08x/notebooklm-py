@@ -1,3 +1,5 @@
+import logging
+
 from rich.console import Console
 from rich.live import Live
 
@@ -24,6 +26,10 @@ def update_layout(layout, state):
 
 
 def run_tui() -> None:
+    # Suppress notebooklm warnings so they don't corrupt the TUI layout
+    logging.getLogger("notebooklm").setLevel(logging.ERROR)
+    logging.getLogger().setLevel(logging.ERROR)
+
     state = TUIState()
     console = Console(theme=THEME)
 
@@ -54,6 +60,10 @@ def run_tui() -> None:
                 # Check background tasks, etc.
                 if state.background_task and state.background_task.done():
                     state.background_task = None
+                    state_changed = True
+
+                if state.summary_task and state.summary_task.done():
+                    state.summary_task = None
                     state_changed = True
 
                 if state_changed:

@@ -89,6 +89,12 @@ dev = [
 # `all` deliberately excludes `cookies` — rookiepy has install issues on Python 3.13+
 # (see CHANGELOG [0.4.1]). Opt in explicitly via `pip install "notebooklm-py[cookies]"`.
 all = ["notebooklm-py[browser,dev,headless,markdown,mcp,server]"]
+assessment = [
+    "spacy>=3.0.0,<4",
+    "bertopic>=0.16.0,<1",
+    "docling>=2.0.0,<3",
+    "dspy-ai>=2.4.0"
+]
 
 [project.scripts]
 notebooklm = "notebooklm.notebooklm_cli:main"

@@ -107,22 +107,65 @@ def handle_key(key: str, state: TUIState) -> bool:
             compile_selected(state)
             return True
 
+    elif state.current_view == View.ASSESSMENT:
+        if key == "\x1b":  # Escape
+            if state.previous_view:
+                state.current_view = state.previous_view
+                state.previous_view = None
+            return True
+        elif key == "\r" or key == "\n":
+            # Just dummy action for now to update score/feedback state
+            state.assessment_state["llm_score"] = "Confirmed!"
+            return True
+        elif key == "j":
+            scroll = state.assessment_state.get("scroll_offset", 0)
+            state.assessment_state["scroll_offset"] = scroll + 1
+            return True
+        elif key == "k":
+            scroll = state.assessment_state.get("scroll_offset", 0)
+            state.assessment_state["scroll_offset"] = max(0, scroll - 1)
+            return True
+
     if key == "q":
         return False
-    elif key == "c" or key == "\t" or key == "\r" or key == "\n":
+    elif key == "c" or key == "\t":
         if state.current_view != View.CHAT:
             state.previous_view = state.current_view
             state.current_view = View.CHAT
+    elif key == "\r" or key == "\n":
+        if state.current_view == View.NOTEBOOK_LIST:
+            state.previous_view = state.current_view
+            state.current_view = View.NOTEBOOK_DETAIL
+        elif state.current_view == View.NOTEBOOK_DETAIL:
+            # Handle menu selection
+            if state.detail_menu_index == 0:
+                state.previous_view = state.current_view
+                state.current_view = View.CHAT
+            elif state.detail_menu_index == 1:
+                from .views.notebook_detail import start_download
+
+                start_download(state)
+                state.previous_view = state.current_view
+                state.current_view = View.NOTEBOOK_LIST
     elif key == "p":
         if state.current_view != View.COMPILER:
             state.previous_view = state.current_view
             state.current_view = View.COMPILER
+    elif key == "A":
+        if state.current_view != View.ASSESSMENT:
+            state.previous_view = state.current_view
+            state.current_view = View.ASSESSMENT
     elif key == "\x1b":  # Escape
         if state.previous_view:
             state.current_view = state.previous_view
             state.previous_view = None
     elif key == "s":
         state.sort_key = "modified" if state.sort_key == "name" else "name"
+    elif key in ("j", "k") and state.current_view == View.NOTEBOOK_DETAIL:
+        if key == "j":
+            state.detail_menu_index = min(state.detail_menu_index + 1, 1)
+        else:
+            state.detail_menu_index = max(state.detail_menu_index - 1, 0)
     elif key in ("j", "k") and state.notebooks:
         # Sort current notebooks to match view
         import datetime
@@ -148,8 +191,12 @@ def handle_key(key: str, state: TUIState) -> bool:
 
         if key == "j":
             new_idx = min(current_idx + 1, len(notebooks) - 1)
+            if new_idx >= state.scroll_offset + 15:
+                state.scroll_offset = new_idx - 14
         else:
             new_idx = max(current_idx - 1, 0)
+            if new_idx < state.scroll_offset:
+                state.scroll_offset = new_idx
 
         state.selected_notebook = notebooks[new_idx].id
     return True

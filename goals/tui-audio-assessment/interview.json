@@ -1,0 +1,61 @@
+{
+  "stage": "interview",
+  "title": "TUI Audio Overview Assessment",
+  "goalSlug": "tui-audio-assessment",
+  "questions": [
+    {
+      "id": "assessment-ux",
+      "prompt": "How should the Audio Overview Assessment interface be integrated into the TUI?",
+      "description": "This view will display the audio output, system instructions, and the contextualized source chunks.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "dedicated-view",
+      "options": [
+        { "id": "dedicated-view", "label": "New dedicated fullscreen view (Recommended for complex data)" },
+        { "id": "compiler-embedded", "label": "Embedded within the existing compiler view" },
+        { "id": "split-pane", "label": "Split-pane alongside the notebook detail view" }
+      ],
+      "required": true
+    },
+    {
+      "id": "chunking-strategy",
+      "prompt": "Which text chunking strategies should the preprocessing pipeline prioritize for the background context?",
+      "description": "AST chunking has been excluded as requested.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "Hybrid Chunker, Structural Coherence",
+      "recommendedOptionIds": ["hybrid", "structural-coherence"],
+      "options": [
+        { "id": "hybrid", "label": "Hybrid Chunker (hierarchical with tokenization-aware refinements)" },
+        { "id": "structural-coherence", "label": "Structural Coherence (systemic functional approach)" },
+        { "id": "dynamic-window", "label": "Dynamic Window (sliding token windows)" }
+      ],
+      "required": true
+    },
+    {
+      "id": "annotation-modules",
+      "prompt": "Which extended annotation modules should be included in the 'bells and whistles' preprocessing pipeline?",
+      "description": "These modules enrich the parsed chunks before they are presented for assessment.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "spaCy NLP Pipeline, Fact-checker agent validations, PII removal",
+      "recommendedOptionIds": ["spacy", "fact-checker", "pii-removal"],
+      "options": [
+        { "id": "spacy", "label": "spaCy NLP Pipeline (POS, Lemmatization, NER)" },
+        { "id": "fact-checker", "label": "Fact-checker agent validations (cross-referencing)" },
+        { "id": "pii-removal", "label": "PII removal via Docling" }
+      ],
+      "required": true
+    },
+    {
+      "id": "assessment-metrics",
+      "prompt": "How will the accuracy assessment (correlating audio to system instructions) be conducted?",
+      "description": "Defines the interaction model for the actual grading/assessment.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "hybrid-grading",
+      "options": [
+        { "id": "hybrid-grading", "label": "Hybrid: Automated LLM analysis suggests a score/feedback, user confirms or edits in TUI (Recommended)" },
+        { "id": "automated-only", "label": "Fully automated background agent evaluation" },
+        { "id": "manual-only", "label": "Manual grading interface for the user" }
+      ],
+      "required": true
+    }
+  ]
+}

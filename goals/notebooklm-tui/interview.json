@@ -1,0 +1,135 @@
+{
+  "stage": "interview",
+  "title": "NotebookLM TUI Setup",
+  "goalSlug": "notebooklm-tui",
+  "questions": [
+    {
+      "id": "entry-point",
+      "prompt": "How should the TUI be invoked?",
+      "description": "Currently `notebooklm` is the main CLI, with `notebooklm-mcp` and `notebooklm-server` as separate entry points.",
+      "answerMode": "single",
+      "recommendedAnswer": "subcommand",
+      "options": [
+        { "id": "subcommand", "label": "`notebooklm tui` subcommand (Recommended)" },
+        { "id": "separate", "label": "Separate `notebooklm-tui` entry point" }
+      ],
+      "required": true
+    },
+    {
+      "id": "scope-commands",
+      "prompt": "Which CLI command groups should be accessible from the TUI?",
+      "description": "The full CLI has: notebook, source, artifact, chat, generate, download, label, note, collection, research, skill, share, language, profile, doctor, agent, session.",
+      "answerMode": "multi",
+      "recommendedAnswer": "notebook, source, artifact, chat, generate, download",
+      "recommendedOptionIds": ["notebook", "source", "artifact", "chat", "generate", "download"],
+      "options": [
+        { "id": "notebook", "label": "notebook (list, create, delete, info)" },
+        { "id": "source", "label": "source (list, add, delete)" },
+        { "id": "artifact", "label": "artifact (list, generate, download)" },
+        { "id": "chat", "label": "chat (ask questions)" },
+        { "id": "generate", "label": "generate (audio, video, study guides)" },
+        { "id": "download", "label": "download (export artifacts)" },
+        { "id": "label", "label": "label (organize sources)" },
+        { "id": "note", "label": "note (manage notes)" },
+        { "id": "collection", "label": "collection (group notebooks)" },
+        { "id": "research", "label": "research (research mode)" },
+        { "id": "skill", "label": "skill (manage skills)" },
+        { "id": "share", "label": "share (sharing controls)" },
+        { "id": "profile", "label": "profile (switch profiles)" },
+        { "id": "doctor", "label": "doctor (diagnostics)" }
+      ],
+      "required": true
+    },
+    {
+      "id": "layout-structure",
+      "prompt": "What layout structure do you want?",
+      "description": "The reference pattern uses a fixed grid with header, content panes, and footer. Pick the general arrangement.",
+      "answerMode": "single",
+      "recommendedAnswer": "three-pane",
+      "options": [
+        { "id": "three-pane", "label": "Header + Sidebar | Main | Footer (Recommended)" },
+        { "id": "two-pane", "label": "Header + Sidebar | Main+Footer combined" },
+        { "id": "four-pane", "label": "Header + Sidebar | Main | Detail panel | Footer" }
+      ],
+      "required": true
+    },
+    {
+      "id": "sidebar-content",
+      "prompt": "What should the sidebar display?",
+      "description": "This is the navigation/discovery pane on the left.",
+      "answerMode": "single",
+      "recommendedAnswer": "notebook-list",
+      "options": [
+        { "id": "notebook-list", "label": "Notebook list with source counts (Recommended)" },
+        { "id": "command-tree", "label": "Command tree (nested command groups)" },
+        { "id": "hybrid", "label": "Hybrid: notebooks at top, commands at bottom" }
+      ],
+      "required": true
+    },
+    {
+      "id": "interaction-model",
+      "prompt": "What interaction model for the main content area?",
+      "description": "How does the user navigate and trigger actions?",
+      "answerMode": "single",
+      "recommendedAnswer": "vim-like",
+      "options": [
+        { "id": "vim-like", "label": "Vim-like: j/k navigate, Enter selects, : for commands (Recommended)" },
+        { "id": "tab-cycle", "label": "Tab cycles panes, arrows navigate, Enter activates" },
+        { "id": "mouse-aware", "label": "Click to select, scroll, with keyboard fallback" }
+      ],
+      "required": true
+    },
+    {
+      "id": "chat-mode",
+      "prompt": "How should chat work in the TUI?",
+      "description": "Chat is conversational and might need special treatment.",
+      "answerMode": "single",
+      "recommendedAnswer": "inline-input",
+      "options": [
+        { "id": "inline-input", "label": "Inline input bar at bottom, messages scroll in main pane (Recommended)" },
+        { "id": "fullscreen", "label": "Dedicated fullscreen chat view (toggle with key)" },
+        { "id": "both", "label": "Inline input + fullscreen toggle for long conversations" }
+      ],
+      "required": true
+    },
+    {
+      "id": "async-execution",
+      "prompt": "For long-running operations (generate, download), how should the TUI handle them?",
+      "description": "The reference pattern suggests background threads with animated spinners.",
+      "answerMode": "single",
+      "recommendedAnswer": "background-thread",
+      "options": [
+        { "id": "background-thread", "label": "Background thread with spinner + progress bar in footer (Recommended)" },
+        { "id": "blocking", "label": "Blocking with spinner (simpler, less responsive)" },
+        { "id": "asyncio", "label": "asyncio event loop integration (most complex, most responsive)" }
+      ],
+      "required": true
+    },
+    {
+      "id": "initial-view",
+      "prompt": "What should the TUI show on launch?",
+      "description": "Before the user selects anything.",
+      "answerMode": "single",
+      "recommendedAnswer": "dashboard",
+      "options": [
+        { "id": "dashboard", "label": "Dashboard: notebook count, recent activity, profile info (Recommended)" },
+        { "id": "notebook-list", "label": "Directly show notebook list" },
+        { "id": "help", "label": "Keyboard shortcut reference" }
+      ],
+      "required": true
+    },
+    {
+      "id": "theme-palette",
+      "prompt": "What color theme style?",
+      "description": "The reference mentions a centralized theme dictionary with bezel definitions.",
+      "answerMode": "single",
+      "recommendedAnswer": "dark-professional",
+      "options": [
+        { "id": "dark-professional", "label": "Dark background, muted accent colors (Recommended)" },
+        { "id": "terminal-classic", "label": "Classic terminal green/amber on black" },
+        { "id": "catppuccin", "label": "Catppuccin Mocha palette" }
+      ],
+      "required": true
+    }
+  ]
+}

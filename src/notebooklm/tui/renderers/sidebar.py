@@ -28,8 +28,26 @@ def render_sidebar_notebooks(state: TUIState) -> Panel:
     else:
         notebooks = state.notebooks
 
+    # Ensure selected notebook is within viewport
+    visible_rows = 15
+    current_id = state.selected_notebook
+    try:
+        current_idx = next(i for i, nb in enumerate(notebooks) if nb.id == current_id)
+    except StopIteration:
+        current_idx = 0
+
+    if current_idx < state.scroll_offset:
+        state.scroll_offset = current_idx
+    elif current_idx >= state.scroll_offset + visible_rows:
+        state.scroll_offset = current_idx - visible_rows + 1
+
+    # Slice notebooks for pagination
+    notebooks = notebooks[state.scroll_offset : state.scroll_offset + visible_rows]
+
     for nb in notebooks:
         title = getattr(nb, "title", "Unknown")
+        is_selected = nb.id == state.selected_notebook
+        title = f"▶ {title}" if is_selected else f"  {title}"
         sources = str(getattr(nb, "sources_count", 0))
         mod_at = getattr(nb, "modified_at", None)
         modified = mod_at.strftime("%Y-%m-%d") if mod_at else "Unknown"
@@ -37,13 +55,17 @@ def render_sidebar_notebooks(state: TUIState) -> Panel:
         is_selected = nb.id == state.selected_notebook
         style = "selected" if is_selected else ""
 
-        # If not selected, apply the colors to the cells directly
-        if not is_selected:
+        # Explicitly style the text strings so Rich definitely renders the colors
+        if is_selected:
+            title = f"[{style}]{title}[/]"
+            sources = f"[{style}]{sources}[/]"
+            modified = f"[{style}]{modified}[/]"
+        else:
             title = f"[foreground]{title}[/]"
             sources = f"[info]{sources}[/]"
             modified = f"[muted]{modified}[/]"
 
-        table.add_row(title, sources, modified, style=style)
+        table.add_row(title, sources, modified)
 
     if not state.notebooks:
         table.add_row("No notebooks found.", "", "")
