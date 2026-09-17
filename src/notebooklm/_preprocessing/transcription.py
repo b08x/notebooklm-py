@@ -32,7 +32,12 @@ class DeepgramAdapter(TranscriptionAdapter):
         self.api_key: str = resolved_key
 
     def transcribe(self, audio_path: str) -> dict[str, Any]:
-        url = "https://api.deepgram.com/v1/listen?diarize=true"
+        url = (
+            "https://api.deepgram.com/v1/listen"
+            "?model=nova-3&language=en&smart_format=true"
+            "&diarize_model=latest&punctuate=true&paragraphs=true"
+            "&filler_words=true&numerals=true"
+        )
         headers = {
             "Authorization": f"Token {self.api_key}",
             "Content-Type": "audio/mpeg",
@@ -42,6 +47,8 @@ class DeepgramAdapter(TranscriptionAdapter):
 
         with httpx.Client(timeout=300.0) as client:
             response = client.post(url, content=audio_data, headers=headers)
+            if response.status_code >= 400:
+                raise Exception(f"Deepgram API error {response.status_code}: {response.text}")
             response.raise_for_status()
             data = response.json()
 
@@ -74,7 +81,14 @@ class AssemblyAIAdapter(TranscriptionAdapter):
                 upload_resp.raise_for_status()
                 audio_url = upload_resp.json()["upload_url"]
 
-            transcript_req = {"audio_url": audio_url, "speaker_labels": True}
+            transcript_req = {
+                "audio_url": audio_url,
+                "speaker_labels": True,
+                "speech_model": "best",
+                "format_text": True,
+                "punctuate": True,
+                "language_detection": True,
+            }
             submit_resp = client.post(
                 "https://api.assemblyai.com/v2/transcript", json=transcript_req, headers=headers
             )

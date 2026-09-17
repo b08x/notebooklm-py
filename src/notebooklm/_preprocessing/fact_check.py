@@ -46,6 +46,9 @@ class FactCheckAdapter:
             )
             return True, ""
 
+        from notebooklm._app.assessment import setup_dspy_router
+        setup_dspy_router()
+
         try:
             class FactCheckSignature(dspy.Signature):
                 """Evaluate the factual validity of a text chunk based on fact-checking instructions."""

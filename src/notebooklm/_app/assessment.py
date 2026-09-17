@@ -77,7 +77,9 @@ def setup_dspy_router():
     if model_provider == "ollama":
         lm = dspy.LM(f"ollama_chat/{model_name}")
     else:
-        lm = dspy.LM(f"{model_provider}/{model_name}")
+        api_key = os.environ.get("OPENROUTER_API_KEY") if model_provider == "openrouter" else None
+        kwargs = {"api_key": api_key} if api_key else {}
+        lm = dspy.LM(f"{model_provider}/{model_name}", **kwargs)
 
     embed_provider = os.getenv("NOTEBOOKLM_ASSESSMENT_EMBED_PROVIDER", "ollama").lower()
     embed_model = os.getenv("NOTEBOOKLM_ASSESSMENT_EMBED_MODEL", "nomic-embed-text")
@@ -213,6 +215,7 @@ async def run_full_assessment(
     artifact_id: str,
     *,
     context_override: str | None = None,
+    progress_callback=None,
 ) -> AssessmentResult:
     """Resolve, transcribe, ingest, and preprocess a notebook's audio overview.
 
@@ -234,42 +237,76 @@ async def run_full_assessment(
     result = await session.execute(select(LocalAsset).where(LocalAsset.asset_id == artifact_id))
     local_asset = result.scalar_one_or_none()
 
+    # Determine where artifacts should live (or already live)
     if local_asset and os.path.exists(local_asset.local_path):
-        audio_path = local_asset.local_path
-        adapter = _build_transcription_adapter()
-        transcription: dict[str, Any] = await asyncio.to_thread(
-            TranscriptionService(adapter).transcribe_audio, audio_path
-        )
+        artifacts_dir = os.path.dirname(local_asset.local_path)
     else:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            audio_path = os.path.join(tmpdir, f"{artifact_id}.audio")
-            await client.artifacts.download_audio(notebook_id, audio_path, artifact_id)
+        artifacts_dir = os.path.expanduser("~/NotebookLM/artifacts")
 
-            adapter = _build_transcription_adapter()
-            transcription = await asyncio.to_thread(
-                TranscriptionService(adapter).transcribe_audio, audio_path
-            )
-
-    transcript = transcription.get("text", "")
-    diarization = transcription.get("diarization")
-
-    # Persist the transcript to disk for the user
-    artifacts_dir = os.path.expanduser("~/NotebookLM/artifacts")
     os.makedirs(artifacts_dir, exist_ok=True)
     transcript_path = os.path.join(artifacts_dir, f"{artifact_id}_transcript.txt")
-    with open(transcript_path, "w", encoding="utf-8") as f:
-        f.write(transcript)
+    json_path = os.path.join(artifacts_dir, f"{artifact_id}_diarization.json")
+
+    # If already transcribed, pull from cache
+    if os.path.exists(transcript_path):
+        if progress_callback:
+            progress_callback("Loading cached transcription...")
+        with open(transcript_path, encoding="utf-8") as f:
+            transcript = f.read()
+
+        diarization = None
+        if os.path.exists(json_path):
+            with open(json_path, encoding="utf-8") as f:
+                diarization = json.load(f)
+
+        provider = "cached"
+    else:
+        # Otherwise, run the transcription pipeline
+        if progress_callback:
+            progress_callback("Transcribing audio overview (may take a minute)...")
+        if local_asset and os.path.exists(local_asset.local_path):
+            audio_path = local_asset.local_path
+            adapter = _build_transcription_adapter()
+            transcription: dict[str, Any] = await asyncio.to_thread(
+                TranscriptionService(adapter).transcribe_audio, audio_path
+            )
+        else:
+            if progress_callback:
+                progress_callback("Downloading audio overview from NotebookLM...")
+            with tempfile.TemporaryDirectory() as tmpdir:
+                audio_path = os.path.join(tmpdir, f"{artifact_id}.audio")
+                await client.artifacts.download_audio(notebook_id, audio_path, artifact_id)
+
+                if progress_callback:
+                    progress_callback("Transcribing downloaded audio...")
+                adapter = _build_transcription_adapter()
+                transcription = await asyncio.to_thread(
+                    TranscriptionService(adapter).transcribe_audio, audio_path
+                )
+
+        transcript = transcription.get("text", "")
+        diarization = transcription.get("diarization")
+        provider = transcription.get("provider")
+
+        # Persist the transcript and JSON to disk for future cached runs
+        with open(transcript_path, "w", encoding="utf-8") as f:
+            f.write(transcript)
+
+        if diarization:
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(diarization, f, indent=2, default=str)
 
     audio_metadata = json.dumps(
         {
-            "provider": transcription.get("provider"),
-            "diarization": diarization,
+            "provider": provider,
+            "diarization_saved_to": json_path if diarization else None,
             "transcript_path": transcript_path,
         },
         default=str,
     )
 
     from .._preprocessing.sfl_engine import analyze_transcript
+
     sfl_metrics = analyze_transcript(transcript, diarization=diarization)
 
     pipeline = PreprocessingPipeline()
@@ -299,16 +336,36 @@ async def run_full_assessment(
         for i, c in enumerate(processed_chunks)
     ]
 
-    # Run fact checking concurrently
+    if progress_callback:
+        progress_callback(f"Running fact checks for {len(assessment_chunks)} chunks...")
+
+    # Run fact checking concurrently but bounded to prevent database connection exhaustion
     fact_check_tasks = [
-        run_fact_check_for_chunk(c.clause_external_id, c.text)
-        for c in assessment_chunks
+        run_fact_check_for_chunk(c.clause_external_id, c.text) for c in assessment_chunks
     ]
     if fact_check_tasks:
-        results = await asyncio.gather(*fact_check_tasks)
-        for chunk, res in zip(assessment_chunks, results):
-            chunk.fact_check_passed = res.passed
-            chunk.fact_check_citations = res.citations
+        sem = asyncio.Semaphore(5)
+
+        async def _run_with_sem(task):
+            async with sem:
+                return await task
+
+        wrapped_tasks = [_run_with_sem(t) for t in fact_check_tasks]
+
+        results = []
+        for completed, coro in enumerate(asyncio.as_completed(wrapped_tasks), start=1):
+            res = await coro
+            results.append(res)
+            if progress_callback:
+                progress_callback(f"Fact-checking chunk {completed}/{len(wrapped_tasks)}...")
+
+        # Re-map results to chunks
+        res_map = {res.clause_external_id: res for res in results}
+        for chunk in assessment_chunks:
+            res = res_map.get(chunk.clause_external_id)
+            if res:
+                chunk.fact_check_passed = res.passed
+                chunk.fact_check_citations = res.citations
 
     return AssessmentResult(
         system_instructions=system_instructions,
@@ -329,10 +386,7 @@ class ScoringResult:
 
 
 def generate_assessment_report(
-    artifact_id: str,
-    assessment_state: dict,
-    scoring_result: ScoringResult,
-    output_dir: str
+    artifact_id: str, assessment_state: dict, scoring_result: ScoringResult, output_dir: str
 ) -> str:
     """Generates a detailed Markdown report containing SFL metrics, LLM scoring, and fact-check results."""
     import os
@@ -354,7 +408,7 @@ def generate_assessment_report(
         "## 2. Systemic Functional Linguistics (SFL) Analysis",
     ]
 
-    metrics = assessment_state.get('sfl_metrics') or {}
+    metrics = assessment_state.get("sfl_metrics") or {}
     lines.append(f"- **Total Clauses**: {metrics.get('total_clauses', 'N/A')}")
     lines.append(f"- **Speaker Shifts**: {metrics.get('speaker_shifts', 'N/A')}")
     lines.append(f"- **Pragmatic Intentions**: {metrics.get('pragmatic_intentions', 'N/A')}")
@@ -363,14 +417,16 @@ def generate_assessment_report(
 
     lines.append("## 3. Fact-Check Citations and Warnings")
 
-    chunks = assessment_state.get('chunks', [])
-    failed_chunks = [c for c in chunks if getattr(c, 'fact_check_passed', None) is False]
+    chunks = assessment_state.get("chunks", [])
+    failed_chunks = [c for c in chunks if getattr(c, "fact_check_passed", None) is False]
 
     if failed_chunks:
         lines.append("### ⚠️ Data Quality Warnings (Failed Claims)")
         for chunk in failed_chunks:
             lines.append(f"> **Chunk**: {chunk.text}")
-            lines.append(f"> **Citations/Verification**: {getattr(chunk, 'fact_check_citations', 'No citations found.')}")
+            lines.append(
+                f"> **Citations/Verification**: {getattr(chunk, 'fact_check_citations', 'No citations found.')}"
+            )
             lines.append("")
     else:
         lines.append("✅ *All verifiable claims passed or no explicit failures detected.*")
@@ -378,11 +434,11 @@ def generate_assessment_report(
 
     lines.append("### Full Contextual Chunk Verification")
     for idx, chunk in enumerate(chunks):
-        passed = getattr(chunk, 'fact_check_passed', None)
+        passed = getattr(chunk, "fact_check_passed", None)
         status = "✅ PASS" if passed is True else "❌ FAIL" if passed is False else "❓ UNVERIFIED"
         lines.append(f"#### Chunk {idx + 1} ({status})")
         lines.append(f"{chunk.text}")
-        citations = getattr(chunk, 'fact_check_citations', None)
+        citations = getattr(chunk, "fact_check_citations", None)
         if citations:
             lines.append(f"\n*Citations*: {citations}")
         lines.append("")
@@ -448,6 +504,7 @@ async def run_fact_check_for_chunk(
     fact-check result.
     """
     from sqlalchemy import update
+
     from ..db.models import Clause
     from ..db.session import async_session_maker
 
@@ -467,5 +524,5 @@ async def run_fact_check_for_chunk(
         clause_external_id=clause_external_id,
         passed=passed,
         framework_available=framework_available,
-        citations=citations
+        citations=citations,
     )

@@ -1,5 +1,8 @@
 import concurrent.futures
+import time
 
+from rich.align import Align
+from rich.console import Group
 from rich.panel import Panel
 from rich.text import Text
 
@@ -159,7 +162,6 @@ class AssessmentView:
 
         if assessment_state.get("is_loading"):
             loading_message = assessment_state.get("loading_message", "Loading...")
-            import time
             start_time = assessment_state.setdefault("start_time", time.time())
             elapsed = time.time() - start_time
             mins, secs = divmod(int(elapsed), 60)
@@ -168,9 +170,7 @@ class AssessmentView:
             frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
             frame = frames[int(elapsed * 10) % len(frames)]
 
-            from rich.align import Align
-            from rich.console import Group
-            from rich.text import Text
+            # Local imports removed to avoid UnboundLocalError
 
             content = Group(
                 Align.center(Text(f"{frame} {loading_message}", style="yellow bold")),

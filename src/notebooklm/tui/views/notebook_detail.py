@@ -67,7 +67,9 @@ async def _fetch_notebook_stats_async(notebook_id: str) -> dict:
             return {
                 "source_count": len(sources),
                 "artifact_count": len(artifacts),
-                "artifact_types": [a.kind.value if hasattr(a.kind, "value") else str(a.kind) for a in artifacts],
+                "artifact_types": [
+                    a.kind.value if hasattr(a.kind, "value") else str(a.kind) for a in artifacts
+                ],
             }
     except Exception as e:
         return {"error": str(e)}
@@ -107,7 +109,7 @@ async def _download_assets_async(state: TUIState, notebook_id: str) -> str:
                 notebook_id=notebook_id,
                 asset_id=asset_id,
                 asset_type=asset_type,
-                local_path=local_path
+                local_path=local_path,
             )
             session.add(asset)
         await session.commit()
@@ -132,17 +134,21 @@ async def _download_assets_async(state: TUIState, notebook_id: str) -> str:
             sources = await client.sources.list(notebook_id)
 
             async with async_session_maker() as session:
+
                 async def _is_asset_downloaded(session, asset_id: str) -> bool:
                     import os
-                    result = await session.execute(select(LocalAsset).where(LocalAsset.asset_id == asset_id))
+
+                    result = await session.execute(
+                        select(LocalAsset).where(LocalAsset.asset_id == asset_id)
+                    )
                     asset = result.scalar_one_or_none()
                     return bool(asset and os.path.exists(asset.local_path))
 
                 for i, src in enumerate(sources):
                     state.download_progress = {
-                        "phase": f"Downloading source {i+1}/{len(sources)}",
+                        "phase": f"Downloading source {i + 1}/{len(sources)}",
                         "percent": (i / len(sources)) * 0.33,
-                        "done": False
+                        "done": False,
                     }
                     try:
                         if await _is_asset_downloaded(session, src.id):
@@ -153,18 +159,26 @@ async def _download_assets_async(state: TUIState, notebook_id: str) -> str:
                             notebook_id, src.id, output_format="markdown"
                         )
                         if ft.content:
-                            src_title_str = getattr(src, "title", "Unknown Source") or "Unknown Source"
+                            src_title_str = (
+                                getattr(src, "title", "Unknown Source") or "Unknown Source"
+                            )
                             src_title = "".join(
                                 c for c in src_title_str if c.isalnum() or c in (" ", "-", "_")
                             ).strip()
                             file_path = sources_dir / f"{src_title}.md"
                             file_path.write_text(ft.content)
-                            await _upsert_asset(session, src.id, "source", str(file_path.absolute()))
+                            await _upsert_asset(
+                                session, src.id, "source", str(file_path.absolute())
+                            )
                     except Exception:
                         pass
 
                 # 2. Download Chat History
-                state.download_progress = {"phase": "Downloading chat history...", "percent": 0.33, "done": False}
+                state.download_progress = {
+                    "phase": "Downloading chat history...",
+                    "percent": 0.33,
+                    "done": False,
+                }
                 try:
                     await asyncio.sleep(0.5)
                     history = await client.chat.get_history(notebook_id)
@@ -180,14 +194,18 @@ async def _download_assets_async(state: TUIState, notebook_id: str) -> str:
                 artifacts_dir = out_dir / "artifacts"
                 artifacts_dir.mkdir(exist_ok=True)
 
-                state.download_progress = {"phase": "Listing artifacts...", "percent": 0.66, "done": False}
+                state.download_progress = {
+                    "phase": "Listing artifacts...",
+                    "percent": 0.66,
+                    "done": False,
+                }
                 try:
                     all_artifacts = await client.artifacts.list(notebook_id)
                     for i, artifact in enumerate(all_artifacts):
                         state.download_progress = {
-                            "phase": f"Downloading artifact {i+1}/{len(all_artifacts)}",
+                            "phase": f"Downloading artifact {i + 1}/{len(all_artifacts)}",
                             "percent": 0.66 + ((i / len(all_artifacts)) * 0.33),
-                            "done": False
+                            "done": False,
                         }
 
                         try:
@@ -201,46 +219,74 @@ async def _download_assets_async(state: TUIState, notebook_id: str) -> str:
                             if not safe_title:
                                 safe_title = artifact.id
 
-                            raw_kind = artifact.kind.value if hasattr(artifact.kind, "value") else str(artifact.kind)
+                            raw_kind = (
+                                artifact.kind.value
+                                if hasattr(artifact.kind, "value")
+                                else str(artifact.kind)
+                            )
                             kind = str(raw_kind).lower()
                             file_path = None
 
                             if kind == "audio":
                                 file_path = artifacts_dir / f"{safe_title}.wav"
-                                await client.artifacts.download_audio(notebook_id, str(file_path), artifact.id)
+                                await client.artifacts.download_audio(
+                                    notebook_id, str(file_path), artifact.id
+                                )
                             elif kind == "video":
                                 file_path = artifacts_dir / f"{safe_title}.mp4"
-                                await client.artifacts.download_video(notebook_id, str(file_path), artifact.id)
+                                await client.artifacts.download_video(
+                                    notebook_id, str(file_path), artifact.id
+                                )
                             elif kind == "report":
                                 file_path = artifacts_dir / f"{safe_title}.md"
-                                await client.artifacts.download_report(notebook_id, str(file_path), artifact.id)
+                                await client.artifacts.download_report(
+                                    notebook_id, str(file_path), artifact.id
+                                )
                             elif kind == "quiz":
                                 file_path = artifacts_dir / f"{safe_title}.md"
-                                await client.artifacts.download_quiz(notebook_id, str(file_path), artifact.id)
+                                await client.artifacts.download_quiz(
+                                    notebook_id, str(file_path), artifact.id
+                                )
                             elif kind == "flashcards":
                                 file_path = artifacts_dir / f"{safe_title}.md"
-                                await client.artifacts.download_flashcards(notebook_id, str(file_path), artifact.id)
+                                await client.artifacts.download_flashcards(
+                                    notebook_id, str(file_path), artifact.id
+                                )
                             elif kind == "infographic":
                                 file_path = artifacts_dir / f"{safe_title}.png"
-                                await client.artifacts.download_infographic(notebook_id, str(file_path), artifact.id)
+                                await client.artifacts.download_infographic(
+                                    notebook_id, str(file_path), artifact.id
+                                )
                             elif kind == "slide_deck":
                                 file_path = artifacts_dir / f"{safe_title}.pdf"
-                                await client.artifacts.download_slide_deck(notebook_id, str(file_path), artifact.id)
+                                await client.artifacts.download_slide_deck(
+                                    notebook_id, str(file_path), artifact.id
+                                )
                             elif kind == "data_table":
                                 file_path = artifacts_dir / f"{safe_title}.csv"
-                                await client.artifacts.download_data_table(notebook_id, str(file_path), artifact.id)
+                                await client.artifacts.download_data_table(
+                                    notebook_id, str(file_path), artifact.id
+                                )
                             elif kind == "mind_map":
                                 file_path = artifacts_dir / f"{safe_title}.md"
-                                await client.artifacts.download_mind_map(notebook_id, str(file_path), artifact.id)
+                                await client.artifacts.download_mind_map(
+                                    notebook_id, str(file_path), artifact.id
+                                )
 
                             if file_path and file_path.exists():
-                                await _upsert_asset(session, artifact.id, "artifact", str(file_path.absolute()))
+                                await _upsert_asset(
+                                    session, artifact.id, "artifact", str(file_path.absolute())
+                                )
                         except Exception as e:
                             logger.warning(f"Failed to download artifact {artifact.id}: {e}")
                 except Exception as e:
                     logger.warning(f"Failed to list artifacts for {notebook_id}: {e}")
 
-            state.download_progress = {"phase": f"Assets downloaded to {out_dir}", "percent": 1.0, "done": True}
+            state.download_progress = {
+                "phase": f"Assets downloaded to {out_dir}",
+                "percent": 1.0,
+                "done": True,
+            }
             return f"Assets downloaded to {out_dir}"
     except Exception as e:
         state.download_progress = {"phase": f"Download failed: {e}", "percent": 0.0, "done": True}
@@ -407,7 +453,10 @@ def start_ingestion(state: TUIState, selected_source_ids: set[str] | None = None
 
 
 async def _assess_audio_overview_async(
-    notebook_id: str, context_override: str | None = None, artifact_id: str | None = None
+    notebook_id: str,
+    context_override: str | None = None,
+    artifact_id: str | None = None,
+    progress_cb=None,
 ) -> dict:
     from notebooklm._app.assessment import run_full_assessment
     from notebooklm.db.session import async_session_maker
@@ -417,6 +466,8 @@ async def _assess_audio_overview_async(
         async_session_maker() as session,
     ):
         if not artifact_id:
+            if progress_cb:
+                progress_cb("Fetching audio artifacts...")
             audio_artifacts = await client.artifacts.list_audio(notebook_id)
             if not audio_artifacts:
                 return {"error": f"No generated audio overview found for {notebook_id}."}
@@ -424,7 +475,12 @@ async def _assess_audio_overview_async(
             artifact_id = artifact.id
 
         result = await run_full_assessment(
-            client, session, notebook_id, artifact_id, context_override=context_override
+            client,
+            session,
+            notebook_id,
+            artifact_id,
+            context_override=context_override,
+            progress_callback=progress_cb,
         )
         return {
             "assessment_state": {
@@ -439,11 +495,21 @@ async def _assess_audio_overview_async(
 
 
 def _run_assess_audio_overview(
-    state: TUIState, notebook_id: str, context_override: str | None = None, artifact_id: str | None = None
+    state: TUIState,
+    notebook_id: str,
+    context_override: str | None = None,
+    artifact_id: str | None = None,
 ) -> None:
+    def cb(msg: str):
+        if "assessment_state" not in state.__dict__:
+            state.assessment_state = {}
+        state.assessment_state["loading_message"] = msg
+
     try:
-        state.error_message = f"Assessing audio overview for {notebook_id}..."
-        outcome = asyncio.run(_assess_audio_overview_async(notebook_id, context_override, artifact_id))
+        cb(f"Assessing audio overview for {notebook_id}...")
+        outcome = asyncio.run(
+            _assess_audio_overview_async(notebook_id, context_override, artifact_id, cb)
+        )
         if "error" in outcome:
             state.error_message = outcome["error"]
             state.assessment_state["is_loading"] = False
@@ -455,8 +521,22 @@ def _run_assess_audio_overview(
             state.current_view = View.ASSESSMENT
     except Exception as e:
         import logging
-        logging.getLogger(__name__).exception("Assessment failed")
-        state.error_message = f"Assessment failed: {e}"
+
+        err_msg = str(e)
+
+        # Attempt to dig out response text from httpx or litellm errors
+        cause = e
+        while cause:
+            if hasattr(cause, "response") and hasattr(cause.response, "text"):
+                err_msg += f"\nResponse Body: {cause.response.text}"
+                break
+            cause = getattr(cause, "__cause__", None) or getattr(cause, "__context__", None)
+
+        logging.getLogger(__name__).exception(f"Assessment failed: {err_msg}")
+
+        # Replace newlines with spaces for the single-line footer, but it will be in the log buffer fully
+        footer_msg = err_msg.replace("\n", " | ")
+        state.error_message = f"Assessment failed: {footer_msg}"
         state.assessment_state["is_loading"] = False
 
 
@@ -483,7 +563,9 @@ def _run_fetch_audio_artifacts(state: TUIState, notebook_id: str) -> None:
         }
         state.previous_view = state.current_view
         state.current_view = View.ASSESSMENT
-        _run_assess_audio_overview(state, notebook_id, state.context_overrides.get(notebook_id), artifacts[0].id)
+        _run_assess_audio_overview(
+            state, notebook_id, state.context_overrides.get(notebook_id), artifacts[0].id
+        )
     else:
         state.audio_artifacts = artifacts
         state.artifact_cursor = 0
