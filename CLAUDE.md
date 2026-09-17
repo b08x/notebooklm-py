@@ -104,3 +104,40 @@ Claude review is **not** automatic — comment `@claude review` on the PR to tri
 - It posts inline review-thread comments **plus** a sticky summary comment ("**Claude finished … task**"). The action does **not** submit a formal GitHub review, so `claude[bot]` never appears in `gh pr view --json reviews` / `reviewDecision` and is **not** a required check — do not infer "claude reviewed" from those.
 - `gh pr checks` may show a `claude` entry as **skipping**: every comment (incl. other bots') fires `claude.yml`, and runs not from a `teng-lin` `@claude` comment correctly skip via the job `if:` gate. That skip is **not** the review run — find the real one with `gh run list --workflow=claude.yml --json event,conclusion` (look for the `success` run) or just read the comment below.
 - Before merging, confirm the review landed and address it. The two halves live on different endpoints: the sticky summary is an **issue** comment (`gh api /repos/<owner>/<repo>/issues/<PR>/comments`), and the inline findings are **pull-request review** comments on the diff (`gh api /repos/<owner>/<repo>/pulls/<PR>/comments`) — filter either with `--jq '.[]|select(.user.login=="claude[bot]").body'`. Resolve any inline `claude[bot]` threads like any other bot's.
+
+## Strategies and Hard Rules
+
+### Anti-patterns and Pitfalls
+
+**Context**: When configuring the DSPy Language Model (LM) inside the application, especially when using background tasks or worker threads (e.g., via `asyncio.to_thread` or thread pools).
+
+**Pattern**: `dspy.configure()` registers the owner thread and will throw a `RuntimeError` if other threads try to use it. Use `dspy.context(lm=...)` for thread-local LM binding in worker threads, and keep `dspy.configure()` strictly confined to the main thread.
+```yaml
+approach: |
+  # Grab the LM configured on the main thread
+  lm = dspy.settings.lm
+
+  def _run_with_context():
+      # Bind the LM specifically for this worker thread's execution block
+      with dspy.context(lm=lm):
+          return run_dspy_pipeline()
+
+  result = await asyncio.to_thread(_run_with_context)
+validation: Ensure no calls to `dspy.configure()` or functions that wrap it (like `setup_dspy_router()`) exist inside background threads.
+examples:
+  - case: Running fact checks concurrently
+    implementation: |
+      lm = dspy.settings.lm
+      def _run_check():
+          with dspy.context(lm=lm):
+              return checker.check(text)
+      await asyncio.to_thread(_run_check)
+```
+
+**Avoid**: Re-initializing the DSPy router or calling `dspy.configure()` from inside an `asyncio.to_thread` block.
+
+- `setup_dspy_router() inside worker`: It calls `dspy.configure()`, which crashes on the second worker thread because the first worker thread "owns" the new configuration.
+
+**Confidence**: High
+
+**Source**: 2026-09-17 reflection and code-insights database (`~/.code-insights/data.db`)

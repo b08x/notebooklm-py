@@ -33,18 +33,10 @@ def fetch_summary_if_needed(state: TUIState) -> None:
     if current and current not in (
         "Paused: Waiting for API capacity...",
         "Loading summary...",
-        "Waiting for scroll...",
     ):
         return
 
     if current == "Loading summary...":
-        return
-
-    import time
-
-    if time.time() - state.last_selection_time < 0.5:
-        # User is still scrolling. We'll set a visual indicator.
-        state.notebook_summaries[state.selected_notebook] = "Waiting for scroll..."
         return
 
     # Don't try to fetch if we have no tokens

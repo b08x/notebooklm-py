@@ -108,18 +108,11 @@ def run_tui(download_dir: str | None = None) -> None:
                     state._last_rendered_tokens = int(state.api_tokens)
                     state_changed = True
                 elif state.current_view == View.NOTEBOOK_LIST and state.selected_notebook:
-                    import time
-
                     current_summary = state.notebook_summaries.get(state.selected_notebook)
 
                     # Unpause logic
                     if current_summary == "Paused: Waiting for API capacity...":
                         if state.api_tokens >= 1.0:
-                            state_changed = True
-
-                    # Debounce expiry logic
-                    elif current_summary == "Waiting for scroll...":
-                        if time.time() - state.last_selection_time >= 0.5:
                             state_changed = True
 
                 if state_changed:

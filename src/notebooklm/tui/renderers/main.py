@@ -4,7 +4,6 @@ from rich.panel import Panel
 from rich.text import Text
 
 from ..state import TUIState, View
-from ..views.notebook_detail import fetch_summary_if_needed
 from .chat import render_chat
 from .compiler import render_compiler
 from .logs import render_logs
@@ -145,9 +144,11 @@ def render_main(state: TUIState) -> tuple[Panel, Panel]:
             )
             return empty_panel, Panel("", border_style="border")
 
-        # Fetch stats in background if needed
-        from ..views.notebook_detail import fetch_stats_if_needed
+        # Fetch stats and summary in background if needed
+        from ..views.notebook_detail import fetch_stats_if_needed, fetch_summary_if_needed
+
         fetch_stats_if_needed(state)
+        fetch_summary_if_needed(state)
 
         nb = next((n for n in state.notebooks if n.id == state.selected_notebook), None)
         title = getattr(nb, "title", "Unknown Notebook") if nb else "Unknown Notebook"
@@ -190,13 +191,26 @@ def render_main(state: TUIState) -> tuple[Panel, Panel]:
 
         # Build details panel
         detail_group = []
+
+        # 1. Summary
+        summary_text = state.notebook_summaries.get(state.selected_notebook, "Loading summary...")
+        detail_group.append(Text("\nNotebook Summary", style="bold_accent", justify="center"))
+        detail_group.append(Text(f"{summary_text}\n", style="foreground"))
+
+        # 2. Stats
         stats = state.notebook_stats.get(state.selected_notebook)
 
         if stats:
             if stats.get("loading"):
-                detail_group.append(Text("\nLoading statistics...", style="muted", justify="center"))
+                detail_group.append(
+                    Text("\nLoading statistics...", style="muted", justify="center")
+                )
             elif "error" in stats:
-                detail_group.append(Text(f"\nFailed to load stats: {stats['error']}", style="error", justify="center"))
+                detail_group.append(
+                    Text(
+                        f"\nFailed to load stats: {stats['error']}", style="error", justify="center"
+                    )
+                )
             else:
                 from rich.table import Table
 
@@ -210,19 +224,20 @@ def render_main(state: TUIState) -> tuple[Panel, Panel]:
                 types = stats.get("artifact_types", [])
                 if types:
                     from collections import Counter
+
                     counts = Counter(types)
                     types_str = ", ".join(f"{k} ({v})" for k, v in counts.items())
                     table.add_row("Artifact Types", types_str)
 
-                detail_group.append(Text("\nNotebook Statistics", style="bold_accent", justify="center"))
+                detail_group.append(
+                    Text("\nNotebook Statistics", style="bold_accent", justify="center")
+                )
                 detail_group.append(Text(""))
                 detail_group.append(Align.center(table))
 
         # Check if download is running
         downloading = bool(
-            state.background_task
-            and not state.background_task.done()
-            and state.download_progress
+            state.background_task and not state.background_task.done() and state.download_progress
         )
         if downloading or state.download_progress.get("done"):
             from rich.progress_bar import ProgressBar
@@ -231,7 +246,9 @@ def render_main(state: TUIState) -> tuple[Panel, Panel]:
             phase = prog.get("phase", "...")
             percent = prog.get("percent", 0.0)
 
-            detail_group.append(Text("\n\n[Download Status]", style="bold_primary", justify="center"))
+            detail_group.append(
+                Text("\n\n[Download Status]", style="bold_primary", justify="center")
+            )
             detail_group.append(Text(f"{phase}", style="info", justify="center"))
             bar = ProgressBar(total=1.0, completed=percent, width=50)
             detail_group.append(Align.center(bar))
@@ -243,10 +260,7 @@ def render_main(state: TUIState) -> tuple[Panel, Panel]:
             detail_group.append(Align.center("Select an action to proceed.", vertical="middle"))
 
         return actions_panel, Panel(
-            Group(*detail_group),
-            title="Details",
-            border_style="border",
-            style="main"
+            Group(*detail_group), title="Details", border_style="border", style="main"
         )
 
     if state.current_view == View.NOTEBOOK_LIST:
@@ -258,9 +272,6 @@ def render_main(state: TUIState) -> tuple[Panel, Panel]:
                 style="main",
             )
             return empty_panel, Panel("", border_style="border")
-
-        # Trigger background fetch for summary if not cached
-        fetch_summary_if_needed(state)
 
         # Find selected notebook
         nb = next((n for n in state.notebooks if n.id == state.selected_notebook), None)
@@ -275,7 +286,9 @@ def render_main(state: TUIState) -> tuple[Panel, Panel]:
 
         title = getattr(nb, "title", "Unknown Notebook")
         sources = str(getattr(nb, "sources_count", 0))
-        summary_text = state.notebook_summaries.get(state.selected_notebook, "Loading summary...")
+        summary_text = state.notebook_summaries.get(
+            state.selected_notebook, "Press [Enter] to load notebook summary and details."
+        )
 
         title_text = Text(title, style="bold_accent", justify="center")
         sources_text = Text(f"{sources} Sources", style="info", justify="center")

@@ -46,9 +46,6 @@ class FactCheckAdapter:
             )
             return True, ""
 
-        from notebooklm._app.assessment import setup_dspy_router
-        setup_dspy_router()
-
         try:
             class FactCheckSignature(dspy.Signature):
                 """Evaluate the factual validity of a text chunk based on fact-checking instructions."""
@@ -63,13 +60,13 @@ class FactCheckAdapter:
             def web_search(query: str) -> str:
                 """Search the web to fact-check claims."""
                 import httpx
-                
+
                 # Check Exa API
                 if exa_key := os.environ.get("EXA_API_KEY"):
                     try:
                         resp = httpx.post(
-                            "https://api.exa.ai/search", 
-                            json={"query": query, "useAutoprompt": True}, 
+                            "https://api.exa.ai/search",
+                            json={"query": query, "useAutoprompt": True},
                             headers={"x-api-key": exa_key},
                             timeout=10.0
                         )
@@ -77,7 +74,7 @@ class FactCheckAdapter:
                             return str(resp.json())
                     except Exception as e:
                         logger.warning(f"Exa search failed: {e}")
-                        
+
                 # Check Jina API
                 if jina_key := os.environ.get("JINA_API_KEY"):
                     try:
@@ -95,7 +92,7 @@ class FactCheckAdapter:
 
             agent = dspy.ReAct(FactCheckSignature, tools=[web_search], max_iters=3)
             res = agent(framework_instructions=self._prompt, chunk=chunk)
-            
+
             # ReAct returns the same output fields as the signature
             is_valid = str(res.is_valid).strip().lower() == "true"
             citations = str(getattr(res, "citations", ""))

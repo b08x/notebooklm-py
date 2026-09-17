@@ -217,6 +217,10 @@ async def run_full_assessment(
     context_override: str | None = None,
     progress_callback=None,
 ) -> AssessmentResult:
+    # Initialize the DSPy router for this parent thread,
+    # so background tasks can inherit the LM via dspy.context.
+    setup_dspy_router()
+    
     """Resolve, transcribe, ingest, and preprocess a notebook's audio overview.
 
     Downloads the artifact via the existing ``client.artifacts.download_audio``
@@ -305,19 +309,27 @@ async def run_full_assessment(
         default=str,
     )
 
+    if progress_callback:
+        progress_callback("Running SFL transcript analysis...")
     from .._preprocessing.sfl_engine import analyze_transcript
-
     sfl_metrics = analyze_transcript(transcript, diarization=diarization)
 
-    pipeline = PreprocessingPipeline()
+    if progress_callback:
+        progress_callback("Chunking and extracting entities...")
+    enable_pii = os.environ.get("NOTEBOOKLM_ENABLE_PII_FILTER", "false").lower() == "true"
+    pipeline = PreprocessingPipeline(enable_pii_filter=enable_pii)
     processed_chunks = pipeline.process(transcript)
 
+    if progress_callback:
+        progress_callback("Resolving notebook context...")
     context = (
         context_override
         if context_override is not None
         else await resolve_notebook_context(client, notebook_id)
     )
 
+    if progress_callback:
+        progress_callback(f"Embedding and ingesting {len(processed_chunks)} chunks...")
     ingestion = IngestionService(client)
     await ingestion.ingest_chunks(
         session,
@@ -467,7 +479,8 @@ def run_assessment_scoring(
     """
     if not chunks:
         text = raw_text_fallback or "Sample text for NotebookLM to assess. This contains a PII."
-        pipeline = PreprocessingPipeline()
+        enable_pii = os.environ.get("NOTEBOOKLM_ENABLE_PII_FILTER", "false").lower() == "true"
+        pipeline = PreprocessingPipeline(enable_pii_filter=enable_pii)
         chunks = pipeline.process(text)
 
     chunk_texts: list[str] = []
@@ -503,6 +516,7 @@ async def run_fact_check_for_chunk(
     framework isn't installed, so the UI never presents the fallback as a real
     fact-check result.
     """
+    import dspy
     from sqlalchemy import update
 
     from ..db.models import Clause
@@ -510,7 +524,15 @@ async def run_fact_check_for_chunk(
 
     checker = FactCheckAdapter()
     framework_available = checker.framework_available
-    passed, citations = await asyncio.to_thread(checker.check, text)
+
+    # Grab the LM from the main thread's context before spanning to background thread
+    lm = dspy.settings.lm
+
+    def _run_with_context():
+        with dspy.context(lm=lm):
+            return checker.check(text)
+
+    passed, citations = await asyncio.to_thread(_run_with_context)
 
     async with async_session_maker() as session:
         await session.execute(

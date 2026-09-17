@@ -28,18 +28,21 @@ class Chunk:
 
 
 class PreprocessingPipeline:
-    def __init__(self):
+    def __init__(self, enable_pii_filter: bool = False):
         self.hybrid_chunker = HybridChunker()
         self.struct_chunker = StructuralCoherenceChunker()
         self.spacy_ann = SpacyAnnotator()
         self.topic_ann = BERTopicAnnotator()
-        self.pii_filter = DoclingPIIFilter()
+        self.pii_filter = DoclingPIIFilter() if enable_pii_filter else None
 
     def process(self, text: str) -> list[Chunk]:
         logger.info("Starting preprocessing pipeline")
 
-        # 1. PII Filter
-        safe_text = self.pii_filter.filter(text)
+        # 1. PII Filter (if enabled)
+        if self.pii_filter:
+            safe_text = self.pii_filter.filter(text)
+        else:
+            safe_text = text
 
         # 2. Chunking
         raw_chunks = self.hybrid_chunker.chunk(safe_text)
