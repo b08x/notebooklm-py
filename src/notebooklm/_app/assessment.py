@@ -98,19 +98,37 @@ def setup_dspy_router():
     else:
         embedder = dspy.Embedder(f"{embed_provider}/{embed_model}")
 
-    callbacks = []
     if os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY"):
-        try:
-            from langfuse.dspy import LangfuseCallback
-            callbacks.append(LangfuseCallback())
-        except ImportError:
-            import logging
-            logging.getLogger(__name__).warning("LangFuse env vars present but langfuse is not installed.")
+        if not getattr(setup_dspy_router, "_otel_initialized", False):
+            try:
+                import base64
+                from opentelemetry import trace
+                from opentelemetry.sdk.trace import TracerProvider
+                from opentelemetry.sdk.trace.export import BatchSpanProcessor
+                from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+                from openinference.instrumentation.dspy import DSPyInstrumentor
 
-    if callbacks:
-        dspy.settings.configure(lm=lm, callbacks=callbacks)
-    else:
-        dspy.settings.configure(lm=lm)
+                host = os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com").rstrip("/")
+                endpoint = f"{host}/api/public/otel/v1/traces"
+                auth = base64.b64encode(f"{os.environ['LANGFUSE_PUBLIC_KEY']}:{os.environ['LANGFUSE_SECRET_KEY']}".encode()).decode()
+                
+                provider = TracerProvider()
+                provider.add_span_processor(
+                    BatchSpanProcessor(
+                        OTLPSpanExporter(
+                            endpoint=endpoint,
+                            headers={"Authorization": f"Basic {auth}"}
+                        )
+                    )
+                )
+                trace.set_tracer_provider(provider)
+                DSPyInstrumentor().instrument()
+                setup_dspy_router._otel_initialized = True
+            except ImportError:
+                import logging
+                logging.getLogger(__name__).warning("LangFuse env vars present but openinference is not installed.")
+
+    dspy.settings.configure(lm=lm)
 
     return lm, embedder
 

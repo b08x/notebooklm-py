@@ -35,6 +35,7 @@ dependencies = [
     "asyncpg",
     "pgvector",
     "alembic",
+    "openinference-instrumentation-dspy>=0.1.45",
 ]
 
 [project.urls]
