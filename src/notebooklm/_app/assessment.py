@@ -317,9 +317,14 @@ async def run_full_assessment(
                 import logging
                 logging.getLogger(__name__).warning(f"Failed to log dataset to LangFuse: {e}")
 
+    if local_asset and os.path.exists(local_asset.local_path):
+        audio_base_name = os.path.splitext(os.path.basename(local_asset.local_path))[0]
+    else:
+        audio_base_name = artifact_id
+        
     os.makedirs(artifacts_dir, exist_ok=True)
-    transcript_path = os.path.join(artifacts_dir, f"{artifact_id}_transcript.txt")
-    json_path = os.path.join(artifacts_dir, f"{artifact_id}_diarization.json")
+    transcript_path = os.path.join(artifacts_dir, f"{audio_base_name}_transcript.txt")
+    json_path = os.path.join(artifacts_dir, f"{audio_base_name}_diarization.json")
 
     # If already transcribed, pull from cache
     if os.path.exists(transcript_path):

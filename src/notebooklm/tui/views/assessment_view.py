@@ -314,12 +314,19 @@ class AssessmentView:
                 procs = ideational.get("processes", [])
                 circs = ideational.get("circumstances", [])
 
-                sfl_table.add_row("Participants", f"[primary]{', '.join(parts) if parts else 'None'}[/]")
-                sfl_table.add_row("Processes", f"[success]{', '.join(procs) if procs else 'None'}[/]")
-                sfl_table.add_row("Circumstances", f"[warning]{', '.join(circs) if circs else 'None'}[/]")
-                sfl_table.add_row("Tenor", f"[accent]{interpersonal.get('tenor', 'N/A')}[/]")
-                sfl_table.add_row("Mood", f"[accent]{interpersonal.get('mood', 'N/A')}[/]")
-                sfl_table.add_row("Modality", f"[accent]{interpersonal.get('modality', 'N/A')}[/]")
+                def make_badges(items, color):
+                    if not items:
+                        return "[dim]None[/]"
+                    if isinstance(items, str):
+                        return f"[{color} reverse] {items} [/{color} reverse]"
+                    return " ".join(f"[{color} reverse] {item} [/{color} reverse]" for item in items)
+
+                sfl_table.add_row("Participants", make_badges(parts, "primary"))
+                sfl_table.add_row("Processes", make_badges(procs, "success"))
+                sfl_table.add_row("Circumstances", make_badges(circs, "warning"))
+                sfl_table.add_row("Tenor", make_badges(interpersonal.get('tenor', 'N/A'), "accent"))
+                sfl_table.add_row("Mood", make_badges(interpersonal.get('mood', 'N/A'), "accent"))
+                sfl_table.add_row("Modality", make_badges(interpersonal.get('modality', 'N/A'), "accent"))
 
                 sfl_panel = Panel(
                     sfl_table,
