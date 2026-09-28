@@ -1469,6 +1469,7 @@ src/notebooklm/
 - `src/notebooklm/tui/layout.py` - TUI UI layout definitions.
 - `src/notebooklm/tui/logging_bridge.py` - In-memory logging bridge for TUI log view.
 - `src/notebooklm/tui/renderers` - Modular TUI view renderers.
+- `src/notebooklm/tui/renderers/_widgets.py` - Shared panel, key-hint and tail-scroll helpers for TUI renderers.
 - `src/notebooklm/tui/renderers/chat.py` - Chat view renderer.
 - `src/notebooklm/tui/renderers/compiler.py` - Compiler view renderer.
 - `src/notebooklm/tui/renderers/footer.py` - Footer status bar renderer.

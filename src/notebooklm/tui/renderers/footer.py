@@ -1,28 +1,30 @@
-from rich.align import Align
+from rich import box
+from rich.console import RenderableType
 from rich.panel import Panel
 from rich.spinner import Spinner
 from rich.table import Table
 from rich.text import Text
 
 from ..state import TUIState
+from ._widgets import key_hints
+
+_GLOBAL_KEYS = [
+    ("q", "quit"),
+    ("c", "chat"),
+    ("p", "compiler"),
+    ("A", "assess"),
+    ("L", "logs"),
+    ("j/k", "move"),
+    ("esc", "back"),
+]
 
 
 def render_footer(state: TUIState) -> Panel:
-    hints = (
-        " [q] Quit | [n] Notebook | [c] Chat | [p] Compiler | [A] Assess | [L] Logs | "
-        "[Tab] Focus | [j/k] Navigate | [Esc] Back "
-    )
-
     table = Table.grid(expand=True)
-    table.add_column(justify="left", ratio=1)
-    table.add_column(justify="right", ratio=1)
-
-    left = Text(hints)
-
-    from rich.console import RenderableType
+    table.add_column(ratio=1)
+    table.add_column(justify="right", no_wrap=True)
 
     right: RenderableType
-
     progress = state.ingest_progress
     if state.background_task and not state.background_task.done() and progress.get("total_sources"):
         done = progress.get("done_sources", 0)
@@ -30,15 +32,16 @@ def render_footer(state: TUIState) -> Panel:
         title = progress.get("current_title", "")
         label = f"Ingesting {done}/{total}"
         if title:
-            label += f": {title}"
-        right = Spinner("dots", text=label)
+            label += f": {title[:32]}"
+        right = Spinner("dots", text=Text(label, style="info"), style="info")
     elif state.background_task and not state.background_task.done():
-        right = Spinner("dots", text="Working...")
+        right = Spinner("dots", text=Text("Working", style="info"), style="info")
     elif state.error_message:
-        right = Text(state.error_message, style="error")
+        msg = state.error_message
+        right = Text(f"✗ {msg if len(msg) <= 60 else msg[:59] + '…'}", style="error")
     else:
-        right = Text("Ready")
+        right = Text("● ready", style="success")
 
-    table.add_row(left, right)
+    table.add_row(key_hints(_GLOBAL_KEYS), right)
 
-    return Panel(Align.center(table, vertical="middle"), style="footer", height=3)
+    return Panel(table, style="footer", border_style="border", box=box.ROUNDED, height=3)

@@ -50,6 +50,8 @@ class TUIState:
     last_selection_time: float = 0.0
     detail_menu_index: int = 0
     scroll_offset: int = 0
+    #: Notebook rows the sidebar fit on its last render; drives j/k paging.
+    sidebar_rows: int = 15
     assessment_state: dict[str, Any] = field(default_factory=dict)
     editing_context: bool = False
     context_edit_buffer: str = ""

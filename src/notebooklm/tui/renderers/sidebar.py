@@ -1,10 +1,42 @@
 import datetime
 import re
 
+from rich.console import Console, ConsoleOptions, Group, RenderResult
 from rich.panel import Panel
-from rich.tree import Tree
+from rich.segment import Segment
+from rich.table import Table
+from rich.text import Text
 
-from ..state import SORT_LABELS, TUIState
+from ..state import SORT_LABELS, TUIState, View
+from ._widgets import key_hints, panel
+
+# Single-cell glyphs. Emoji with a variation selector (🎙️, ⚙️) are measured as
+# one cell by Rich but drawn as two by most terminals, which shifts every
+# following column and corrupts the Live frame.
+BADGE_AUDIO = "♪"
+BADGE_DOCS = "≡"
+BADGE_RECENT = "✦"
+_BADGE_STYLES = {
+    BADGE_AUDIO: "badge.audio",
+    BADGE_DOCS: "badge.docs",
+    BADGE_RECENT: "badge.recent",
+}
+
+# Lines inside the panel that are not notebook rows: list heading, blank line,
+# blank line + two lines of list keys.
+_CHROME_LINES = 5
+
+
+def _tag_style(raw_tag: str) -> str:
+    if "GEMINI" in raw_tag:
+        return "tag.gemini"
+    if "CLAUDE" in raw_tag:
+        return "tag.claude"
+    if "SFL" in raw_tag or "ENG" in raw_tag:
+        return "tag.eng"
+    if "TEST" in raw_tag or "DEV" in raw_tag:
+        return "tag.dev"
+    return "tag.other"
 
 
 def _parse_domain_tag(title: str) -> tuple[str, str, str]:
@@ -15,19 +47,7 @@ def _parse_domain_tag(title: str) -> tuple[str, str, str]:
 
     raw_tag = match.group(1).upper()
     clean_title = match.group(2)
-
-    # Deterministic color mapping for common prefixes
-    if "GEMINI" in raw_tag:
-        style = "cyan"
-    elif "CLAUDE" in raw_tag:
-        style = "magenta"
-    elif "SFL" in raw_tag or "ENG" in raw_tag:
-        style = "yellow"
-    elif "TEST" in raw_tag or "DEV" in raw_tag:
-        style = "green"
-    else:
-        style = "accent"
-
+    style = _tag_style(raw_tag)
     chip = f"[{style}]\\[{raw_tag}][/{style}] "
     return chip, clean_title, raw_tag
 
@@ -44,104 +64,150 @@ def _get_artifact_badges(nb_id: str, state: TUIState) -> str:
 
     badges = []
     if stats.get("has_audio"):
-        badges.append("🎙️")
+        badges.append(BADGE_AUDIO)
     if stats.get("has_notes") or stats.get("total_artifacts", 0) > 0:
-        badges.append("📄")
+        badges.append(BADGE_DOCS)
 
     # Recent activity indicator (generated within last 48 hours)
     recent_ts = stats.get("recent_generated_at")
     if recent_ts:
         now_ts = datetime.datetime.now(datetime.timezone.utc).timestamp()
         if (now_ts - recent_ts) < 172800:  # 48 hours
-            badges.append("⚡")
+            badges.append(BADGE_RECENT)
 
     return "".join(badges)
 
 
-def render_sidebar(state: TUIState) -> Panel:
-    notebooks = state.get_filtered_and_sorted_notebooks()
+def styled_title(raw_title: str, style: str = "") -> Text:
+    """Notebook title with its [DOMAIN] prefix shown as a colored lowercase tag."""
+    _, clean_title, raw_tag = _parse_domain_tag(raw_title)
+    title = Text(no_wrap=True, overflow="ellipsis", style=style)
+    if raw_tag:
+        title.append(raw_tag.lower(), style=_tag_style(raw_tag))
+        title.append(" ")
+    title.append(clean_title)
+    return title
 
-    # Ensure selected notebook is within viewport
-    visible_rows = 15
-    current_id = state.selected_notebook
-    try:
-        current_idx = next(i for i, nb in enumerate(notebooks) if nb.id == current_id)
-    except StopIteration:
-        current_idx = 0
-        if notebooks and not state.selected_notebook:
-            state.selected_notebook = notebooks[0].id
 
-    if current_idx < state.scroll_offset:
-        state.scroll_offset = current_idx
-    elif current_idx >= state.scroll_offset + visible_rows:
-        state.scroll_offset = current_idx - visible_rows + 1
+def _badge_text(badges: str) -> Text:
+    text = Text(no_wrap=True)
+    for glyph in badges:
+        text.append(glyph, style=_BADGE_STYLES.get(glyph, "muted"))
+    return text
 
-    # Slice notebooks for pagination
-    sliced_notebooks = notebooks[state.scroll_offset : state.scroll_offset + visible_rows]
 
-    # Header label with active sort and filter info
-    sort_label = SORT_LABELS.get(state.sort_key, state.sort_key)
-    filter_parts = []
-    if state.search_query:
-        typing_indicator = "..." if getattr(state, "searching", False) else ""
-        filter_parts.append(f"🔍 '{state.search_query}{typing_indicator}'")
-    elif getattr(state, "searching", False):
-        filter_parts.append("🔍 typing...")
+def _list_heading(state: TUIState) -> Text:
+    heading = Text(no_wrap=True, overflow="ellipsis")
+    heading.append(SORT_LABELS.get(state.sort_key, state.sort_key), style="label")
+    if state.search_query or state.searching:
+        typing = "…" if state.searching else ""
+        heading.append("  / ", style="key")
+        heading.append(f"{state.search_query}{typing}", style="foreground")
+    return heading
 
-    if state.filter_has_audio:
-        filter_parts.append("🎙️")
-    if state.filter_min_sources:
-        filter_parts.append("non-empty")
 
-    filter_desc = f" [dim][{', '.join(filter_parts)}][/dim]" if filter_parts else ""
-    tree = Tree(f"📚 [b]Notebooks[/b] [dim]({sort_label})[/dim]{filter_desc}")
+def _toggle(text: Text, key: str, label: str, on: bool) -> None:
+    text.append(key, style="key")
+    text.append(f" {label}", style="success" if on else "muted")
+    text.append(" ✓" if on else "", style="success")
 
-    for nb in sliced_notebooks:
-        raw_title = getattr(nb, "title", "Unknown") or "Unknown"
-        is_selected = nb.id == state.selected_notebook
-        sources_cnt = getattr(nb, "sources_count", 0)
+
+def _list_keys(state: TUIState) -> Group:
+    toggles = Text(no_wrap=True, overflow="ellipsis")
+    _toggle(toggles, "o", "audio", state.filter_has_audio)
+    toggles.append("  ")
+    _toggle(toggles, "z", "non-empty", state.filter_min_sources)
+    return Group(
+        key_hints([("/", "search"), ("s", "sort"), ("r", "refresh")], sep="  "),
+        toggles,
+    )
+
+
+class _NotebookList:
+    """Notebook rows sized to the space the Layout actually gives the sidebar."""
+
+    def __init__(self, state: TUIState) -> None:
+        self.state = state
+
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
+        state = self.state
+        notebooks = state.get_filtered_and_sorted_notebooks()
+        visible_rows = max(1, (options.height or 20) - _CHROME_LINES)
+        state.sidebar_rows = visible_rows
+
+        current_id = state.selected_notebook
         try:
-            sources_val = int(sources_cnt) if sources_cnt is not None else 0
-            sources_str = f"{sources_val:>2}"
-        except (ValueError, TypeError):
-            sources_str = str(sources_cnt)
+            current_idx = next(i for i, nb in enumerate(notebooks) if nb.id == current_id)
+        except StopIteration:
+            current_idx = 0
+            if notebooks and not state.selected_notebook:
+                state.selected_notebook = notebooks[0].id
 
-        chip, clean_title, _ = _parse_domain_tag(raw_title)
-        badges = _get_artifact_badges(nb.id, state)
-        badges_str = f" {badges}" if badges else ""
+        if current_idx < state.scroll_offset:
+            state.scroll_offset = current_idx
+        elif current_idx >= state.scroll_offset + visible_rows:
+            state.scroll_offset = current_idx - visible_rows + 1
+        state.scroll_offset = max(
+            0, min(state.scroll_offset, max(0, len(notebooks) - visible_rows))
+        )
 
-        # Truncate clean title if long so badges and count fit nicely
-        max_title_len = 24
-        if len(clean_title) > max_title_len:
-            truncated_title = clean_title[: max_title_len - 1] + "…"
+        rows = Table.grid(expand=True)
+        rows.add_column(width=2, no_wrap=True)
+        rows.add_column(ratio=1, no_wrap=True, overflow="ellipsis")
+        rows.add_column(no_wrap=True)
+        rows.add_column(justify="right", no_wrap=True, min_width=3)
+
+        for nb in notebooks[state.scroll_offset : state.scroll_offset + visible_rows]:
+            raw_title = getattr(nb, "title", "Unknown") or "Unknown"
+            is_selected = nb.id == state.selected_notebook
+            sources_cnt = getattr(nb, "sources_count", 0)
+            try:
+                sources_str = str(int(sources_cnt) if sources_cnt is not None else 0)
+            except (ValueError, TypeError):
+                sources_str = str(sources_cnt)
+
+            title = styled_title(raw_title)
+
+            badges = _badge_text(_get_artifact_badges(nb.id, state))
+            if badges.plain:
+                badges = Text(" ") + badges
+            rows.add_row(
+                Text("▌" if is_selected else " ", style="marker"),
+                title,
+                badges,
+                Text(sources_str, style="muted"),
+                style="selected" if is_selected else "foreground",
+            )
+
+        heading = _list_heading(state)
+        if not notebooks:
+            filtered = state.search_query or state.filter_has_audio or state.filter_min_sources
+            empty = "No matching notebooks." if filtered else "No notebooks found."
+            body: Group = Group(heading, Text(""), Text(empty, style="muted"))
         else:
-            truncated_title = clean_title
+            body = Group(heading, Text(""), rows)
 
-        style = "selected" if is_selected else "foreground"
-        prefix = "▶" if is_selected else " "
-        node_label = f"[{style}]{prefix} {chip}{truncated_title} ({sources_str}){badges_str}[/]"
+        lines = console.render_lines(body, options.update(height=None), pad=False)
+        keys = console.render_lines(
+            Group(Text(""), _list_keys(state)), options.update(height=None), pad=False
+        )
+        height = options.height or (len(lines) + len(keys))
+        lines = lines[: max(0, height - len(keys))]
+        filler = max(0, height - len(lines) - len(keys))
+        yield from _emit(lines)
+        yield from _emit([[] for _ in range(filler)])
+        yield from _emit(keys)
 
-        tree.add(node_label)
 
-    if not notebooks:
-        if state.search_query or state.filter_has_audio or state.filter_min_sources:
-            tree.add("[muted]No matching notebooks.[/]")
-        else:
-            tree.add("[muted]No notebooks found.[/]")
+def _emit(lines):
+    for line in lines:
+        yield from line
+        yield Segment.line()
 
-    tree.add("")
-    commands = tree.add("⚙️  [b]Commands[/b]")
-    commands.add("[Enter] Select")
-    commands.add(r"\[/] Search")
-    commands.add(rf"\[s] Sort ({sort_label})")
-    audio_flag = "✓" if state.filter_has_audio else " "
-    commands.add(rf"\[o] Audio filter [{audio_flag}]")
-    sources_flag = "✓" if state.filter_min_sources else " "
-    commands.add(rf"\[z] Non-empty [{sources_flag}]")
-    commands.add("[c] Chat")
-    commands.add("[p] Prompt Compiler")
-    commands.add("[A] Assessment")
-    commands.add("[r] Refresh")
-    commands.add("[q] Quit")
 
-    return Panel(tree, title="Corpus & Actions", border_style="border")
+def render_sidebar(state: TUIState) -> Panel:
+    count = len(state.get_filtered_and_sorted_notebooks())
+    # Focus border only where j/k moves this list; one focused pane at a time.
+    overlay = state.selecting_sources or state.selecting_artifact or state.editing_context
+    focused = state.current_view == View.NOTEBOOK_LIST and not overlay
+    return panel(_NotebookList(state), f"Notebooks {count}", focused=focused)

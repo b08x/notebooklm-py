@@ -1,9 +1,12 @@
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.table import Table
+from rich.text import Text
 
 from ..state import TUIState
+from ..theme import COLORS
 from ..views.compiler_view import load_compiler_configs
+from ._widgets import panel
 
 
 def render_compiler(state: TUIState) -> tuple[Panel, Panel]:
@@ -13,28 +16,40 @@ def render_compiler(state: TUIState) -> tuple[Panel, Panel]:
     configs = state.compiler_state.get("configs", [])
     selected_idx = state.compiler_state.get("selected_config", 0)
 
-    table = Table(title="Projects", show_header=False, expand=True)
-    table.add_column("Project")
+    table = Table.grid(expand=True)
+    table.add_column(width=2, no_wrap=True)
+    table.add_column(width=6, no_wrap=True)
+    table.add_column(ratio=1, no_wrap=True, overflow="ellipsis")
 
     for i, config in enumerate(configs):
-        style = "reverse" if i == selected_idx else ""
+        is_selected = i == selected_idx
+        kind = "video" if "notebooklm-video" in str(config) else "audio"
         table.add_row(
-            f"[{'V' if 'notebooklm-video' in str(config) else 'A'}] {config.name}", style=style
+            Text("▌" if is_selected else " ", style="marker"),
+            Text(kind, style="label"),
+            Text(config.name),
+            style="selected" if is_selected else "foreground",
         )
 
     if not configs:
-        table.add_row("No YAML configurations found.")
+        table.add_row("", "", Text("No YAML configurations found.", style="muted"))
 
-    results_panel = Panel(table, title="Compiler Configs", border_style="border", style="main")
+    results_panel = panel(table, "Compiler Configs", focused=True)
 
     preview_text = state.compiler_state.get(
         "preview", "Press Enter to compile the selected project."
     )
-    detail_panel = Panel(
-        Syntax(preview_text, "markdown", word_wrap=True, theme="monokai"),
-        title="Preview / Output",
-        border_style="border",
-        style="main",
+    detail_panel = panel(
+        # Match the panel background so the code block does not render as a
+        # differently colored slab inside the pane.
+        Syntax(
+            preview_text,
+            "markdown",
+            word_wrap=True,
+            theme="monokai",
+            background_color=COLORS["background"],
+        ),
+        "Preview",
     )
 
     return results_panel, detail_panel

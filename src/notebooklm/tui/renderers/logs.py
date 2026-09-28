@@ -1,8 +1,8 @@
-from rich.align import Align
 from rich.panel import Panel
 from rich.text import Text
 
 from ..state import TUIState
+from ._widgets import TailView, hint_panel, panel
 
 _LEVEL_STYLES = {
     "CRITICAL": "error",
@@ -30,17 +30,9 @@ def render_logs(state: TUIState) -> tuple[Panel, Panel]:
     else:
         for level, line in records[-_VISIBLE_LINES:]:
             body.append(f"{line}\n", style=_LEVEL_STYLES.get(level, "foreground"))
+        body.rstrip()
 
-    logs_panel = Panel(
-        body,
-        title=f"Logs ({len(records)} buffered, showing last {min(len(records), _VISIBLE_LINES)})",
-        border_style="border",
-        style="main",
-        padding=(1, 2),
-    )
-    hint_panel = Panel(
-        Align.center("[Esc] return to the previous view", vertical="middle"),
-        title="Details",
-        border_style="border",
-    )
-    return logs_panel, hint_panel
+    # TailView pins the newest lines to the bottom of the pane; without it the
+    # panel clips from the bottom and the most recent output is never shown.
+    logs_panel = panel(TailView(body), f"Logs  {len(records)} buffered", padding=(0, 1))
+    return logs_panel, hint_panel([("esc", "return to previous view")])

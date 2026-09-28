@@ -378,8 +378,8 @@ def handle_key(key: str, state: TUIState) -> bool:
 
         if key == "j":
             new_idx = min(current_idx + 1, len(notebooks) - 1)
-            if new_idx >= state.scroll_offset + 15:
-                state.scroll_offset = new_idx - 14
+            if new_idx >= state.scroll_offset + state.sidebar_rows:
+                state.scroll_offset = new_idx - state.sidebar_rows + 1
         else:
             new_idx = max(current_idx - 1, 0)
             if new_idx < state.scroll_offset:

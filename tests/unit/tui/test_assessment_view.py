@@ -1,8 +1,12 @@
 import ast
+import io
 import pathlib
+
+from rich.console import Console
 
 from notebooklm._app.assessment import AssessmentChunk
 from notebooklm.tui.state import TUIState
+from notebooklm.tui.theme import THEME
 from notebooklm.tui.views.assessment_view import ENTITY_STYLES, AssessmentView
 
 
@@ -16,7 +20,7 @@ def test_assessment_view_render():
     }
     view = AssessmentView(state)
     left, right = view.render()
-    assert left.title == "Assessment Controls"
+    assert str(left.title) == "Assessment Controls"
     assert "Audio Assessment — Contextualized Source Chunks" in right.title
 
 
@@ -31,7 +35,9 @@ def test_assessment_view_render_source_mode():
     view = AssessmentView(state)
     left, right = view.render()
     assert "Source Assessment — Contextualized Source Chunks" in right.title
-    assert "Source Metadata" in str(left.renderable)
+    console = Console(theme=THEME, width=100, record=True, file=io.StringIO())
+    console.print(left)
+    assert "Source Metadata" in console.export_text()
 
 
 def test_assessment_view_renders_entity_styling_for_known_entities():

@@ -7,8 +7,13 @@ import os
 from pathlib import Path
 
 from rich.align import Align
+from rich.console import Group
 from rich.panel import Panel
+from rich.spinner import Spinner
+from rich.table import Table
+from rich.text import Text
 
+from notebooklm.tui.renderers._widgets import empty_panel, key_hints, panel
 from notebooklm.tui.state import TUIState, View
 
 logger = logging.getLogger(__name__)
@@ -194,47 +199,56 @@ class VisualAssessmentView:
 
         if assessment_state.get("is_loading"):
             loading_message = assessment_state.get("loading_message", "Loading...")
-            loading_panel = Panel(
-                Align.center(
-                    f"\n\n{loading_message}\n\nThis may take a minute...", vertical="middle"
-                ),
-                title="VLM Assessment in Progress",
-                border_style="border",
-                style="main",
+            loading = Group(
+                Spinner("dots", text=Text(loading_message, style="info"), style="info"),
+                Text("This may take a minute.", style="muted"),
             )
-            return loading_panel, Panel("", border_style="border")
+            loading_panel = panel(
+                Align.center(loading, vertical="middle"), "VLM Assessment in Progress"
+            )
+            return loading_panel, empty_panel("Image Classifications")
 
         error = assessment_state.get("error")
         if error:
-            error_panel = Panel(
-                Align.center(f"\n\n[red]{error}[/red]\n\nPress Esc to return.", vertical="middle"),
-                title="VLM Assessment Failed",
-                border_style="border",
-                style="main",
+            error_body = Group(
+                Text(f"✗ {error}", style="error"),
+                Text(""),
+                key_hints([("esc", "return")]),
             )
-            return error_panel, Panel("", border_style="border")
+            error_panel = panel(
+                Align.center(error_body, vertical="middle"), "VLM Assessment Failed"
+            )
+            return error_panel, empty_panel("Image Classifications")
 
         results = assessment_state.get("results", [])
 
-        left_text = "Visual Artifact Assessment:\n\n"
-        left_text += f"Processed {len(results)} image(s).\n\n"
-        left_text += (
-            "A `.meta.yaml` sidecar file was generated for each successfully classified image.\n"
+        summary = Group(
+            Text(f"Processed {len(results)} image(s).", style="heading"),
+            Text(""),
+            Text(
+                "A .meta.yaml sidecar file was generated for each successfully classified image.",
+                style="foreground",
+            ),
+            Text(""),
+            key_hints([("esc", "back")]),
         )
-        left_panel = Panel(left_text, title="VLM Assessment Summary")
+        left_panel = panel(summary, "VLM Assessment Summary", focused=True, padding=(1, 2))
 
-        right_lines = []
+        rows = Table.grid(expand=True, padding=(0, 2))
+        rows.add_column(width=1, no_wrap=True)
+        rows.add_column(ratio=1, no_wrap=True, overflow="ellipsis")
+        rows.add_column(no_wrap=True)
         for r in results:
-            if "error" in r["status"] or "skipped" in r["status"]:
-                color = "yellow" if "skipped" in r["status"] else "red"
-                right_lines.append(f"• {r['file']}: [{color}]{r['status']}[/]")
+            status = r["status"]
+            if "skipped" in status:
+                glyph, style = "–", "warning"
+            elif "error" in status:
+                glyph, style = "✗", "error"
             else:
-                right_lines.append(f"• {r['file']}: [green]{r['status']}[/]")
+                glyph, style = "✓", "success"
+            rows.add_row(Text(glyph, style=style), Text(str(r["file"])), Text(status, style=style))
 
-        right_panel = Panel(
-            "\n".join(right_lines) if right_lines else "No image artifacts processed.",
-            title="Image Classifications",
-            border_style="border",
-        )
+        body = rows if results else Text("No image artifacts processed.", style="muted")
+        right_panel = panel(body, "Image Classifications")
 
         return left_panel, right_panel

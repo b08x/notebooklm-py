@@ -1,15 +1,19 @@
 import datetime
+from collections import Counter
 from typing import Any
 
-from rich.align import Align
 from rich.console import Group
 from rich.panel import Panel
+from rich.progress_bar import ProgressBar
+from rich.table import Table
 from rich.text import Text
 
 from ..state import TUIState, View
+from ._widgets import empty_panel, hint_panel, key_hints, message_panel, panel
 from .chat import render_chat
 from .compiler import render_compiler
 from .logs import render_logs
+from .sidebar import styled_title
 
 
 def format_relative_time(
@@ -72,45 +76,216 @@ def _render_ingest_progress(progress: dict) -> Text:
     failures = progress.get("failures", [])
 
     body = Text()
-    body.append(f"\nSources: {done}/{total}\n", style="info")
+    body.append("Sources  ", style="label")
+    body.append(f"{done}/{total}\n", style="foreground")
     if title:
-        chunk_part = f" ({chunks_done}/{chunks_total} chunks embedded)" if chunks_total else ""
-        body.append(f"Current: {title}{chunk_part}\n", style="foreground")
+        body.append("Current  ", style="label")
+        body.append(title, style="foreground")
+        if chunks_total:
+            body.append(f"  {chunks_done}/{chunks_total} chunks embedded", style="muted")
+        body.append("\n")
     if failures:
-        body.append(f"\n{len(failures)} failed so far:\n", style="warning")
+        body.append(f"\n{len(failures)} failed so far\n", style="warning")
         for failed_title, error in failures[-5:]:
-            body.append(f"  · {failed_title}: {error}\n", style="error")
-        body.append("See the Logs view (L) for full tracebacks.\n", style="muted")
+            body.append(f"  ✗ {failed_title}: {error}\n", style="error")
+        body.append("\n")
+        body.append_text(key_hints([("L", "full tracebacks in Logs")]))
     return body
 
 
-def _render_artifact_selection(state: TUIState) -> tuple[Panel, Panel]:
-    rows = Text()
-    if not state.audio_artifacts:
-        rows.append("No audio artifacts found for this notebook.", style="muted")
-    else:
-        for i, artifact in enumerate(state.audio_artifacts):
-            artifact_title = getattr(artifact, "title", None) or artifact.id
-            cursor = "▶ " if i == state.artifact_cursor else "  "
-            style = "selected" if i == state.artifact_cursor else "foreground"
-            rows.append(f"{cursor}{artifact_title}\n", style=style)
+def _get_stats(state: TUIState, nb_id: str) -> dict | None:
+    stats = state.notebook_stats.get(nb_id)
+    cache = getattr(state, "tui_cache", None)
+    if not stats and cache is not None:
+        stats = cache.get_artifact_stats(nb_id)
+    return stats
 
-    picker_panel = Panel(
-        rows,
-        title="Select Audio Overview to Assess",
-        border_style="border",
-        style="main",
+
+def _stats_table(stats: dict, include_sources: bool = False) -> Table:
+    """Key/value table for artifact stats: muted labels, plain values."""
+    table = Table.grid(padding=(0, 2))
+    table.add_column("Key", style="label", justify="right", no_wrap=True)
+    table.add_column("Value", style="foreground")
+
+    if include_sources and stats.get("source_count") is not None:
+        table.add_row("Sources", str(stats.get("source_count", 0)))
+    art_count = (
+        stats.get("total_artifacts")
+        if stats.get("total_artifacts") is not None
+        else stats.get("artifact_count", 0)
+    )
+    table.add_row("Artifacts", str(art_count))
+
+    counts = stats.get("counts")
+    if not (counts and isinstance(counts, dict)):
+        counts = Counter(stats.get("artifact_types", []))
+    if counts:
+        types_str = ", ".join(f"{k.replace('_', ' ').title()} ({v})" for k, v in counts.items())
+        table.add_row("Types", types_str)
+
+    audio_ts = None
+    for art in stats.get("artifacts", []):
+        if art.get("kind", "") in ("audio", "audio_overview") and art.get("timestamp"):
+            if audio_ts is None or art["timestamp"] > audio_ts:
+                audio_ts = art["timestamp"]
+
+    if stats.get("has_audio", False):
+        audio = Text("● Ready", style="success")
+        if audio_ts:
+            audio.append(f"  {format_relative_time(audio_ts)}", style="muted")
+    else:
+        audio = Text("None", style="muted")
+    table.add_row("Audio Overview", audio)
+
+    recent_ts = stats.get("recent_generated_at")
+    if recent_ts:
+        table.add_row("Last Generated", format_relative_time(recent_ts))
+    return table
+
+
+def _stats_block(stats: dict | None, include_sources: bool = False) -> list[Any]:
+    if not stats:
+        return []
+    if stats.get("loading"):
+        return [Text("Loading statistics…", style="muted")]
+    if "error" in stats:
+        return [Text(f"Failed to load stats: {stats['error']}", style="error")]
+    return [_stats_table(stats, include_sources)]
+
+
+def _cursor_list(items: list[str], cursor: int) -> Table:
+    rows = Table.grid(expand=True)
+    rows.add_column(width=2, no_wrap=True)
+    rows.add_column(ratio=1, overflow="ellipsis", no_wrap=True)
+    for i, item in enumerate(items):
+        is_selected = i == cursor
+        rows.add_row(
+            Text("▌" if is_selected else " ", style="marker"),
+            Text(item),
+            style="selected" if is_selected else "foreground",
+        )
+    return rows
+
+
+def _render_artifact_selection(state: TUIState) -> tuple[Panel, Panel]:
+    if not state.audio_artifacts:
+        body: Any = Text("No audio artifacts found for this notebook.", style="muted")
+    else:
+        titles = [getattr(a, "title", None) or a.id for a in state.audio_artifacts]
+        body = _cursor_list(titles, state.artifact_cursor)
+
+    picker_panel = panel(body, "Select Audio Overview", focused=True, padding=(1, 2))
+    hint = hint_panel([("j/k", "move"), ("enter", "start assessment"), ("esc", "cancel")])
+    return picker_panel, hint
+
+
+def _render_notebook_detail(state: TUIState, nb_id: str) -> tuple[Panel, Panel]:
+    # Fetch stats and summary in background if needed
+    from ..views.notebook_detail import fetch_stats_if_needed, fetch_summary_if_needed
+
+    fetch_stats_if_needed(state)
+    fetch_summary_if_needed(state)
+
+    nb = next((n for n in state.notebooks if n.id == state.selected_notebook), None)
+    title = getattr(nb, "title", "Unknown Notebook") if nb else "Unknown Notebook"
+
+    menu_items = [
+        "Chat with notebook",
+        "Download assets",
+        "Ingest sources into database",
+        "Assess audio overview",
+        "Assess visual artifacts",
+    ]
+    numbered = [f"{i}  {item}" for i, item in enumerate(menu_items, start=1)]
+    has_override = state.selected_notebook in state.context_overrides
+    context_state = "customized" if has_override else "using notebook summary"
+
+    actions_panel = panel(
+        Group(
+            styled_title(title, style="heading"),
+            Text(""),
+            _cursor_list(numbered, state.detail_menu_index),
+            Text(""),
+            key_hints([("enter", "run"), ("e", f"embedding context ({context_state})")]),
+        ),
+        "Actions",
+        focused=True,
         padding=(1, 2),
     )
-    hint = Panel(
-        Align.center(
-            "[j/k] move  ·  [Enter] start assessment  ·  [Esc] cancel",
-            vertical="middle",
-        ),
-        title="Details",
-        border_style="border",
+
+    detail_group: list[Any] = []
+    summary_text = state.notebook_summaries.get(nb_id, "Loading summary…")
+    detail_group.append(Text("Summary", style="heading"))
+    detail_group.append(Text(summary_text, style="foreground"))
+
+    stats_items = _stats_block(_get_stats(state, nb_id), include_sources=True)
+    if stats_items:
+        detail_group.append(Text(""))
+        detail_group.append(Text("Statistics", style="heading"))
+        detail_group.extend(stats_items)
+
+    downloading = bool(
+        state.background_task and not state.background_task.done() and state.download_progress
     )
-    return picker_panel, hint
+    if downloading or state.download_progress.get("done"):
+        prog = state.download_progress
+        detail_group.append(Text(""))
+        detail_group.append(Text("Download", style="heading"))
+        status = Text(prog.get("phase", "…"), style="info")
+        if prog.get("done"):
+            status = Text("✓ complete", style="success")
+        detail_group.append(status)
+        detail_group.append(
+            ProgressBar(
+                total=1.0,
+                completed=prog.get("percent", 0.0),
+                width=40,
+                complete_style="primary",
+                finished_style="success",
+                style="subtle",
+            )
+        )
+
+    return actions_panel, panel(Group(*detail_group), "Details", padding=(1, 2))
+
+
+def _render_notebook_info(state: TUIState, nb_id: str) -> tuple[Panel, Panel]:
+    nb = next((n for n in state.notebooks if n.id == state.selected_notebook), None)
+    if not nb:
+        return message_panel("Notebook not found.", "Notebook"), empty_panel("Summary")
+
+    title = getattr(nb, "title", "Unknown Notebook")
+    sources = str(getattr(nb, "sources_count", 0))
+    summary_text = state.notebook_summaries.get(
+        nb_id, "Press Enter to load the notebook summary and details."
+    )
+
+    info_items: list[Any] = [
+        styled_title(title, style="heading"),
+        Text(f"{sources} Sources", style="muted"),
+    ]
+    stats_items = _stats_block(_get_stats(state, nb_id))
+    if stats_items:
+        info_items.append(Text(""))
+        info_items.extend(stats_items)
+    info_items.append(Text(""))
+    info_items.append(key_hints([("enter", "open notebook")]))
+
+    results_panel = panel(Group(*info_items), "Notebook", padding=(1, 2))
+
+    ingest_active = bool(
+        state.background_task
+        and not state.background_task.done()
+        and state.ingest_progress.get("total_sources") is not None
+    )
+    if ingest_active:
+        detail_panel = panel(
+            _render_ingest_progress(state.ingest_progress), "Ingesting", padding=(1, 2)
+        )
+    else:
+        detail_panel = panel(Text(summary_text, style="foreground"), "Summary", padding=(1, 2))
+
+    return results_panel, detail_panel
 
 
 def render_main(state: TUIState) -> tuple[Panel, Panel]:
@@ -118,58 +293,53 @@ def render_main(state: TUIState) -> tuple[Panel, Panel]:
         return _render_artifact_selection(state)
 
     if state.editing_context:
-        buffer_text = Text(f"{state.context_edit_buffer}█", style="foreground")
-        edit_panel = Panel(
-            buffer_text,
-            title="Customize Embedding Context — Enter to save, Esc to cancel",
-            border_style="border",
-            style="main",
-            padding=(1, 2),
-        )
-        hint = Panel(
-            Align.center(
-                "This text is prepended to each chunk before embedding (contextual "
-                "retrieval). Cleared text disables the context prefix for this "
-                "notebook's ingestion/assessment runs.",
-                vertical="middle",
+        buffer_text = Text(state.context_edit_buffer, style="foreground")
+        buffer_text.append("▏", style="prompt")
+        edit_panel = panel(buffer_text, "Embedding Context", focused=True, padding=(1, 2))
+        hint = panel(
+            Group(
+                Text(
+                    "This text is prepended to each chunk before embedding (contextual "
+                    "retrieval). Clearing it disables the context prefix for this "
+                    "notebook's ingestion and assessment runs.",
+                    style="muted",
+                ),
+                Text(""),
+                key_hints([("enter", "save"), ("esc", "cancel")]),
             ),
-            title="Details",
-            border_style="border",
+            "Details",
+            padding=(1, 2),
         )
         return edit_panel, hint
 
     if state.selecting_sources:
-        rows = Text()
         if not state.ingest_sources:
-            rows.append("No sources found for this notebook.", style="muted")
+            body: Any = Text("No sources found for this notebook.", style="muted")
         else:
-            for i, src in enumerate(state.ingest_sources):
-                checked = "x" if src.id in state.ingest_selected else " "
+            items = []
+            for src in state.ingest_sources:
+                checked = "■" if src.id in state.ingest_selected else "□"
                 src_title = getattr(src, "title", None) or src.id
                 if src.id in getattr(state, "ingest_completed", set()):
-                    src_title += " (already ingested)"
-                cursor = "▶ " if i == state.ingest_cursor else "  "
-                style = "selected" if i == state.ingest_cursor else "foreground"
-                rows.append(f"{cursor}[{checked}] {src_title}\n", style=style)
+                    src_title += "  (already ingested)"
+                items.append(f"{checked} {src_title}")
+            body = _cursor_list(items, state.ingest_cursor)
 
-        picker_panel = Panel(
-            rows,
-            title=(
-                f"Select Sources to Ingest "
-                f"({len(state.ingest_selected)}/{len(state.ingest_sources)} selected)"
-            ),
-            border_style="border",
-            style="main",
+        picker_panel = panel(
+            body,
+            f"Select Sources  {len(state.ingest_selected)}/{len(state.ingest_sources)}",
+            focused=True,
             padding=(1, 2),
         )
-        hint = Panel(
-            Align.center(
-                "[space] toggle  ·  [a] all  ·  [n] none  ·  [j/k] move  ·  "
-                "[Enter] start ingest  ·  [Esc] cancel",
-                vertical="middle",
-            ),
-            title="Details",
-            border_style="border",
+        hint = hint_panel(
+            [
+                ("space", "toggle"),
+                ("a", "all"),
+                ("n", "none"),
+                ("j/k", "move"),
+                ("enter", "ingest"),
+                ("esc", "cancel"),
+            ]
         )
         return picker_panel, hint
 
@@ -188,323 +358,15 @@ def render_main(state: TUIState) -> tuple[Panel, Panel]:
     elif state.current_view == View.LOGS:
         return render_logs(state)
 
-    if state.current_view == View.NOTEBOOK_DETAIL:
+    if state.current_view in (View.NOTEBOOK_DETAIL, View.NOTEBOOK_LIST):
         if not state.selected_notebook:
-            empty_panel = Panel(
-                Align.center("No notebook selected.", vertical="middle"),
-                title="Notebook Actions",
-                border_style="border",
-                style="main",
-            )
-            return empty_panel, Panel("", border_style="border")
+            return message_panel("No notebook selected.", "Notebook"), empty_panel("Details")
+        if state.current_view == View.NOTEBOOK_DETAIL:
+            return _render_notebook_detail(state, state.selected_notebook)
+        return _render_notebook_info(state, state.selected_notebook)
 
-        # Fetch stats and summary in background if needed
-        from ..views.notebook_detail import fetch_stats_if_needed, fetch_summary_if_needed
-
-        fetch_stats_if_needed(state)
-        fetch_summary_if_needed(state)
-
-        nb = next((n for n in state.notebooks if n.id == state.selected_notebook), None)
-        title = getattr(nb, "title", "Unknown Notebook") if nb else "Unknown Notebook"
-
-        menu_items = [
-            "1. Chat with Notebook",
-            "2. Download Assets (Sources, Overviews)",
-            "3. Ingest Sources into Database (Pipeline)",
-            "4. Assess Audio Overview",
-            "5. Assess Visual Artifacts",
-        ]
-        has_override = state.selected_notebook in state.context_overrides
-        context_hint = (
-            "[e] customize embedding context"
-            f"{' (customized)' if has_override else ' (using notebook summary)'}"
-        )
-
-        # Render the menu
-        menu_text = Text()
-        for i, item in enumerate(menu_items):
-            if i == state.detail_menu_index:
-                menu_text.append(f"▶ {item}\n", style="selected")
-            else:
-                menu_text.append(f"  {item}\n", style="foreground")
-
-        title_text = Text(title, style="bold_primary", justify="center")
-
-        actions_panel = Panel(
-            Group(
-                Align.center(title_text),
-                Text("\nWhat would you like to do?\n", justify="center", style="info"),
-                Align.center(menu_text),
-                Text(f"\n{context_hint}", justify="center", style="muted"),
-            ),
-            title="Notebook Actions",
-            border_style="border",
-            style="main",
-            padding=(2, 4),
-        )
-
-        # Build details panel
-        detail_group: list[Any] = []
-
-        # 1. Summary
-        summary_text = state.notebook_summaries.get(state.selected_notebook, "Loading summary...")
-        detail_group.append(Text("\nNotebook Summary", style="bold_accent", justify="center"))
-        detail_group.append(Text(f"{summary_text}\n", style="foreground"))
-
-        # 2. Stats
-        stats = state.notebook_stats.get(state.selected_notebook)
-        cache = getattr(state, "tui_cache", None)
-        if not stats and cache is not None:
-            stats = cache.get_artifact_stats(state.selected_notebook)
-
-        if stats:
-            if stats.get("loading"):
-                detail_group.append(
-                    Text("\nLoading statistics...", style="muted", justify="center")
-                )
-            elif "error" in stats:
-                detail_group.append(
-                    Text(
-                        f"\nFailed to load stats: {stats['error']}", style="error", justify="center"
-                    )
-                )
-            else:
-                from rich.table import Table
-
-                table = Table(show_header=False, box=None, padding=(0, 2))
-                table.add_column("Key", style="bold_info", justify="right")
-                table.add_column("Value", style="foreground")
-
-                if stats.get("source_count") is not None:
-                    table.add_row("Sources", str(stats.get("source_count", 0)))
-                art_count = (
-                    stats.get("total_artifacts")
-                    if stats.get("total_artifacts") is not None
-                    else stats.get("artifact_count", 0)
-                )
-                table.add_row("Artifacts", str(art_count))
-
-                counts = stats.get("counts")
-                if counts and isinstance(counts, dict):
-                    types_str = ", ".join(
-                        f"{k.replace('_', ' ').title()} ({v})" for k, v in counts.items()
-                    )
-                    table.add_row("Artifact Types", types_str)
-                else:
-                    types = stats.get("artifact_types", [])
-                    if types:
-                        from collections import Counter
-
-                        counts_c = Counter(types)
-                        types_str = ", ".join(
-                            f"{k.replace('_', ' ').title()} ({v})" for k, v in counts_c.items()
-                        )
-                        table.add_row("Artifact Types", types_str)
-
-                # Audio Overview status & relative timestamp
-                has_audio = stats.get("has_audio", False)
-                audio_ts = None
-                for art in stats.get("artifacts", []):
-                    kind = art.get("kind", "")
-                    if kind in ("audio", "audio_overview") and art.get("timestamp"):
-                        if audio_ts is None or art["timestamp"] > audio_ts:
-                            audio_ts = art["timestamp"]
-
-                if has_audio:
-                    if audio_ts:
-                        rel_audio = format_relative_time(audio_ts)
-                        table.add_row("Audio Overview", f"Ready (generated {rel_audio})")
-                    else:
-                        table.add_row("Audio Overview", "Ready")
-                else:
-                    table.add_row("Audio Overview", "None")
-
-                recent_ts = stats.get("recent_generated_at")
-                if recent_ts:
-                    table.add_row("Last Generated", format_relative_time(recent_ts))
-
-                detail_group.append(
-                    Text("\nNotebook Statistics", style="bold_accent", justify="center")
-                )
-                detail_group.append(Text(""))
-                detail_group.append(Align.center(table))
-
-        # Check if download is running
-        downloading = bool(
-            state.background_task and not state.background_task.done() and state.download_progress
-        )
-        if downloading or state.download_progress.get("done"):
-            from rich.progress_bar import ProgressBar
-
-            prog = state.download_progress
-            phase = prog.get("phase", "...")
-            percent = prog.get("percent", 0.0)
-
-            detail_group.append(
-                Text("\n\n[Download Status]", style="bold_primary", justify="center")
-            )
-            detail_group.append(Text(f"{phase}", style="info", justify="center"))
-            bar = ProgressBar(total=1.0, completed=percent, width=50)
-            detail_group.append(Align.center(bar))
-
-            if prog.get("done"):
-                detail_group.append(Text("\n(Download Complete)", style="muted", justify="center"))
-
-        if not detail_group:
-            detail_group.append(Align.center("Select an action to proceed.", vertical="middle"))
-
-        return actions_panel, Panel(
-            Group(*detail_group), title="Details", border_style="border", style="main"
-        )
-
-    if state.current_view == View.NOTEBOOK_LIST:
-        if not state.selected_notebook:
-            empty_panel = Panel(
-                Align.center("No notebook selected.", vertical="middle"),
-                title="Notebook List",
-                border_style="border",
-                style="main",
-            )
-            return empty_panel, Panel("", border_style="border")
-
-        # Find selected notebook
-        nb = next((n for n in state.notebooks if n.id == state.selected_notebook), None)
-        if not nb:
-            not_found = Panel(
-                Align.center("Notebook not found.", vertical="middle"),
-                title="Notebook Details",
-                border_style="border",
-                style="main",
-            )
-            return not_found, Panel("", border_style="border")
-
-        title = getattr(nb, "title", "Unknown Notebook")
-        sources = str(getattr(nb, "sources_count", 0))
-        summary_text = state.notebook_summaries.get(
-            state.selected_notebook, "Press [Enter] to load notebook summary and details."
-        )
-
-        title_text = Text(title, style="bold_accent", justify="center")
-        sources_text = Text(f"{sources} Sources", style="info", justify="center")
-
-        stats = state.notebook_stats.get(state.selected_notebook)
-        cache = getattr(state, "tui_cache", None)
-        if not stats and cache is not None:
-            stats = cache.get_artifact_stats(state.selected_notebook)
-
-        info_items: list[Any] = [
-            Align.center(title_text),
-            Align.center(sources_text),
-        ]
-
-        if stats and not stats.get("loading") and "error" not in stats:
-            from rich.table import Table
-
-            table = Table(show_header=False, box=None, padding=(0, 2))
-            table.add_column("Key", style="bold_info", justify="right")
-            table.add_column("Value", style="foreground")
-
-            art_count = (
-                stats.get("total_artifacts")
-                if stats.get("total_artifacts") is not None
-                else stats.get("artifact_count", 0)
-            )
-            table.add_row("Artifacts", str(art_count))
-
-            counts = stats.get("counts")
-            if counts and isinstance(counts, dict):
-                types_str = ", ".join(
-                    f"{k.replace('_', ' ').title()} ({v})" for k, v in counts.items()
-                )
-                table.add_row("Artifact Types", types_str)
-            else:
-                types = stats.get("artifact_types", [])
-                if types:
-                    from collections import Counter
-
-                    c = Counter(types)
-                    types_str = ", ".join(
-                        f"{k.replace('_', ' ').title()} ({v})" for k, v in c.items()
-                    )
-                    table.add_row("Artifact Types", types_str)
-
-            has_audio = stats.get("has_audio", False)
-            audio_ts = None
-            for art in stats.get("artifacts", []):
-                kind = art.get("kind", "")
-                if kind in ("audio", "audio_overview") and art.get("timestamp"):
-                    if audio_ts is None or art["timestamp"] > audio_ts:
-                        audio_ts = art["timestamp"]
-
-            if has_audio:
-                if audio_ts:
-                    rel_audio = format_relative_time(audio_ts)
-                    table.add_row("Audio Overview", f"Ready (generated {rel_audio})")
-                else:
-                    table.add_row("Audio Overview", "Ready")
-            else:
-                table.add_row("Audio Overview", "None")
-
-            recent_ts = stats.get("recent_generated_at")
-            if recent_ts:
-                table.add_row("Last Generated", format_relative_time(recent_ts))
-
-            info_items.append(Text(""))
-            info_items.append(Align.center(table))
-        elif stats and stats.get("loading"):
-            info_items.append(Text("\nLoading statistics...", style="muted", justify="center"))
-        elif stats and "error" in stats:
-            info_items.append(
-                Text(f"\nFailed to load stats: {stats['error']}", style="error", justify="center")
-            )
-
-        info_items.append(Text("\n[Enter] to view details.", justify="center", style="muted"))
-
-        # We put the list/actions in results and summary in detail
-        results_panel = Panel(
-            Group(*info_items),
-            title="Notebook Info",
-            border_style="border",
-            style="main",
-            padding=(1, 2),
-        )
-
-        ingest_active = bool(
-            state.background_task
-            and not state.background_task.done()
-            and state.ingest_progress.get("total_sources") is not None
-        )
-        if ingest_active:
-            detail_panel = Panel(
-                _render_ingest_progress(state.ingest_progress),
-                title="Ingesting",
-                border_style="border",
-                style="main",
-                padding=(1, 2),
-            )
-        else:
-            detail_panel = Panel(
-                Text(f"\n{summary_text}", style="foreground"),
-                title="Summary",
-                border_style="border",
-                style="main",
-                padding=(1, 2),
-            )
-
-        return results_panel, detail_panel
-
-    placeholder_content = f"Placeholder for {state.current_view.name}"
+    view_title = state.current_view.name.replace("_", " ").title()
     return (
-        Panel(
-            Align.center(placeholder_content, vertical="middle"),
-            title=state.current_view.name.replace("_", " ").title() + " Results",
-            border_style="border",
-            style="main",
-        ),
-        Panel(
-            Align.center("Detail pane", vertical="middle"),
-            title="Details",
-            border_style="border",
-            style="main",
-        ),
+        message_panel(f"Placeholder for {state.current_view.name}", view_title),
+        message_panel("Detail pane", "Details"),
     )

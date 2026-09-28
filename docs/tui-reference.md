@@ -52,7 +52,7 @@ Available from any view (checked after view-specific handling, so a view's own b
 
 | Key | Action |
 |---|---|
-| `j` / `k` | Move selection down/up (auto-scrolls once the selection passes 15 rows) |
+| `j` / `k` | Move selection down/up (auto-scrolls once the selection passes the last visible row; the row count follows terminal height) |
 | `Enter` | Open the selected notebook in Notebook Detail |
 | `s` | Cycle sort mode: Alphabetical (A-Z) → Recent Activity → Recent Artifacts |
 | `/` | Activate live search mode (filters titles and domain tags in real time) |
@@ -63,16 +63,16 @@ Available from any view (checked after view-specific handling, so a view's own b
 
 ### Visual Hierarchy & Badges
 
-- **Domain Chips**: Notebook titles with `[TAG]` prefixes render as color-coded domain chips (`[GEMINI]` in cyan, `[CLAUDE]` in magenta, `[SFL]`/`[ENG]` in yellow, `[TEST]`/`[DEV]` in green).
-- **Compact Artifact Badges**: Compact row indicators show asset availability:
-  - `🎙️` Audio Overview generated
-  - `📄` Notes, reports, or documents present
-  - `⚡` Recent generation activity (within the last 48 hours)
-- **Tabular Counts**: Source counts are formatted with tabular width (e.g., `( 2)` vs `(14)`) for jitter-free vertical alignment during scrolling.
+- **Domain Tags**: Notebook titles with `[TAG]` prefixes render the tag as a lowercase colored word before the title (`gemini` blue, `claude` pink, `sfl`/`eng` amber, `test`/`dev` green, others gray).
+- **Compact Artifact Badges**: Single-cell glyphs show asset availability (emoji are avoided because terminals draw them two cells wide, which misaligns rows):
+  - `♪` Audio Overview generated
+  - `≡` Notes, reports, or documents present
+  - `✦` Recent generation activity (within the last 48 hours)
+- **Right-Aligned Counts**: Source counts sit in a right-aligned column; long titles are truncated with `…` to the sidebar's width instead of wrapping.
 
 ### Notebook Info & Metadata Caching
 
-- **Notebook Info Panel**: Displays notebook title, source count, and a two-column breakdown of artifact statistics: total artifact count, artifact types, audio overview status with relative time (`Ready (generated 2h ago)`), and last generated relative timestamp.
+- **Notebook Info Panel**: Displays notebook title, source count, and a two-column breakdown of artifact statistics: total artifact count, artifact types, audio overview status with relative time (`● Ready  2h ago`), and last generated relative timestamp.
 - **Persistent Cache**: Discovered artifact metadata and summaries are persisted in `~/.notebooklm/tui_cache.json` under file lock, enabling instant offline list navigation with zero background network requests. Explicit refresh (`r` in Notebook Detail) forces a live server re-fetch.
 
 

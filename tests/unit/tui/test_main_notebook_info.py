@@ -95,7 +95,7 @@ def test_render_main_notebook_list_without_stats():
 
     assert "Empty Notebook" in output
     assert "0 Sources" in output
-    assert "[Enter] to view details." in output
+    assert "enter open notebook" in output
 
 
 def test_render_main_notebook_detail_with_artifact_stats():
@@ -124,7 +124,7 @@ def test_render_main_notebook_detail_with_artifact_stats():
     console.print(detail_panel)
     output = console.export_text()
 
-    assert "Notebook Statistics" in output
+    assert "Statistics" in output
     assert "Sources" in output
     assert "Artifacts" in output
     assert "Audio Overview" in output
