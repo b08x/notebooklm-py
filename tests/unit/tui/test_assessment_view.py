@@ -17,7 +17,21 @@ def test_assessment_view_render():
     view = AssessmentView(state)
     left, right = view.render()
     assert left.title == "Assessment Controls"
-    assert "Contextualized Source Chunks" in right.title
+    assert "Audio Assessment — Contextualized Source Chunks" in right.title
+
+
+def test_assessment_view_render_source_mode():
+    state = TUIState()
+    state.assessment_state = {
+        "assessment_mode": "sources",
+        "audio_metadata": '{"mode": "sources"}',
+        "system_instructions": "Source instructions",
+        "chunks": ["Chunk 1"],
+    }
+    view = AssessmentView(state)
+    left, right = view.render()
+    assert "Source Assessment — Contextualized Source Chunks" in right.title
+    assert "Source Metadata" in str(left.renderable)
 
 
 def test_assessment_view_renders_entity_styling_for_known_entities():

@@ -134,7 +134,10 @@ def setup_dspy_router():
                     "LangFuse env vars present but openinference is not installed."
                 )
 
-    dspy.settings.configure(lm=lm)
+    try:
+        dspy.settings.configure(lm=lm)
+    except RuntimeError:
+        pass
 
     return lm, embedder
 
@@ -613,6 +616,265 @@ async def run_full_assessment(
     )
 
 
+async def run_source_assessment(
+    client: NotebookLMClient,
+    session: AsyncSession,
+    notebook_id: str,
+    *,
+    context_override: str | None = None,
+    progress_callback=None,
+    state_callback=None,
+    hitl_callback=None,
+) -> AssessmentResult:
+    """Assess already-ingested source clauses for a notebook.
+
+    Falls back to this path when no audio overview artifact exists.
+    Loads persisted ``Clause`` rows for all sources under ``notebook_id``,
+    constructs assessment chunks, and runs them through the same SFL,
+    claim-detection, and fact-checking loop as :func:`run_full_assessment`,
+    skipping transcription and diarization.
+    """
+    setup_dspy_router()
+
+    if progress_callback:
+        progress_callback("Listing notebook sources...")
+    sources = await client.sources.list(notebook_id)
+    source_ids = [s.id for s in sources]
+
+    if not source_ids:
+        raise ValueError(
+            f"No ingested source clauses found for notebook {notebook_id}. Run 'Ingest Sources' first."
+        )
+
+    from sqlalchemy import select
+
+    from ..db.models import Clause
+
+    if progress_callback:
+        progress_callback("Loading ingested clauses...")
+    stmt = select(Clause).where(Clause.document_id.in_(source_ids)).order_by(Clause.id.asc())
+    result = await session.execute(stmt)
+    clauses = list(result.scalars().all())
+
+    if not clauses:
+        raise ValueError(
+            f"No ingested source clauses found for notebook {notebook_id}. Run 'Ingest Sources' first."
+        )
+
+    if progress_callback:
+        progress_callback("Resolving notebook context...")
+    context = (
+        context_override
+        if context_override is not None
+        else await resolve_notebook_context(client, notebook_id)
+    )
+    system_instructions = context or ""
+
+    source_metadata = json.dumps(
+        {
+            "mode": "sources",
+            "source_ids": source_ids,
+            "source_count": len(source_ids),
+        },
+        default=str,
+    )
+
+    from .._preprocessing.sfl_engine import analyze_transcript
+
+    sfl_metrics = analyze_transcript("")
+    if isinstance(sfl_metrics, dict):
+        sfl_metrics.setdefault("total_clauses", len(clauses))
+
+    assessment_chunks = [
+        AssessmentChunk(
+            text=c.text,
+            clause_external_id=c.external_id,
+            topic_id=-1,
+            entities=[],
+        )
+        for c in clauses
+    ]
+
+    artifacts_dir = os.path.expanduser("~/NotebookLM/artifacts")
+
+    def _log_sfl_dataset(chunk_text, sfl_ctx, human_skipped):
+        import json
+        import os
+
+        path = os.path.join(artifacts_dir, "sfl_meta_dataset.jsonl")
+        try:
+            with open(path, "a") as f:
+                json.dump(
+                    {
+                        "chunk": chunk_text,
+                        "sfl": sfl_ctx,
+                        "is_meta": True,
+                        "human_skipped": human_skipped,
+                    },
+                    f,
+                )
+                f.write("\n")
+        except Exception as e:
+            import logging
+
+            logging.getLogger(__name__).warning(f"Failed to log to SFL dataset: {e}")
+
+        if os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY"):
+            try:
+                from langfuse import Langfuse
+
+                lf = Langfuse()
+                dataset_name = "sfl-satire-classifier"
+                lf.create_dataset(name=dataset_name)
+                lf.create_dataset_item(
+                    dataset_name=dataset_name,
+                    input={"chunk": chunk_text, "sfl_context": sfl_ctx},
+                    expected_output={"contains_facts": str(not human_skipped)},
+                )
+                lf.flush()
+            except Exception as e:
+                import logging
+
+                logging.getLogger(__name__).warning(f"Failed to log dataset to LangFuse: {e}")
+
+    if assessment_chunks:
+        results = []
+        passed_count = 0
+        failed_count = 0
+        total_tasks = len(assessment_chunks)
+
+        from .._preprocessing.sfl_engine import SFLEngine
+
+        sfl_engine = SFLEngine()
+
+        import dspy
+
+        class ClaimDetectorSignature(dspy.Signature):
+            """Determine if a spoken chunk contains verifiable factual claims about the real world or source material, or if it is purely subjective, satirical meta-dialogue, or conversational filler."""
+
+            chunk = dspy.InputField(desc="The text chunk to evaluate")
+            sfl_context = dspy.InputField(desc="SFL intent and tenor")
+            contains_facts = dspy.OutputField(desc="Return strictly True or False")
+
+        for completed, chunk in enumerate(assessment_chunks, start=1):
+            display_text = chunk.text
+
+            # Extract local SFL context
+            try:
+
+                def _run_sfl(dt=display_text):
+                    import dspy
+
+                    with dspy.context(lm=dspy.settings.lm):
+                        return sfl_engine(utterance=dt)
+
+                sfl_res = await asyncio.to_thread(_run_sfl)
+                sfl_context_str = f"Ideational: {sfl_res.get('ideational')} | Interpersonal: {sfl_res.get('interpersonal')}"
+            except Exception as e:
+                import logging
+
+                logging.getLogger(__name__).warning(f"Failed to generate SFL context: {e}")
+                sfl_res = {}
+                sfl_context_str = "SFL analysis unavailable."
+
+            if state_callback:
+                state_callback("current_chunk_text", display_text[:200] + "...")
+                state_callback("current_chunk_sfl", sfl_res)
+
+            # Fast Classifier Pass
+            try:
+
+                def _run_detector(dt=display_text, sc=sfl_context_str):
+                    import dspy
+
+                    with dspy.context(lm=dspy.settings.lm):
+                        return dspy.Predict(ClaimDetectorSignature)(chunk=dt, sfl_context=sc)
+
+                det_res = await asyncio.to_thread(_run_detector)
+                has_facts = str(det_res.contains_facts).strip().lower() == "true"
+            except Exception as e:
+                import logging
+
+                logging.getLogger(__name__).warning(f"Failed detector pass: {e}")
+                has_facts = True
+
+            skip_fact_check = False
+            if not has_facts:
+                if hitl_callback:
+
+                    def _run_hitl(dt=display_text, sc=sfl_context_str):
+                        return hitl_callback(dt, sc)
+
+                    skip_fact_check = await asyncio.to_thread(_run_hitl)
+                    _log_sfl_dataset(display_text, sfl_context_str, skip_fact_check)
+                else:
+                    skip_fact_check = True
+
+            if skip_fact_check:
+                res = FactCheckResult(
+                    clause_external_id=chunk.clause_external_id,
+                    passed=True,
+                    citations="Bypassed: Classified as subjective/meta-dialogue with no verifiable factual claims.",
+                    framework_available=True,
+                )
+            else:
+                res = await run_fact_check_for_chunk(
+                    chunk.clause_external_id,
+                    display_text,
+                    system_instructions,
+                    context or "",
+                    sfl_context_str,
+                )
+            results.append(res)
+
+            if state_callback:
+                state_callback(
+                    "ticker_stream_append",
+                    {
+                        "passed": res.passed,
+                        "text": display_text.strip(),
+                        "citations": res.citations.replace("\n", " ").strip()
+                        if res.citations
+                        else "",
+                    },
+                )
+
+            if res.passed:
+                passed_count += 1
+            else:
+                failed_count += 1
+
+            if state_callback:
+                state_callback(
+                    "metrics",
+                    {
+                        "completed": completed,
+                        "total": total_tasks,
+                        "passed": passed_count,
+                        "failed": failed_count,
+                    },
+                )
+
+            if progress_callback:
+                progress_callback(f"Fact-checking chunk {completed}/{total_tasks}...")
+
+        # Re-map results to chunks
+        res_map = {r.clause_external_id: r for r in results}
+        for chunk in assessment_chunks:
+            chunk_res = res_map.get(chunk.clause_external_id)
+            if chunk_res:
+                chunk.fact_check_passed = chunk_res.passed
+                chunk.fact_check_citations = chunk_res.citations
+
+    return AssessmentResult(
+        system_instructions=system_instructions,
+        audio_metadata=source_metadata,
+        transcript="",
+        chunks=assessment_chunks,
+        sfl_metrics=sfl_metrics,
+    )
+
+
 @dataclass
 class ScoringResult:
     """Outcome of :func:`run_assessment_scoring`: the chunks scored, plus the verdict."""
@@ -623,18 +885,23 @@ class ScoringResult:
 
 
 def generate_assessment_report(
-    artifact_id: str, assessment_state: dict, scoring_result: ScoringResult, output_dir: str
+    artifact_id: str | None, assessment_state: dict, scoring_result: ScoringResult, output_dir: str
 ) -> str:
     """Generates a detailed Markdown report containing SFL metrics, LLM scoring, and fact-check results."""
     import os
     from datetime import datetime
 
     os.makedirs(output_dir, exist_ok=True)
-    report_path = os.path.join(output_dir, f"fact_check_report_{artifact_id}.md")
+    safe_id = artifact_id or "sources"
+    report_path = os.path.join(output_dir, f"fact_check_report_{safe_id}.md")
+
+    mode = assessment_state.get("assessment_mode", "sources" if not artifact_id else "audio")
+    mode_label = "Source Assessment" if mode == "sources" else "Audio Assessment"
 
     lines = [
-        "# Fact-Check and Assessment Report",
-        f"**Artifact ID**: `{artifact_id}`",
+        f"# Fact-Check and Assessment Report ({mode_label})",
+        f"**Mode**: `{mode}`",
+        f"**Artifact ID**: `{artifact_id or 'N/A (ingested sources)'}`",
         f"**Date**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         "",
         "## 1. Score & Feedback (DSPy Evaluator)",

@@ -1,0 +1,115 @@
+{
+  "stage": "interview",
+  "title": "Assess Ingested Sources",
+  "goalSlug": "assess-ingested-sources",
+  "questions": [
+    {
+      "id": "trigger",
+      "prompt": "How should the user trigger 'Assess Sources' from the TUI?",
+      "description": "Currently: 'a' key in NOTEBOOK_DETAIL opens 'Assess Audio Overview'. A new parallel action is needed for 'Assess Sources'. The keypress module already handles 's' (source selection/ingest) and other single letters. A two-letter sequence or a new letter is available.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "A new key binding, e.g. 'S' (shift-s), that starts 'Assess Sources' from NOTEBOOK_DETAIL — parallel to 'a' for audio assessment.",
+      "recommendedOptionIds": ["shift_s"],
+      "options": [
+        { "id": "shift_s", "label": "'S' (Shift-s) key in NOTEBOOK_DETAIL view" },
+        { "id": "detail_menu", "label": "A new entry in the detail-view action menu (no new key)" },
+        { "id": "source_picker", "label": "Reuse the existing source-picker UI, with a mode toggle to choose between Ingest and Assess" }
+      ],
+      "required": true
+    },
+    {
+      "id": "source_selection",
+      "prompt": "Should the user pick which already-ingested sources to assess, or should it assess all ingested sources for the notebook automatically?",
+      "description": "The existing source picker (selecting_sources + ingest_sources state) is already wired for Ingest. A similar picker could be reused/adapted for Assess.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "All already-ingested sources for the notebook are assessed automatically — no extra picker needed for MVP.",
+      "recommendedOptionIds": ["all_auto"],
+      "options": [
+        { "id": "all_auto", "label": "All already-ingested sources automatically (simpler, no picker)" },
+        { "id": "picker", "label": "Reuse the source picker so the user can choose a subset" }
+      ],
+      "required": true
+    },
+    {
+      "id": "orchestration",
+      "prompt": "Where should the new source-based assessment logic live?",
+      "description": "The audio path lives in assessment.py (run_full_assessment). A parallel function is needed for the source path. Should it be a new top-level function in the same module, or a separate module?",
+      "answerMode": "single",
+      "recommendedAnswer": "A new function run_source_assessment() in the same _app/assessment.py — keeps all assessment orchestration co-located.",
+      "recommendedOptionIds": ["same_module"],
+      "options": [
+        { "id": "same_module", "label": "New function run_source_assessment() in _app/assessment.py" },
+        { "id": "new_module", "label": "New _app/source_assessment.py module" }
+      ],
+      "required": true
+    },
+    {
+      "id": "system_instructions",
+      "prompt": "What should be used as 'system_instructions' for source-based scoring? (AudioOverviewAssessor currently takes system_instructions from the audio artifact's prompt.)",
+      "description": "Without an audio artifact there is no 'prompt'. The DSPy signature and generate_assessment() both take system_instructions as a required field.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Use the notebook's AI-generated summary (resolve_notebook_context) as system_instructions, falling back to an empty string.",
+      "recommendedOptionIds": ["notebook_summary"],
+      "options": [
+        { "id": "notebook_summary", "label": "Notebook AI summary (resolve_notebook_context), empty string fallback" },
+        { "id": "user_prompt", "label": "Prompt the user for custom system instructions before running" },
+        { "id": "empty", "label": "Always pass empty string — let the LLM score without instructions" }
+      ],
+      "required": true
+    },
+    {
+      "id": "audio_metadata_field",
+      "prompt": "AssessmentResult and the DSPy scorer have an 'audio_metadata' field. How should the source-assess path populate it?",
+      "description": "This field is displayed in the assessment view's left panel and passed to the scorer. For source-based assessment there is no audio.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Populate it with a JSON object describing the assessed sources (source IDs, count), labeled clearly as 'source_metadata' to distinguish from audio runs.",
+      "recommendedOptionIds": ["source_metadata_json"],
+      "options": [
+        { "id": "source_metadata_json", "label": "JSON blob with source IDs and count, displayed as 'Source Metadata'" },
+        { "id": "empty_string", "label": "Empty string / N/A — the field is audio-only, just blank it" }
+      ],
+      "required": true
+    },
+    {
+      "id": "no_ingested_sources",
+      "prompt": "What should happen if the user triggers 'Assess Sources' but no sources have been ingested yet for that notebook?",
+      "description": "The audio path shows 'No generated audio overview found for <id>' and aborts gracefully.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Show an error message: 'No ingested sources found — run Ingest Sources first.' and abort without changing the view.",
+      "recommendedOptionIds": ["error_abort"],
+      "options": [
+        { "id": "error_abort", "label": "Error message + abort (mirror the audio path's behavior)" },
+        { "id": "offer_ingest", "label": "Automatically start the Ingest Sources flow as a fallback" }
+      ],
+      "required": true
+    },
+    {
+      "id": "sfl_and_hitl",
+      "prompt": "Should the source-assess path include the full SFL analysis + HITL fact-check loop that the audio path runs?",
+      "description": "run_full_assessment runs per-chunk SFL tagging, claim detection, and optional human-in-the-loop bypass. This is the bulk of its complexity. Sources are pre-written text (not spoken dialog), so SFL speaker tracking isn't applicable.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Yes — include SFL and the HITL fact-check loop, but skip speaker-diarization logic since sources have no speaker turns.",
+      "recommendedOptionIds": ["full_minus_diarization"],
+      "options": [
+        { "id": "full_minus_diarization", "label": "Full SFL + HITL fact-check, speaker diarization skipped" },
+        { "id": "scoring_only", "label": "Scoring only (generate_assessment) — skip SFL and HITL for MVP" },
+        { "id": "full_parity", "label": "Full parity with audio path including all SFL fields (diarization left empty)" }
+      ],
+      "required": true
+    },
+    {
+      "id": "test_coverage",
+      "prompt": "What test coverage should be added?",
+      "description": "Existing tests: tests/unit/app/test_assessment_context.py covers run_full_assessment context logic. tests/unit/tui/ covers assessment_view and keypress.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "Unit tests for run_source_assessment (happy path + no-sources error), plus a keypress test for the new trigger key.",
+      "recommendedOptionIds": ["unit_orchestration", "unit_keypress"],
+      "options": [
+        { "id": "unit_orchestration", "label": "Unit test for run_source_assessment (happy path + no-sources error)" },
+        { "id": "unit_keypress", "label": "Keypress test for the new trigger binding" },
+        { "id": "integration", "label": "Integration/VCR test covering the full source-assess flow" }
+      ],
+      "required": true
+    }
+  ]
+}

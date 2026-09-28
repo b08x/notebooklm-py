@@ -201,7 +201,8 @@ async def _download_assets_async(state: TUIState, notebook_id: str) -> str:
                     history = await client.chat.get_history(notebook_id)
                     chat_text = ""
                     for turn in history:
-                        chat_text += f"**User**: {turn[0]}\n\n**AI**: {turn[1]}\n\n"
+                        user_turn, ai_turn, *_ = turn
+                        chat_text += f"**User**: {user_turn}\n\n**AI**: {ai_turn}\n\n"
                     if chat_text:
                         (out_dir / "chat_history.md").write_text(chat_text)
                 except Exception:
@@ -476,21 +477,13 @@ async def _assess_audio_overview_async(
     progress_cb=None,
     state=None,
 ) -> dict:
-    from notebooklm._app.assessment import run_full_assessment
+    from notebooklm._app.assessment import run_full_assessment, run_source_assessment
     from notebooklm.db.session import async_session_maker
 
     async with (
         NotebookLMClient.from_storage() as client,
         async_session_maker() as session,
     ):
-        if not artifact_id:
-            if progress_cb:
-                progress_cb("Fetching audio artifacts...")
-            audio_artifacts = await client.artifacts.list_audio(notebook_id)
-            if not audio_artifacts:
-                return {"error": f"No generated audio overview found for {notebook_id}."}
-            artifact = max(audio_artifacts, key=lambda a: getattr(a, "created_at", None) or 0)
-            artifact_id = artifact.id
 
         def state_cb(key: str, value: Any):
             if progress_cb:
@@ -526,6 +519,41 @@ async def _assess_audio_overview_async(
                     return decision
             return False
 
+        if not artifact_id:
+            if progress_cb:
+                progress_cb("Fetching audio artifacts...")
+            audio_artifacts = await client.artifacts.list_audio(notebook_id)
+            if audio_artifacts:
+                artifact = max(audio_artifacts, key=lambda a: getattr(a, "created_at", None) or 0)
+                artifact_id = artifact.id
+            else:
+                # No audio — try source assessment path
+                try:
+                    result = await run_source_assessment(
+                        client,
+                        session,
+                        notebook_id,
+                        context_override=context_override,
+                        progress_callback=progress_cb,
+                        state_callback=state_cb,
+                        hitl_callback=hitl_cb,
+                    )
+                    return {
+                        "assessment_state": {
+                            "artifact_id": None,
+                            "assessment_mode": "sources",
+                            "system_instructions": result.system_instructions,
+                            "audio_metadata": result.audio_metadata,
+                            "chunks": result.chunks,
+                            "sfl_metrics": result.sfl_metrics,
+                            "scroll_offset": 0,
+                        }
+                    }
+                except ValueError:
+                    return {
+                        "error": "No assessable content found — generate an audio overview or ingest sources first."
+                    }
+
         result = await run_full_assessment(
             client,
             session,
@@ -540,6 +568,7 @@ async def _assess_audio_overview_async(
         return {
             "assessment_state": {
                 "artifact_id": artifact_id,
+                "assessment_mode": "audio",
                 "system_instructions": result.system_instructions,
                 "audio_metadata": result.audio_metadata,
                 "chunks": result.chunks,
@@ -624,10 +653,13 @@ def _run_fetch_audio_artifacts(state: TUIState, notebook_id: str) -> None:
         state.error_message = f"Could not load artifacts: {e}"
         return
     if not artifacts:
-        state.error_message = f"No generated audio overview found for {notebook_id}."
+        _run_assess_audio_overview(
+            state, notebook_id, state.context_overrides.get(notebook_id), None
+        )
         return
     if len(artifacts) == 1:
         # Just run assessment immediately
+        first_artifact = next(iter(artifacts))
         state.assessment_state = {
             "is_loading": True,
             "loading_message": "Transcribing and assessing audio overview...",
@@ -635,7 +667,7 @@ def _run_fetch_audio_artifacts(state: TUIState, notebook_id: str) -> None:
         state.previous_view = state.current_view
         state.current_view = View.ASSESSMENT
         _run_assess_audio_overview(
-            state, notebook_id, state.context_overrides.get(notebook_id), artifacts[0].id
+            state, notebook_id, state.context_overrides.get(notebook_id), first_artifact.id
         )
     else:
         state.audio_artifacts = artifacts

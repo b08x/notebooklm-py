@@ -179,6 +179,11 @@ class AssessmentView:
 
     def render(self):
         assessment_state = getattr(self.state, "assessment_state", {})
+        mode = assessment_state.get("assessment_mode", "audio")
+        mode_label = "Source Assessment" if mode == "sources" else "Audio Assessment"
+        claim_title = (
+            "📝 ACTIVE SOURCE CLAIM" if mode == "sources" else "📝 ACTIVE TRANSCRIPT CLAIM"
+        )
 
         if assessment_state.get("is_loading"):
             from rich.table import Table
@@ -257,7 +262,7 @@ class AssessmentView:
                 current_chunk = assessment_state.get("current_chunk_text", "Waiting for chunks...")
                 active_claim = Panel(
                     Text(f'"{current_chunk}"', style="foreground italic", justify="left"),
-                    title="📝 ACTIVE TRANSCRIPT CLAIM",
+                    title=claim_title,
                     title_align="left",
                     border_style="primary",
                     box=box.ROUNDED,
@@ -379,8 +384,9 @@ class AssessmentView:
         llm_score = assessment_state.get("llm_score", "LLM Score Pending...")
         framework_available = assessment_state.get("fact_check_framework_available", True)
 
+        metadata_label = "Source Metadata" if mode == "sources" else "Audio Output Metadata"
         left_lines = [
-            f"Audio Output Metadata:\n{audio_meta}",
+            f"{metadata_label}:\n{audio_meta}",
             f"System Instructions:\n{sys_inst}",
             f"Suggested Score:\n{llm_score}",
             f"Fact-Check Status:\n{assessment_state.get('fact_check_status', 'Not started. Press `f` to run.')}",
@@ -409,7 +415,7 @@ class AssessmentView:
 
         right_panel = Panel(
             Group(*renderables) if renderables else Text(""),
-            title=f"Contextualized Source Chunks (Scroll: {scroll_offset})",
+            title=f"{mode_label} — Contextualized Source Chunks (Scroll: {scroll_offset})",
         )
 
         return left_panel, right_panel

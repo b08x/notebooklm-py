@@ -1442,6 +1442,49 @@ src/notebooklm/
         └── meta.py              # GET /v1/server/info — version + local auth-health probe (run_auth_check) + opt-in account block; scrubs the on-disk storage path (mirrors MCP server_info)
 ```
 
+### Repository Structure Intentional Omissions
+
+- `src/notebooklm/_app/assessment.py` - Audio and source assessment business logic.
+- `src/notebooklm/_app/assessment_formatter.py` - Assessment markdown formatting.
+- `src/notebooklm/_app/clause_search.py` - Clause search and retrieval.
+- `src/notebooklm/_preprocessing` - Preprocessing package (SFL, ingestion, chunkers, annotators).
+- `src/notebooklm/_preprocessing/annotators.py` - NLP and semantic annotation helpers.
+- `src/notebooklm/_preprocessing/chunkers.py` - Structural coherence chunker.
+- `src/notebooklm/_preprocessing/embeddings.py` - Ollama and embedding adapters.
+- `src/notebooklm/_preprocessing/fact_check.py` - Fact checking adapter.
+- `src/notebooklm/_preprocessing/ingestion.py` - Ingestion service.
+- `src/notebooklm/_preprocessing/pipeline.py` - End-to-end preprocessing pipeline.
+- `src/notebooklm/_preprocessing/sfl_engine.py` - Systemic Functional Linguistics engine.
+- `src/notebooklm/_preprocessing/transcription.py` - Audio transcription services.
+- `src/notebooklm/cli/tui_cmd.py` - Terminal user interface CLI entrypoint.
+- `src/notebooklm/db/models.py` - Database models for clauses, embeddings, and local assets.
+- `src/notebooklm/db/session.py` - Database session engine and management.
+- `src/notebooklm/mcp/tools/clauses.py` - Clause search MCP tool.
+- `src/notebooklm/tui` - Terminal User Interface package.
+- `src/notebooklm/tui/__main__.py` - TUI standalone entrypoint.
+- `src/notebooklm/tui/app.py` - Main TUI application.
+- `src/notebooklm/tui/cache.py` - TUI offline data cache.
+- `src/notebooklm/tui/compiler_bridge.py` - Compiler bridge for TUI.
+- `src/notebooklm/tui/keypress.py` - Keyboard input handling.
+- `src/notebooklm/tui/layout.py` - TUI UI layout definitions.
+- `src/notebooklm/tui/logging_bridge.py` - In-memory logging bridge for TUI log view.
+- `src/notebooklm/tui/renderers` - Modular TUI view renderers.
+- `src/notebooklm/tui/renderers/chat.py` - Chat view renderer.
+- `src/notebooklm/tui/renderers/compiler.py` - Compiler view renderer.
+- `src/notebooklm/tui/renderers/footer.py` - Footer status bar renderer.
+- `src/notebooklm/tui/renderers/header.py` - Header bar renderer.
+- `src/notebooklm/tui/renderers/logs.py` - Logs panel renderer.
+- `src/notebooklm/tui/renderers/main.py` - Main notebook pane renderer.
+- `src/notebooklm/tui/renderers/sidebar.py` - Sidebar notebook list renderer.
+- `src/notebooklm/tui/state.py` - Shared reactive TUI application state.
+- `src/notebooklm/tui/theme.py` - Colors and visual styles for TUI.
+- `src/notebooklm/tui/views/assessment_view.py` - Interactive assessment inspection view.
+- `src/notebooklm/tui/views/chat_view.py` - Interactive chat view.
+- `src/notebooklm/tui/views/compiler_view.py` - Compilation pipeline view.
+- `src/notebooklm/tui/views/notebook_detail.py` - Detailed notebook view.
+- `src/notebooklm/tui/views/notebook_list.py` - Interactive notebook selection list.
+- `src/notebooklm/tui/views/visual_assessment_view.py` - Visual assessment charts view.
+
 ## ADR cross-references
 
 - [ADR-0001](./adr/0001-layered-core-seams-and-property-bridge-policy.md) — Layered seams + property-bridge policy (superseded; shims retired).

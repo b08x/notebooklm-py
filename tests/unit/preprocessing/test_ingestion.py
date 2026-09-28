@@ -16,7 +16,9 @@ def _make_client(content: str, summary: str = "") -> MagicMock:
 def _make_session() -> MagicMock:
     session = MagicMock()
     session.add = MagicMock()
-    session.execute = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    session.execute = AsyncMock(return_value=mock_result)
     session.commit = AsyncMock()
     return session
 

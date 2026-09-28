@@ -25,6 +25,7 @@ def test_deepgram_adapter(mock_client_class, dummy_audio):
     mock_client_class.return_value.__enter__.return_value = mock_client
 
     mock_response = MagicMock()
+    mock_response.status_code = 200
     mock_response.json.return_value = {
         "results": {"channels": [{"alternatives": [{"transcript": "deepgram transcription text"}]}]}
     }

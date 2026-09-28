@@ -7,7 +7,7 @@ import notebooklm._app.assessment as assessment_module
 import notebooklm._preprocessing.ingestion as ingestion_module
 import notebooklm.db.session as db_session_module
 from notebooklm.tui.state import TUIState, View
-from notebooklm.tui.views import notebook_detail
+from notebooklm.tui.views import assessment_view, notebook_detail
 from notebooklm.tui.views.notebook_detail import (
     _assess_audio_overview_async,
     _ingest_notebook_async,
@@ -207,6 +207,7 @@ async def test_assess_audio_overview_async_populates_assessment_state():
 async def test_assess_audio_overview_async_no_audio_artifact_sets_error():
     client = MagicMock()
     client.artifacts.list_audio = AsyncMock(return_value=[])
+    client.sources.list = AsyncMock(return_value=[])
     client.__aenter__ = AsyncMock(return_value=client)
     client.__aexit__ = AsyncMock(return_value=False)
 
@@ -219,7 +220,40 @@ async def test_assess_audio_overview_async_no_audio_artifact_sets_error():
         outcome = await _assess_audio_overview_async("nb-1")
 
     assert "error" in outcome
-    assert "No generated audio overview" in outcome["error"]
+    assert "No assessable content found" in outcome["error"]
+
+
+@pytest.mark.asyncio
+async def test_assess_audio_overview_async_falls_back_to_source_assessment():
+    client = MagicMock()
+    client.artifacts.list_audio = AsyncMock(return_value=[])
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+
+    fake_result = SimpleNamespace(
+        system_instructions="Source instructions",
+        audio_metadata='{"mode": "sources"}',
+        chunks=[SimpleNamespace(text="source chunk 1")],
+        sfl_metrics={"total_clauses": 5},
+    )
+
+    with (
+        patch.object(notebook_detail.NotebookLMClient, "from_storage", return_value=client),
+        patch.object(db_session_module, "async_session_maker") as mock_maker,
+        patch.object(
+            assessment_module,
+            "run_source_assessment",
+            new=AsyncMock(return_value=fake_result),
+        ),
+    ):
+        _patched_session_maker(mock_maker)
+
+        outcome = await _assess_audio_overview_async("nb-1")
+
+    assert "error" not in outcome
+    assert outcome["assessment_state"]["assessment_mode"] == "sources"
+    assert outcome["assessment_state"]["artifact_id"] is None
+    assert outcome["assessment_state"]["chunks"] == fake_result.chunks
 
 
 def test_start_assess_audio_overview_noop_without_selected_notebook():
@@ -232,6 +266,7 @@ def test_start_assess_audio_overview_noop_without_selected_notebook():
 def test_run_assess_audio_overview_no_artifact_sets_error_not_view_switch():
     client = MagicMock()
     client.artifacts.list_audio = AsyncMock(return_value=[])
+    client.sources.list = AsyncMock(return_value=[])
     client.__aenter__ = AsyncMock(return_value=client)
     client.__aexit__ = AsyncMock(return_value=False)
 
@@ -246,5 +281,43 @@ def test_run_assess_audio_overview_no_artifact_sets_error_not_view_switch():
 
         notebook_detail._run_assess_audio_overview(state, "nb-1")
 
-    assert state.error_message == "No generated audio overview found for nb-1."
+    assert (
+        state.error_message
+        == "No assessable content found — generate an audio overview or ingest sources first."
+    )
     assert state.current_view == View.NOTEBOOK_DETAIL
+
+
+def test_run_assess_audio_overview_source_fallback_switches_view():
+    client = MagicMock()
+    client.artifacts.list_audio = AsyncMock(return_value=[])
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+
+    fake_result = SimpleNamespace(
+        system_instructions="Source instructions",
+        audio_metadata='{"mode": "sources"}',
+        chunks=[SimpleNamespace(text="source chunk 1")],
+        sfl_metrics={"total_clauses": 5},
+    )
+
+    state = TUIState()
+    state.current_view = View.NOTEBOOK_DETAIL
+
+    with (
+        patch.object(notebook_detail.NotebookLMClient, "from_storage", return_value=client),
+        patch.object(db_session_module, "async_session_maker") as mock_maker,
+        patch.object(
+            assessment_module,
+            "run_source_assessment",
+            new=AsyncMock(return_value=fake_result),
+        ),
+        patch.object(assessment_view, "trigger_fact_check"),
+    ):
+        _patched_session_maker(mock_maker)
+
+        notebook_detail._run_assess_audio_overview(state, "nb-1")
+
+    assert state.error_message is None
+    assert state.current_view == View.ASSESSMENT
+    assert state.assessment_state["assessment_mode"] == "sources"

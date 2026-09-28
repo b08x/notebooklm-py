@@ -63,18 +63,29 @@ class IngestionService:
         embedding_model_name: str = "embeddinggemma-300m",
         use_source_context: bool = True,
         embed_batch_size: int = 32,
+        use_notebook_context: bool | None = None,
     ):
         self.client = client
         self.embedder = embedder or OllamaEmbeddingAdapter()
         self.chunker = chunker or StructuralCoherenceChunker()
         self.embedding_model_name = embedding_model_name
-        self.use_source_context = use_source_context
+        self.use_source_context = (
+            use_notebook_context if use_notebook_context is not None else use_source_context
+        )
         #: A single ``/api/embed`` request holds all its texts in memory for the
         #: whole request/response round trip; capping the batch size bounds how
         #: long any one request can legitimately take, so a slow/remote Ollama
         #: host degrades to a slower ingest rather than a single-request timeout
         #: partway through a large document.
         self.embed_batch_size = embed_batch_size
+
+    @property
+    def use_notebook_context(self) -> bool:
+        return self.use_source_context
+
+    @use_notebook_context.setter
+    def use_notebook_context(self, value: bool) -> None:
+        self.use_source_context = value
 
     async def _resolve_context(
         self, notebook_id: str, source_id: str, explicit_context: str | None
@@ -83,7 +94,10 @@ class IngestionService:
             return explicit_context.strip() or None
         if not self.use_source_context:
             return None
-        return await resolve_source_context(self.client, notebook_id, source_id)
+        source_ctx = await resolve_source_context(self.client, notebook_id, source_id)
+        if source_ctx:
+            return source_ctx
+        return await resolve_notebook_context(self.client, notebook_id)
 
     async def ingest_source(
         self,
@@ -103,9 +117,18 @@ class IngestionService:
 
         # Check local cache first
         result = await session.execute(select(LocalAsset).where(LocalAsset.asset_id == source_id))
-        local_asset = result.scalar_one_or_none()
+        local_asset = None
+        if hasattr(result, "scalar_one_or_none"):
+            res_val = result.scalar_one_or_none()
+            if not asyncio.iscoroutine(res_val):
+                local_asset = res_val
 
-        if local_asset and os.path.exists(local_asset.local_path):
+        if (
+            local_asset
+            and hasattr(local_asset, "local_path")
+            and isinstance(local_asset.local_path, str)
+            and os.path.exists(local_asset.local_path)
+        ):
             with open(local_asset.local_path, encoding="utf-8") as f:
                 content = f.read()
         else:
