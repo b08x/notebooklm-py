@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except ImportError:
     pass
@@ -102,31 +103,36 @@ def setup_dspy_router():
         if not getattr(setup_dspy_router, "_otel_initialized", False):
             try:
                 import base64
+
+                from openinference.instrumentation.dspy import DSPyInstrumentor
                 from opentelemetry import trace
+                from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
                 from opentelemetry.sdk.trace import TracerProvider
                 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-                from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-                from openinference.instrumentation.dspy import DSPyInstrumentor
 
                 host = os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com").rstrip("/")
                 endpoint = f"{host}/api/public/otel/v1/traces"
-                auth = base64.b64encode(f"{os.environ['LANGFUSE_PUBLIC_KEY']}:{os.environ['LANGFUSE_SECRET_KEY']}".encode()).decode()
-                
+                auth = base64.b64encode(
+                    f"{os.environ['LANGFUSE_PUBLIC_KEY']}:{os.environ['LANGFUSE_SECRET_KEY']}".encode()
+                ).decode()
+
                 provider = TracerProvider()
                 provider.add_span_processor(
                     BatchSpanProcessor(
                         OTLPSpanExporter(
-                            endpoint=endpoint,
-                            headers={"Authorization": f"Basic {auth}"}
+                            endpoint=endpoint, headers={"Authorization": f"Basic {auth}"}
                         )
                     )
                 )
                 trace.set_tracer_provider(provider)
                 DSPyInstrumentor().instrument()
-                setup_dspy_router._otel_initialized = True
+                setup_dspy_router._otel_initialized = True  # type: ignore[attr-defined]
             except ImportError:
                 import logging
-                logging.getLogger(__name__).warning("LangFuse env vars present but openinference is not installed.")
+
+                logging.getLogger(__name__).warning(
+                    "LangFuse env vars present but openinference is not installed."
+                )
 
     dspy.settings.configure(lm=lm)
 
@@ -292,36 +298,48 @@ async def run_full_assessment(
     def _log_sfl_dataset(chunk_text, sfl_ctx, human_skipped):
         import json
         import os
+
         path = os.path.join(artifacts_dir, "sfl_meta_dataset.jsonl")
         try:
             with open(path, "a") as f:
-                json.dump({"chunk": chunk_text, "sfl": sfl_ctx, "is_meta": True, "human_skipped": human_skipped}, f)
+                json.dump(
+                    {
+                        "chunk": chunk_text,
+                        "sfl": sfl_ctx,
+                        "is_meta": True,
+                        "human_skipped": human_skipped,
+                    },
+                    f,
+                )
                 f.write("\n")
         except Exception as e:
             import logging
+
             logging.getLogger(__name__).warning(f"Failed to log to SFL dataset: {e}")
 
         if os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY"):
             try:
                 from langfuse import Langfuse
+
                 lf = Langfuse()
                 dataset_name = "sfl-satire-classifier"
                 lf.create_dataset(name=dataset_name)
                 lf.create_dataset_item(
                     dataset_name=dataset_name,
                     input={"chunk": chunk_text, "sfl_context": sfl_ctx},
-                    expected_output={"contains_facts": str(not human_skipped)}
+                    expected_output={"contains_facts": str(not human_skipped)},
                 )
                 lf.flush()
             except Exception as e:
                 import logging
+
                 logging.getLogger(__name__).warning(f"Failed to log dataset to LangFuse: {e}")
 
     if local_asset and os.path.exists(local_asset.local_path):
         audio_base_name = os.path.splitext(os.path.basename(local_asset.local_path))[0]
     else:
         audio_base_name = artifact_id
-        
+
     os.makedirs(artifacts_dir, exist_ok=True)
     transcript_path = os.path.join(artifacts_dir, f"{audio_base_name}_transcript.txt")
     json_path = os.path.join(artifacts_dir, f"{audio_base_name}_diarization.json")
@@ -365,7 +383,7 @@ async def run_full_assessment(
 
         transcript = transcription.get("text", "")
         diarization = transcription.get("diarization")
-        provider = transcription.get("provider")
+        provider = str(transcription.get("provider") or "unknown")
 
         # Persist the transcript and JSON to disk for future cached runs
         with open(transcript_path, "w", encoding="utf-8") as f:
@@ -387,6 +405,7 @@ async def run_full_assessment(
     if progress_callback:
         progress_callback("Running SFL transcript analysis...")
     from .._preprocessing.sfl_engine import analyze_transcript
+
     sfl_metrics = analyze_transcript(transcript, diarization=diarization)
 
     if progress_callback:
@@ -425,6 +444,7 @@ async def run_full_assessment(
 
     # Run fact checking sequentially to preserve podcast dialog order
     if assessment_chunks:
+
         def _extract_speaker(chunk_text: str) -> str:
             prefix = chunk_text[:40].strip()
 
@@ -435,19 +455,19 @@ async def run_full_assessment(
             elif provider == "deepgram" and isinstance(diarization, dict):
                 try:
                     words = diarization["results"]["channels"][0]["alternatives"][0]["words"]
-                    prefix_word = prefix.split()[0].strip('.,?!')
+                    prefix_word = prefix.split()[0].strip(".,?!")
                     for w in words:
-                        if w.get("punctuated_word", "").strip('.,?!') == prefix_word:
+                        if w.get("punctuated_word", "").strip(".,?!") == prefix_word:
                             return f"[Speaker {w.get('speaker', '?')}] "
                 except Exception:
                     pass
             elif provider == "speechmatics" and isinstance(diarization, dict):
                 try:
                     results = diarization.get("results", [])
-                    prefix_word = prefix.split()[0].strip('.,?!')
+                    prefix_word = prefix.split()[0].strip(".,?!")
                     for r in results:
                         if r.get("type") == "word" and r.get("alternatives"):
-                            content = r["alternatives"][0].get("content", "").strip('.,?!')
+                            content = r["alternatives"][0].get("content", "").strip(".,?!")
                             if content == prefix_word and r["alternatives"][0].get("speaker"):
                                 return f"[{r['alternatives'][0]['speaker']}] "
                 except Exception:
@@ -461,11 +481,14 @@ async def run_full_assessment(
         total_tasks = len(assessment_chunks)
 
         from .._preprocessing.sfl_engine import SFLEngine
+
         sfl_engine = SFLEngine()
 
         import dspy
+
         class ClaimDetectorSignature(dspy.Signature):
             """Determine if a spoken chunk contains verifiable factual claims about the real world or source material, or if it is purely subjective, satirical meta-dialogue, or conversational filler."""
+
             chunk = dspy.InputField(desc="The text chunk to evaluate")
             sfl_context = dspy.InputField(desc="SFL intent and tenor")
             contains_facts = dspy.OutputField(desc="Return strictly True or False")
@@ -479,6 +502,7 @@ async def run_full_assessment(
                 # Run the DSPy module inside to_thread to avoid blocking
                 def _run_sfl(dt=display_text):
                     import dspy
+
                     with dspy.context(lm=dspy.settings.lm):
                         return sfl_engine(utterance=dt)
 
@@ -486,6 +510,7 @@ async def run_full_assessment(
                 sfl_context_str = f"Ideational: {sfl_res.get('ideational')} | Interpersonal: {sfl_res.get('interpersonal')}"
             except Exception as e:
                 import logging
+
                 logging.getLogger(__name__).warning(f"Failed to generate SFL context: {e}")
                 sfl_res = {}
                 sfl_context_str = "SFL analysis unavailable."
@@ -496,14 +521,18 @@ async def run_full_assessment(
 
             # Fast Classifier Pass
             try:
+
                 def _run_detector(dt=display_text, sc=sfl_context_str):
                     import dspy
+
                     with dspy.context(lm=dspy.settings.lm):
                         return dspy.Predict(ClaimDetectorSignature)(chunk=dt, sfl_context=sc)
+
                 det_res = await asyncio.to_thread(_run_detector)
                 has_facts = str(det_res.contains_facts).strip().lower() == "true"
             except Exception as e:
                 import logging
+
                 logging.getLogger(__name__).warning(f"Failed detector pass: {e}")
                 has_facts = True
 
@@ -513,6 +542,7 @@ async def run_full_assessment(
                     # hitl_callback is synchronous, runs in thread, blocks until user responds or auto-skip
                     def _run_hitl(dt=display_text, sc=sfl_context_str):
                         return hitl_callback(dt, sc)
+
                     skip_fact_check = await asyncio.to_thread(_run_hitl)
                     _log_sfl_dataset(display_text, sfl_context_str, skip_fact_check)
                 else:
@@ -523,25 +553,30 @@ async def run_full_assessment(
                     clause_external_id=chunk.clause_external_id,
                     passed=True,
                     citations="Bypassed: Classified as subjective/meta-dialogue with no verifiable factual claims.",
-                    framework_available=True
+                    framework_available=True,
                 )
             else:
                 res = await run_fact_check_for_chunk(
                     chunk.clause_external_id,
                     display_text,
                     system_instructions,
-                    context,
-                    sfl_context_str
+                    context or "",
+                    sfl_context_str,
                 )
             results.append(res)
 
             if state_callback:
                 # Emit rich dict for UI to render
-                state_callback("ticker_stream_append", {
-                    "passed": res.passed,
-                    "text": display_text.strip(),
-                    "citations": res.citations.replace('\n', ' ').strip() if res.citations else ""
-                })
+                state_callback(
+                    "ticker_stream_append",
+                    {
+                        "passed": res.passed,
+                        "text": display_text.strip(),
+                        "citations": res.citations.replace("\n", " ").strip()
+                        if res.citations
+                        else "",
+                    },
+                )
 
             if res.passed:
                 passed_count += 1
@@ -549,23 +584,26 @@ async def run_full_assessment(
                 failed_count += 1
 
             if state_callback:
-                state_callback("metrics", {
-                    "completed": completed,
-                    "total": total_tasks,
-                    "passed": passed_count,
-                    "failed": failed_count,
-                })
+                state_callback(
+                    "metrics",
+                    {
+                        "completed": completed,
+                        "total": total_tasks,
+                        "passed": passed_count,
+                        "failed": failed_count,
+                    },
+                )
 
             if progress_callback:
                 progress_callback(f"Fact-checking chunk {completed}/{total_tasks}...")
 
         # Re-map results to chunks
-        res_map = {res.clause_external_id: res for res in results}
+        res_map = {r.clause_external_id: r for r in results}
         for chunk in assessment_chunks:
-            res = res_map.get(chunk.clause_external_id)
-            if res:
-                chunk.fact_check_passed = res.passed
-                chunk.fact_check_citations = res.citations
+            chunk_res = res_map.get(chunk.clause_external_id)
+            if chunk_res:
+                chunk.fact_check_passed = chunk_res.passed
+                chunk.fact_check_citations = chunk_res.citations
     return AssessmentResult(
         system_instructions=system_instructions,
         audio_metadata=audio_metadata,

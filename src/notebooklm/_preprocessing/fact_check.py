@@ -39,7 +39,13 @@ class FactCheckAdapter:
         """
         return os.path.exists(self.framework_path)
 
-    def check(self, chunk: str, system_instructions: str = "", notebook_context: str = "", sfl_context: str = "") -> tuple[bool, str]:
+    def check(
+        self,
+        chunk: str,
+        system_instructions: str = "",
+        notebook_context: str = "",
+        sfl_context: str = "",
+    ) -> tuple[bool, str]:
         if not self.framework_available:
             logger.warning(
                 f"Fact-check framework not found at {self.framework_path}. FactCheckAdapter fallback triggered."
@@ -47,6 +53,7 @@ class FactCheckAdapter:
             return True, ""
 
         try:
+
             class FactCheckSignature(dspy.Signature):
                 """Evaluate the factual validity of a text chunk based on fact-checking instructions, notebook context, and SFL intent/subtext."""
 
@@ -56,15 +63,15 @@ class FactCheckAdapter:
                 system_instructions = dspy.InputField(
                     desc="System instructions / perspective given for the audio generation"
                 )
-                notebook_context = dspy.InputField(
-                    desc="Contextual sources / notebook data"
-                )
+                notebook_context = dspy.InputField(desc="Contextual sources / notebook data")
                 sfl_context = dspy.InputField(
                     desc="Systemic Functional Linguistics (SFL) metadata (intent, tenor, subtext) - DO NOT penalize analogies, metaphors, or subjective intent as factual errors."
                 )
                 chunk = dspy.InputField(desc="The text chunk to verify")
                 is_valid = dspy.OutputField(desc="Return strictly True or False")
-                citations = dspy.OutputField(desc="Inline citations to external sources verifying or debunking the claim")
+                citations = dspy.OutputField(
+                    desc="Inline citations to external sources verifying or debunking the claim"
+                )
 
             def web_search(query: str) -> str:
                 """Search the web to fact-check claims."""
@@ -77,7 +84,7 @@ class FactCheckAdapter:
                             "https://api.exa.ai/search",
                             json={"query": query, "useAutoprompt": True},
                             headers={"x-api-key": exa_key},
-                            timeout=10.0
+                            timeout=10.0,
                         )
                         if resp.status_code == 200:
                             return str(resp.json())
@@ -90,7 +97,7 @@ class FactCheckAdapter:
                         resp = httpx.get(
                             f"https://s.jina.ai/{query}",
                             headers={"Authorization": f"Bearer {jina_key}"},
-                            timeout=10.0
+                            timeout=10.0,
                         )
                         if resp.status_code == 200:
                             return resp.text
@@ -105,7 +112,7 @@ class FactCheckAdapter:
                 system_instructions=system_instructions,
                 notebook_context=notebook_context,
                 sfl_context=sfl_context,
-                chunk=chunk
+                chunk=chunk,
             )
 
             # ReAct returns the same output fields as the signature

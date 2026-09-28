@@ -9,14 +9,14 @@ Selected segments are extracted using pydub and exported as either a single
 concatenated file or separate files.
 """
 
-import json
 import argparse
-import sys
+import json
 import os
+import sys
 
 try:
-    from pydub import AudioSegment
     import questionary
+    from pydub import AudioSegment
 except ImportError as e:
     print(f"Missing dependencies ({e}).")
     print("Please make sure you run this script via uv:")
@@ -26,7 +26,7 @@ except ImportError as e:
 
 def parse_diarization(diarization):
     utterances = []
-    
+
     if isinstance(diarization, list):
         # Likely AssemblyAI format
         for utt in diarization:
@@ -35,7 +35,7 @@ def parse_diarization(diarization):
             start = utt.get("start", 0)  # AssemblyAI is typically ms
             end = utt.get("end", 0)
             utterances.append({"speaker": speaker, "text": text, "start": start, "end": end})
-            
+
     elif isinstance(diarization, dict):
         if "results" in diarization and "channels" in diarization["results"]:
             # Deepgram format
@@ -45,24 +45,26 @@ def parse_diarization(diarization):
                 current_text = []
                 start_time = None
                 end_time = None
-                
+
                 for w in words:
                     speaker = str(w.get("speaker", "Unknown"))
                     word_text = w.get("punctuated_word", w.get("word", ""))
                     w_start = w.get("start", 0) * 1000  # Deepgram is in seconds
                     w_end = w.get("end", 0) * 1000
-                    
+
                     if current_speaker is None:
                         current_speaker = speaker
                         start_time = w_start
-                    
+
                     if speaker != current_speaker:
-                        utterances.append({
-                            "speaker": current_speaker, 
-                            "text": " ".join(current_text),
-                            "start": start_time,
-                            "end": end_time
-                        })
+                        utterances.append(
+                            {
+                                "speaker": current_speaker,
+                                "text": " ".join(current_text),
+                                "start": start_time,
+                                "end": end_time,
+                            }
+                        )
                         current_speaker = speaker
                         current_text = [word_text]
                         start_time = w_start
@@ -70,17 +72,19 @@ def parse_diarization(diarization):
                     else:
                         current_text.append(word_text)
                         end_time = w_end
-                        
+
                 if current_text:
-                    utterances.append({
-                        "speaker": current_speaker, 
-                        "text": " ".join(current_text),
-                        "start": start_time,
-                        "end": end_time
-                    })
+                    utterances.append(
+                        {
+                            "speaker": current_speaker,
+                            "text": " ".join(current_text),
+                            "start": start_time,
+                            "end": end_time,
+                        }
+                    )
             except (KeyError, IndexError):
                 print("Could not parse Deepgram diarization format.")
-                
+
         elif "results" in diarization and isinstance(diarization["results"], list):
             # Speechmatics format
             try:
@@ -89,7 +93,7 @@ def parse_diarization(diarization):
                 current_text = []
                 start_time = None
                 end_time = None
-                
+
                 for r in results:
                     if r.get("type") == "word" and r.get("alternatives"):
                         alt = r["alternatives"][0]
@@ -97,18 +101,20 @@ def parse_diarization(diarization):
                         word_text = alt.get("content", "")
                         w_start = r.get("start_time", 0) * 1000
                         w_end = r.get("end_time", 0) * 1000
-                        
+
                         if current_speaker is None:
                             current_speaker = speaker
                             start_time = w_start
-                            
+
                         if speaker != current_speaker:
-                            utterances.append({
-                                "speaker": current_speaker,
-                                "text": " ".join(current_text),
-                                "start": start_time,
-                                "end": end_time
-                            })
+                            utterances.append(
+                                {
+                                    "speaker": current_speaker,
+                                    "text": " ".join(current_text),
+                                    "start": start_time,
+                                    "end": end_time,
+                                }
+                            )
                             current_speaker = speaker
                             current_text = [word_text]
                             start_time = w_start
@@ -116,39 +122,43 @@ def parse_diarization(diarization):
                         else:
                             current_text.append(word_text)
                             end_time = w_end
-                            
+
                 if current_text:
-                    utterances.append({
-                        "speaker": current_speaker,
-                        "text": " ".join(current_text),
-                        "start": start_time,
-                        "end": end_time
-                    })
+                    utterances.append(
+                        {
+                            "speaker": current_speaker,
+                            "text": " ".join(current_text),
+                            "start": start_time,
+                            "end": end_time,
+                        }
+                    )
             except Exception as e:
-                 print(f"Could not parse Speechmatics format: {e}")
+                print(f"Could not parse Speechmatics format: {e}")
 
     return utterances
 
 
 def find_json_files(notebooklm_dir):
     import pathlib
+
     path = pathlib.Path(notebooklm_dir)
     if not path.exists():
         return []
-    return sorted(list(path.rglob("*_diarization.json")), key=lambda p: p.stat().st_mtime, reverse=True)
+    return sorted(path.rglob("*_diarization.json"), key=lambda p: p.stat().st_mtime, reverse=True)
 
 
 async def get_db_mapping():
     """Returns a dict mapping asset_id -> local_path from the NotebookLM DB."""
     try:
-        from notebooklm.db.session import async_session_maker
-        from notebooklm.db.models import LocalAsset
         from sqlalchemy import select
+
+        from notebooklm.db.models import LocalAsset
+        from notebooklm.db.session import async_session_maker
     except ImportError:
         print("Failed to import notebooklm database models.")
         print("Make sure you run this script with `uv run` from the project root.")
         sys.exit(1)
-        
+
     mapping = {}
     async with async_session_maker() as session:
         result = await session.execute(select(LocalAsset))
@@ -166,69 +176,73 @@ def main():
     parser = argparse.ArgumentParser(description="Extract audio segments using diarization JSON.")
     parser.add_argument("audio", nargs="?", help="Path to the source audio file (e.g., .wav, .mp3)")
     parser.add_argument("json", nargs="?", help="Path to the diarization JSON file")
-    parser.add_argument("-o", "--output", default="extracted.wav", help="Path for the output audio file")
-    parser.add_argument("--separate", action="store_true", help="Export selected segments as separate files")
+    parser.add_argument(
+        "-o", "--output", default="extracted.wav", help="Path for the output audio file"
+    )
+    parser.add_argument(
+        "--separate", action="store_true", help="Export selected segments as separate files"
+    )
     args = parser.parse_args()
 
+    import asyncio
     import os
     import pathlib
-    import asyncio
-    
+
     try:
         from rich.console import Console
         from rich.panel import Panel
+
         console = Console()
         console.clear()
-        console.print(Panel.fit(
-            "[bold cyan]NotebookLM Sentence Extractor[/bold cyan]\n"
-            "[dim]Slice and export audio using Diarization JSON[/dim]", 
-            border_style="cyan"
-        ))
+        console.print(
+            Panel.fit(
+                "[bold cyan]NotebookLM Sentence Extractor[/bold cyan]\n"
+                "[dim]Slice and export audio using Diarization JSON[/dim]",
+                border_style="cyan",
+            )
+        )
         print()
     except ImportError:
         os.system("clear" if os.name == "posix" else "cls")
 
     notebooklm_dir = pathlib.Path(os.path.expanduser("~/NotebookLM"))
-    
+
     audio_path = args.audio
     json_path = args.json
 
     if not audio_path or not json_path:
         print("Querying NotebookLM database for local audio assets...")
         db_mapping = asyncio.run(get_db_mapping())
-        
+
         json_files = find_json_files(notebooklm_dir)
         valid_pairs = []
-        
+
         for jf in json_files:
             # The base could be a UUID (asset_id) or the audio file's base name
             base_name = jf.name.replace("_diarization.json", "")
             if base_name in db_mapping:
                 valid_pairs.append((jf, db_mapping[base_name]))
-                
+
         if not valid_pairs:
             print("No diarization JSON files with matching database audio found.")
             sys.exit(1)
-            
+
         if not json_path or not audio_path:
             choices = []
             for jf, ap in valid_pairs:
                 audio_name = os.path.basename(ap)
                 label = f"{audio_name}  [dim](JSON: {jf.name})[/dim]"
                 choices.append(questionary.Choice(title=label, value=(str(jf), str(ap))))
-                
-            selected = questionary.select(
-                "Select the audio file:",
-                choices=choices
-            ).ask()
-            
+
+            selected = questionary.select("Select the audio file:", choices=choices).ask()
+
             if not selected:
                 sys.exit(0)
-                
+
             json_path, audio_path = selected
 
     try:
-        with open(json_path, "r", encoding="utf-8") as f:
+        with open(json_path, encoding="utf-8") as f:
             diarization = json.load(f)
     except Exception as e:
         print(f"Failed to load JSON file: {e}")
@@ -241,16 +255,16 @@ def main():
 
     choices = []
     for i, u in enumerate(utterances):
-        text = u['text'].strip()
+        text = u["text"].strip()
         if not text:
             text = "(Silence / Unrecognized)"
         preview = text if len(text) <= 60 else text[:57] + "..."
-        label = f"[Speaker {u['speaker']}] ({u['start']/1000:.1f}s - {u['end']/1000:.1f}s): {preview}"
+        label = f"[Speaker {u['speaker']}] ({u['start'] / 1000:.1f}s - {u['end'] / 1000:.1f}s): {preview}"
         choices.append(questionary.Choice(title=label, value=i))
 
     selected_indices = questionary.checkbox(
         "Select the utterances you want to extract (Space to select, Enter to confirm):",
-        choices=choices
+        choices=choices,
     ).ask()
 
     if not selected_indices:
@@ -270,17 +284,17 @@ def main():
         ext = args.output.rsplit(".", 1)[1] if "." in args.output else "wav"
         for count, idx in enumerate(selected_indices, 1):
             u = utterances[idx]
-            segment = audio[u['start']:u['end']]
+            segment = audio[u["start"] : u["end"]]
             out_name = f"{base_name}_{count:03d}_{u['speaker']}.{ext}"
             segment.export(out_name, format=ext)
-            print(f"Exported: {out_name} [{u['start']/1000:.1f}s - {u['end']/1000:.1f}s]")
+            print(f"Exported: {out_name} [{u['start'] / 1000:.1f}s - {u['end'] / 1000:.1f}s]")
     else:
         output_audio = AudioSegment.empty()
         for idx in selected_indices:
             u = utterances[idx]
-            segment = audio[u['start']:u['end']]
+            segment = audio[u["start"] : u["end"]]
             output_audio += segment
-            
+
         ext = args.output.rsplit(".", 1)[1] if "." in args.output else "wav"
         output_audio.export(args.output, format=ext)
         print(f"Exported combined audio ({len(selected_indices)} segments) to {args.output}")

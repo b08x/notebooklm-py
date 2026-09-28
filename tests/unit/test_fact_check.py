@@ -10,10 +10,11 @@ def test_fact_check_routing():
     # Mock framework availability to test ReAct
     adapter.framework_path = "/tmp"  # assuming it exists or we mock it
 
-    with patch("os.path.exists", return_value=True), \
-         patch("notebooklm._preprocessing.fact_check.dspy.ReAct") as mock_react, \
-         patch.dict(os.environ, {"EXA_API_KEY": "test_key"}):
-
+    with (
+        patch("os.path.exists", return_value=True),
+        patch("notebooklm._preprocessing.fact_check.dspy.ReAct") as mock_react,
+        patch.dict(os.environ, {"EXA_API_KEY": "test_key"}),
+    ):
         # Create a mock agent that returns a mock result
         mock_agent = MagicMock()
         mock_res = MagicMock()

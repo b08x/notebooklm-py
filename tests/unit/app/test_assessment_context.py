@@ -41,7 +41,9 @@ def _stub_pipeline_and_transcription():
         patch.object(
             assessment_module.IngestionService, "ingest_chunks", new=AsyncMock(return_value=1)
         ) as mock_ingest_chunks,
-        patch.object(assessment_module, "setup_dspy_router", return_value=(MagicMock(), MagicMock())),
+        patch.object(
+            assessment_module, "setup_dspy_router", return_value=(MagicMock(), MagicMock())
+        ),
     ):
         yield mock_ingest_chunks
 

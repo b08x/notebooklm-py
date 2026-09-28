@@ -23,6 +23,7 @@ async def resolve_notebook_context(client: Any, notebook_id: str) -> str | None:
         logger.warning("Could not fetch notebook summary for contextual embedding", exc_info=True)
     return None
 
+
 async def resolve_source_context(client: Any, notebook_id: str, source_id: str) -> str | None:
     """Fetch NotebookLM's own AI-generated source summary for contextual embedding.
 
@@ -75,7 +76,9 @@ class IngestionService:
         #: partway through a large document.
         self.embed_batch_size = embed_batch_size
 
-    async def _resolve_context(self, notebook_id: str, source_id: str, explicit_context: str | None) -> str | None:
+    async def _resolve_context(
+        self, notebook_id: str, source_id: str, explicit_context: str | None
+    ) -> str | None:
         if explicit_context is not None:
             return explicit_context.strip() or None
         if not self.use_source_context:

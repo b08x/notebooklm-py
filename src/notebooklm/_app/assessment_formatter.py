@@ -1,4 +1,3 @@
-
 from .assessment import AssessmentResult
 
 
@@ -19,8 +18,10 @@ def generate_markdown_report(result: AssessmentResult) -> str:
         if profiles:
             lines.append("### Speaker Profiles")
             for sp, data in profiles.items():
-                dominant = data.get('dominant_tenor', 'unknown')
-                lines.append(f"- **{sp}**: {data.get('utterances', 0)} utterances, Dominant Tenor: {dominant}")
+                dominant = data.get("dominant_tenor", "unknown")
+                lines.append(
+                    f"- **{sp}**: {data.get('utterances', 0)} utterances, Dominant Tenor: {dominant}"
+                )
             lines.append("")
 
         anomalies = sfl.get("anomalies", [])
@@ -28,7 +29,7 @@ def generate_markdown_report(result: AssessmentResult) -> str:
             lines.append("### Semantic Anomalies")
             for a in anomalies:
                 lines.append(f"- **{a['speaker']}**: {a['issue']} (Segment {a['segment_index']})")
-                lines.append(f"  > *\"{a.get('text', '')}\"*")
+                lines.append(f'  > *"{a.get("text", "")}"*')
             lines.append("")
 
     # Fact Checking Results
@@ -50,7 +51,9 @@ def generate_markdown_report(result: AssessmentResult) -> str:
     lines.append("\n## Data Quality")
     if has_failed_facts or (sfl and sfl.get("anomalies")):
         lines.append("> [!WARNING]")
-        lines.append("> The audio overview contains flagged semantic anomalies or failed fact checks. Please review the highlighted sections.")
+        lines.append(
+            "> The audio overview contains flagged semantic anomalies or failed fact checks. Please review the highlighted sections."
+        )
     else:
         lines.append("> [!NOTE]")
         lines.append("> The audio overview passed basic checks.")

@@ -12,8 +12,10 @@ def test_markdown_report_data_quality():
         transcript="",
         chunks=[chunk],
         sfl_metrics={
-            "anomalies": [{"speaker": "Host 1", "issue": "Semantic anomaly: sudden shift", "segment_index": 0}]
-        }
+            "anomalies": [
+                {"speaker": "Host 1", "issue": "Semantic anomaly: sudden shift", "segment_index": 0}
+            ]
+        },
     )
 
     report = generate_markdown_report(res)
@@ -23,16 +25,13 @@ def test_markdown_report_data_quality():
     assert "Semantic anomaly: sudden shift" in report
     assert "Failed Fact Check" in report
 
+
 def test_markdown_report_pass():
     chunk = AssessmentChunk(text="The sky is blue", clause_external_id="123:0")
     chunk.fact_check_passed = True
 
     res = AssessmentResult(
-        system_instructions="",
-        audio_metadata="",
-        transcript="",
-        chunks=[chunk],
-        sfl_metrics={}
+        system_instructions="", audio_metadata="", transcript="", chunks=[chunk], sfl_metrics={}
     )
 
     report = generate_markdown_report(res)
