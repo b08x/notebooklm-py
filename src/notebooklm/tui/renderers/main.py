@@ -1,3 +1,4 @@
+import datetime
 from typing import Any
 
 from rich.align import Align
@@ -9,6 +10,57 @@ from ..state import TUIState, View
 from .chat import render_chat
 from .compiler import render_compiler
 from .logs import render_logs
+
+
+def format_relative_time(
+    ts: float | int | datetime.datetime | None,
+    now: float | int | datetime.datetime | None = None,
+) -> str:
+    """Format a timestamp into a concise, human-readable relative time string.
+
+    Examples: 'just now', '2m ago', '3h ago', 'Yesterday', 'Sep 15'.
+    """
+    if ts is None:
+        return ""
+    if isinstance(ts, (int, float)):
+        try:
+            dt = datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc)
+        except Exception:
+            return ""
+    elif isinstance(ts, datetime.datetime):
+        dt = ts if ts.tzinfo is not None else ts.replace(tzinfo=datetime.timezone.utc)
+    else:
+        return ""
+
+    if now is None:
+        now_dt = datetime.datetime.now(datetime.timezone.utc)
+    elif isinstance(now, (int, float)):
+        try:
+            now_dt = datetime.datetime.fromtimestamp(now, tz=datetime.timezone.utc)
+        except Exception:
+            now_dt = datetime.datetime.now(datetime.timezone.utc)
+    elif isinstance(now, datetime.datetime):
+        now_dt = now if now.tzinfo is not None else now.replace(tzinfo=datetime.timezone.utc)
+    else:
+        now_dt = datetime.datetime.now(datetime.timezone.utc)
+
+    diff = (now_dt - dt).total_seconds()
+    if diff < 0:
+        return "just now"
+    if diff < 60:
+        return "just now"
+    if diff < 3600:
+        return f"{int(diff // 60)}m ago"
+    if diff < 86400:
+        return f"{int(diff // 3600)}h ago"
+    if diff < 172800:
+        return "Yesterday"
+
+    day_str = str(dt.day)
+    month_str = dt.strftime("%b")
+    if dt.year == now_dt.year:
+        return f"{month_str} {day_str}"
+    return f"{month_str} {day_str}, {dt.year}"
 
 
 def _render_ingest_progress(progress: dict) -> Text:
@@ -201,6 +253,9 @@ def render_main(state: TUIState) -> tuple[Panel, Panel]:
 
         # 2. Stats
         stats = state.notebook_stats.get(state.selected_notebook)
+        cache = getattr(state, "tui_cache", None)
+        if not stats and cache is not None:
+            stats = cache.get_artifact_stats(state.selected_notebook)
 
         if stats:
             if stats.get("loading"):
@@ -220,16 +275,53 @@ def render_main(state: TUIState) -> tuple[Panel, Panel]:
                 table.add_column("Key", style="bold_info", justify="right")
                 table.add_column("Value", style="foreground")
 
-                table.add_row("Sources", str(stats.get("source_count", 0)))
-                table.add_row("Artifacts", str(stats.get("artifact_count", 0)))
+                if stats.get("source_count") is not None:
+                    table.add_row("Sources", str(stats.get("source_count", 0)))
+                art_count = (
+                    stats.get("total_artifacts")
+                    if stats.get("total_artifacts") is not None
+                    else stats.get("artifact_count", 0)
+                )
+                table.add_row("Artifacts", str(art_count))
 
-                types = stats.get("artifact_types", [])
-                if types:
-                    from collections import Counter
-
-                    counts = Counter(types)
-                    types_str = ", ".join(f"{k} ({v})" for k, v in counts.items())
+                counts = stats.get("counts")
+                if counts and isinstance(counts, dict):
+                    types_str = ", ".join(
+                        f"{k.replace('_', ' ').title()} ({v})" for k, v in counts.items()
+                    )
                     table.add_row("Artifact Types", types_str)
+                else:
+                    types = stats.get("artifact_types", [])
+                    if types:
+                        from collections import Counter
+
+                        counts_c = Counter(types)
+                        types_str = ", ".join(
+                            f"{k.replace('_', ' ').title()} ({v})" for k, v in counts_c.items()
+                        )
+                        table.add_row("Artifact Types", types_str)
+
+                # Audio Overview status & relative timestamp
+                has_audio = stats.get("has_audio", False)
+                audio_ts = None
+                for art in stats.get("artifacts", []):
+                    kind = art.get("kind", "")
+                    if kind in ("audio", "audio_overview") and art.get("timestamp"):
+                        if audio_ts is None or art["timestamp"] > audio_ts:
+                            audio_ts = art["timestamp"]
+
+                if has_audio:
+                    if audio_ts:
+                        rel_audio = format_relative_time(audio_ts)
+                        table.add_row("Audio Overview", f"Ready (generated {rel_audio})")
+                    else:
+                        table.add_row("Audio Overview", "Ready")
+                else:
+                    table.add_row("Audio Overview", "None")
+
+                recent_ts = stats.get("recent_generated_at")
+                if recent_ts:
+                    table.add_row("Last Generated", format_relative_time(recent_ts))
 
                 detail_group.append(
                     Text("\nNotebook Statistics", style="bold_accent", justify="center")
@@ -295,13 +387,82 @@ def render_main(state: TUIState) -> tuple[Panel, Panel]:
         title_text = Text(title, style="bold_accent", justify="center")
         sources_text = Text(f"{sources} Sources", style="info", justify="center")
 
+        stats = state.notebook_stats.get(state.selected_notebook)
+        cache = getattr(state, "tui_cache", None)
+        if not stats and cache is not None:
+            stats = cache.get_artifact_stats(state.selected_notebook)
+
+        info_items: list[Any] = [
+            Align.center(title_text),
+            Align.center(sources_text),
+        ]
+
+        if stats and not stats.get("loading") and "error" not in stats:
+            from rich.table import Table
+
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            table.add_column("Key", style="bold_info", justify="right")
+            table.add_column("Value", style="foreground")
+
+            art_count = (
+                stats.get("total_artifacts")
+                if stats.get("total_artifacts") is not None
+                else stats.get("artifact_count", 0)
+            )
+            table.add_row("Artifacts", str(art_count))
+
+            counts = stats.get("counts")
+            if counts and isinstance(counts, dict):
+                types_str = ", ".join(
+                    f"{k.replace('_', ' ').title()} ({v})" for k, v in counts.items()
+                )
+                table.add_row("Artifact Types", types_str)
+            else:
+                types = stats.get("artifact_types", [])
+                if types:
+                    from collections import Counter
+
+                    c = Counter(types)
+                    types_str = ", ".join(
+                        f"{k.replace('_', ' ').title()} ({v})" for k, v in c.items()
+                    )
+                    table.add_row("Artifact Types", types_str)
+
+            has_audio = stats.get("has_audio", False)
+            audio_ts = None
+            for art in stats.get("artifacts", []):
+                kind = art.get("kind", "")
+                if kind in ("audio", "audio_overview") and art.get("timestamp"):
+                    if audio_ts is None or art["timestamp"] > audio_ts:
+                        audio_ts = art["timestamp"]
+
+            if has_audio:
+                if audio_ts:
+                    rel_audio = format_relative_time(audio_ts)
+                    table.add_row("Audio Overview", f"Ready (generated {rel_audio})")
+                else:
+                    table.add_row("Audio Overview", "Ready")
+            else:
+                table.add_row("Audio Overview", "None")
+
+            recent_ts = stats.get("recent_generated_at")
+            if recent_ts:
+                table.add_row("Last Generated", format_relative_time(recent_ts))
+
+            info_items.append(Text(""))
+            info_items.append(Align.center(table))
+        elif stats and stats.get("loading"):
+            info_items.append(Text("\nLoading statistics...", style="muted", justify="center"))
+        elif stats and "error" in stats:
+            info_items.append(
+                Text(f"\nFailed to load stats: {stats['error']}", style="error", justify="center")
+            )
+
+        info_items.append(Text("\n[Enter] to view details.", justify="center", style="muted"))
+
         # We put the list/actions in results and summary in detail
         results_panel = Panel(
-            Group(
-                Align.center(title_text),
-                Align.center(sources_text),
-                Text("\n[Enter] to view details.", justify="center", style="muted"),
-            ),
+            Group(*info_items),
             title="Notebook Info",
             border_style="border",
             style="main",

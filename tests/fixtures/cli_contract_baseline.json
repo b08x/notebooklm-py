@@ -7558,6 +7558,31 @@
           "default": null,
           "envvar": null,
           "has_custom_shell_complete": false,
+          "help": "Sort notebooks by attribute (name, modified, created, artifacts).",
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "sort",
+          "opts": [
+            "--sort"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "case_sensitive": false,
+            "choices": [
+              "name",
+              "modified",
+              "created",
+              "artifacts"
+            ],
+            "name": "choice"
+          }
+        },
+        {
+          "default": null,
+          "envvar": null,
+          "has_custom_shell_complete": false,
           "help": "Show at most N rows. 0 = show no rows. Omit for unlimited. Applies to both text and --json output.",
           "is_flag": false,
           "kind": "option",
@@ -8400,6 +8425,7 @@
         "status",
         "suggest-prompts",
         "summary",
+        "tui",
         "use"
       ],
       "params": [
@@ -11641,6 +11667,7 @@
     "status",
     "suggest-prompts",
     "summary",
+    "tui",
     "use"
   ],
   "schema_version": 1,

@@ -99,7 +99,12 @@ def render_sidebar(state: TUIState) -> Panel:
     for nb in sliced_notebooks:
         raw_title = getattr(nb, "title", "Unknown") or "Unknown"
         is_selected = nb.id == state.selected_notebook
-        sources = str(getattr(nb, "sources_count", 0))
+        sources_cnt = getattr(nb, "sources_count", 0)
+        try:
+            sources_val = int(sources_cnt) if sources_cnt is not None else 0
+            sources_str = f"{sources_val:>2}"
+        except (ValueError, TypeError):
+            sources_str = str(sources_cnt)
 
         chip, clean_title, _ = _parse_domain_tag(raw_title)
         badges = _get_artifact_badges(nb.id, state)
@@ -114,7 +119,7 @@ def render_sidebar(state: TUIState) -> Panel:
 
         style = "selected" if is_selected else "foreground"
         prefix = "▶" if is_selected else " "
-        node_label = f"[{style}]{prefix} {chip}{truncated_title} ({sources}){badges_str}[/]"
+        node_label = f"[{style}]{prefix} {chip}{truncated_title} ({sources_str}){badges_str}[/]"
 
         tree.add(node_label)
 

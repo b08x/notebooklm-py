@@ -100,6 +100,7 @@ See [Configuration](configuration.md) for full env-var precedence and CI/CD setu
 |---------|-------------|---------|
 | `list` | List all notebooks | `notebooklm list` |
 | `list --json` | Output as JSON | `notebooklm list --json` |
+| `list --sort <attr>` | Sort by `name`, `modified`, `created`, or `artifacts` | `notebooklm list --sort modified` |
 | `list --limit N` | Show at most N notebooks (default: unlimited) | `notebooklm list --limit 10` |
 | `list --no-truncate` | Do not truncate the Title column | `notebooklm list --no-truncate` |
 | `use <id>` | Set active notebook (verifies existence by default) | `notebooklm use abc123` |
@@ -453,8 +454,13 @@ notebooklm tui
 - `c` or `Tab`: Open Chat view
 - `p`: Open Compiler view
 - `A` (Shift+A): Open Assessment view
-- `Esc`: Return to previous view
-- `s`: Toggle sort order (by name or modified date) in Notebook List view
+- `L`: Open Logs view
+- `Esc`: Return to previous view (or clear active search/filters)
+- `s`: Cycle sort mode (`Alphabetical`, `Recent Activity`, `Recent Artifacts`) in Notebook List view
+- `/`: Live search filtering across notebook titles and domain tags
+- `o`: Toggle filter to show only notebooks with Audio Overview
+- `z`: Toggle filter to show only non-empty notebooks
+- `r`: Refresh notebook list or reload selected notebook details
 - `j` / `k` (or Down/Up Arrow): Navigate in lists
 
 **Audio Assessment View Keybindings:**

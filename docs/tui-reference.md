@@ -42,8 +42,8 @@ Available from any view (checked after view-specific handling, so a view's own b
 | `p` | Switch to Compiler view |
 | `A` | Switch to Assessment view |
 | `L` | Switch to [Logs view](#logs) |
-| `Esc` | Return to the previous view |
-| `s` | Toggle Notebook List sort order between name and last-modified |
+| `Esc` | Return to the previous view (or clear active search/filters in Notebook List) |
+| `s` | Cycle Notebook List sort mode (Alphabetical → Recent Activity → Recent Artifacts) |
 | `↑` / `↓` | Aliased to `k` / `j` respectively, everywhere |
 
 > `Esc` only holds a single-slot "previous view," which gets overwritten by the next `c`/`p`/`A`/`L`/`n` jump and is cleared after one use — it does not chain back through multiple hops. Use `n` to jump straight back to your notebook rather than stacking `Esc` presses.
@@ -54,9 +54,27 @@ Available from any view (checked after view-specific handling, so a view's own b
 |---|---|
 | `j` / `k` | Move selection down/up (auto-scrolls once the selection passes 15 rows) |
 | `Enter` | Open the selected notebook in Notebook Detail |
-| `s` | Toggle sort: name ↔ last-modified |
+| `s` | Cycle sort mode: Alphabetical (A-Z) → Recent Activity → Recent Artifacts |
+| `/` | Activate live search mode (filters titles and domain tags in real time) |
+| `Esc` | Clear active search query and reset filter toggles |
+| `o` | Toggle filter to show only notebooks with an Audio Overview |
+| `z` | Toggle filter to show only non-empty notebooks (minimum 1 source) |
+| `r` | Refresh notebook list from server |
 
-The detail panel shows the notebook's AI-generated summary, fetched once in the background per notebook and cached for the session (`client.notebooks.get_summary`).
+### Visual Hierarchy & Badges
+
+- **Domain Chips**: Notebook titles with `[TAG]` prefixes render as color-coded domain chips (`[GEMINI]` in cyan, `[CLAUDE]` in magenta, `[SFL]`/`[ENG]` in yellow, `[TEST]`/`[DEV]` in green).
+- **Compact Artifact Badges**: Compact row indicators show asset availability:
+  - `🎙️` Audio Overview generated
+  - `📄` Notes, reports, or documents present
+  - `⚡` Recent generation activity (within the last 48 hours)
+- **Tabular Counts**: Source counts are formatted with tabular width (e.g., `( 2)` vs `(14)`) for jitter-free vertical alignment during scrolling.
+
+### Notebook Info & Metadata Caching
+
+- **Notebook Info Panel**: Displays notebook title, source count, and a two-column breakdown of artifact statistics: total artifact count, artifact types, audio overview status with relative time (`Ready (generated 2h ago)`), and last generated relative timestamp.
+- **Persistent Cache**: Discovered artifact metadata and summaries are persisted in `~/.notebooklm/tui_cache.json` under file lock, enabling instant offline list navigation with zero background network requests. Explicit refresh (`r` in Notebook Detail) forces a live server re-fetch.
+
 
 ## Notebook Detail
 
