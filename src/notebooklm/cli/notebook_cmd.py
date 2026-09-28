@@ -43,23 +43,82 @@ def register_notebook_commands(cli):
 
     @cli.command("list")
     @click.option("--json", "json_output", is_flag=True, help="Output as JSON")
+    @click.option(
+        "--sort",
+        type=click.Choice(["name", "modified", "created", "artifacts"], case_sensitive=False),
+        default=None,
+        help="Sort notebooks by attribute (name, modified, created, artifacts).",
+    )
     @list_options
     @with_client
-    def list_cmd(ctx, json_output, limit, no_truncate, client_auth):
+    def list_cmd(ctx, json_output, sort, limit, no_truncate, client_auth):
         """List all notebooks.
 
         \b
         Pagination & display:
+          --sort ATTRIBUTE  Sort by name, modified, created, or artifacts.
           --limit N         Show at most N notebooks (default: unlimited).
           --no-truncate     Do not truncate the Title column in the table view.
         """
 
         async def _run():
+            import datetime
+
+            async def _fetch_and_sort(client, _):
+                notebooks = await client.notebooks.list()
+                if not sort:
+                    return notebooks
+
+                sort_lower = sort.lower()
+                if sort_lower == "name":
+                    return sorted(notebooks, key=lambda nb: getattr(nb, "title", "").lower())
+                elif sort_lower == "created":
+                    return sorted(
+                        notebooks,
+                        key=lambda nb: (
+                            getattr(nb, "created_at", None)
+                            or datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
+                        ),
+                        reverse=True,
+                    )
+                elif sort_lower == "modified":
+                    return sorted(
+                        notebooks,
+                        key=lambda nb: (
+                            getattr(nb, "modified_at", None)
+                            or getattr(nb, "created_at", None)
+                            or datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
+                        ),
+                        reverse=True,
+                    )
+                elif sort_lower == "artifacts":
+                    from ..tui.cache import TUICache
+
+                    cache = TUICache()
+                    stats_all = cache.get_all_artifact_stats()
+
+                    def _art_sort_key(nb):
+                        st = stats_all.get(getattr(nb, "id", ""), {})
+                        ts = st.get("recent_generated_at")
+                        if ts is not None:
+                            try:
+                                return datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc)
+                            except Exception:
+                                pass
+                        return (
+                            getattr(nb, "modified_at", None)
+                            or getattr(nb, "created_at", None)
+                            or datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
+                        )
+
+                    return sorted(notebooks, key=_art_sort_key, reverse=True)
+                return notebooks
+
             async with resolve_client_factory(ctx)(client_auth) as client:
                 spec = ListSpec(
                     title="Notebooks",
                     items_key="notebooks",
-                    fetch=lambda client, _: client.notebooks.list(),
+                    fetch=_fetch_and_sort,
                     serialize=lambda nb: {
                         "id": nb.id,
                         "title": nb.title,
