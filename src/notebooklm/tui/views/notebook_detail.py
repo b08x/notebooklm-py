@@ -23,11 +23,22 @@ def _run_summary(state: TUIState, notebook_id: str) -> None:
     # This runs in a background thread
     summary = asyncio.run(_fetch_summary_async(notebook_id))
     state.notebook_summaries[notebook_id] = summary
+    cache = getattr(state, "tui_cache", None)
+    if cache is not None:
+        cache.save_summary(notebook_id, summary)
 
 
 def fetch_summary_if_needed(state: TUIState) -> None:
     if not state.selected_notebook:
         return
+
+    # Check cache first
+    cache = getattr(state, "tui_cache", None)
+    if cache is not None:
+        cached_summary = cache.get_summary(state.selected_notebook)
+        if cached_summary:
+            state.notebook_summaries[state.selected_notebook] = cached_summary
+            return
 
     current = state.notebook_summaries.get(state.selected_notebook)
     if current and current not in (
@@ -51,24 +62,30 @@ def fetch_summary_if_needed(state: TUIState) -> None:
     state.summary_task = executor.submit(_run_summary, state, state.selected_notebook)
 
 
-async def _fetch_notebook_stats_async(notebook_id: str) -> dict:
+async def _fetch_notebook_stats_async(notebook_id: str, state: TUIState | None = None) -> dict:
     try:
         async with NotebookLMClient.from_storage() as client:
             sources = await client.sources.list(notebook_id)
             artifacts = await client.artifacts.list(notebook_id)
-            return {
+            stats: dict[str, Any] = {
                 "source_count": len(sources),
                 "artifact_count": len(artifacts),
                 "artifact_types": [
                     a.kind.value if hasattr(a.kind, "value") else str(a.kind) for a in artifacts
                 ],
             }
+            if state:
+                cache = getattr(state, "tui_cache", None)
+                if cache is not None:
+                    cached = cache.save_artifacts(notebook_id, artifacts)
+                    stats.update(cached)
+            return stats
     except Exception as e:
         return {"error": str(e)}
 
 
 def _run_stats(state: TUIState, notebook_id: str) -> None:
-    stats = asyncio.run(_fetch_notebook_stats_async(notebook_id))
+    stats = asyncio.run(_fetch_notebook_stats_async(notebook_id, state))
     state.notebook_stats[notebook_id] = stats
 
 
@@ -79,6 +96,14 @@ def fetch_stats_if_needed(state: TUIState) -> None:
         return
     if state.notebook_stats.get(state.selected_notebook) == {"loading": True}:
         return
+
+    # Check cache first
+    cache = getattr(state, "tui_cache", None)
+    if cache is not None:
+        cached = cache.get_artifact_stats(state.selected_notebook)
+        if cached:
+            state.notebook_stats[state.selected_notebook] = cached
+            return
 
     state.notebook_stats[state.selected_notebook] = {"loading": True}
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
@@ -157,10 +182,10 @@ async def _download_assets_async(state: TUIState, notebook_id: str) -> str:
                             src_title = "".join(
                                 c for c in src_title_str if c.isalnum() or c in (" ", "-", "_")
                             ).strip()
-                            file_path = sources_dir / f"{src_title}.md"
-                            file_path.write_text(ft.content)
+                            source_file_path = sources_dir / f"{src_title}.md"
+                            source_file_path.write_text(ft.content)
                             await _upsert_asset(
-                                session, src.id, "source", str(file_path.absolute())
+                                session, src.id, "source", str(source_file_path.absolute())
                             )
                     except Exception:
                         pass
@@ -217,7 +242,7 @@ async def _download_assets_async(state: TUIState, notebook_id: str) -> str:
                                 else str(artifact.kind)
                             )
                             kind = str(raw_kind).lower()
-                            file_path = None
+                            file_path: Path | None = None
 
                             if kind == "audio":
                                 file_path = artifacts_dir / f"{safe_title}.wav"
@@ -473,11 +498,18 @@ async def _assess_audio_overview_async(
 
         def hitl_cb(chunk_text: str, sfl_context: str) -> bool:
             import time
+
             if state and getattr(state, "assessment_state", {}).get("auto_skip_meta", False):
                 return True
 
             if progress_cb:
-                progress_cb({"type": "state_update", "key": "hitl_prompt", "value": {"chunk": chunk_text, "sfl": sfl_context, "decision": None}})
+                progress_cb(
+                    {
+                        "type": "state_update",
+                        "key": "hitl_prompt",
+                        "value": {"chunk": chunk_text, "sfl": sfl_context, "decision": None},
+                    }
+                )
 
             # Spin wait for UI to set decision or auto_skip
             while state:
@@ -556,6 +588,7 @@ def _run_assess_audio_overview(
 
         # Automatically trigger fact-checking streaming in the background
         from notebooklm.tui.views.assessment_view import trigger_fact_check
+
         trigger_fact_check(state)
     except Exception as e:
         import logging
@@ -563,7 +596,7 @@ def _run_assess_audio_overview(
         err_msg = str(e)
 
         # Attempt to dig out response text from httpx or litellm errors
-        cause = e
+        cause: Any = e
         while cause:
             if hasattr(cause, "response") and hasattr(cause.response, "text"):
                 err_msg += f"\nResponse Body: {cause.response.text}"

@@ -32,6 +32,8 @@ def test_handle_key_sort_toggle():
     assert handle_key("s", state) is True
     assert state.sort_key == "modified"
     assert handle_key("s", state) is True
+    assert state.sort_key == "recent-artifacts"
+    assert handle_key("s", state) is True
     assert state.sort_key == "name"
 
 
@@ -93,17 +95,17 @@ def test_handle_key_notebook_detail_assess_menu_starts_assessment(monkeypatch):
     assert handle_key("\r", state) is True
 
     mock_start_assess.assert_called_once_with(state)
-    assert state.current_view == View.ASSESSMENT
+    assert state.current_view == View.NOTEBOOK_DETAIL
 
 
-def test_handle_key_notebook_detail_menu_clamps_to_three():
+def test_handle_key_notebook_detail_menu_clamps_to_four():
     state = TUIState()
     state.current_view = View.NOTEBOOK_DETAIL
-    state.detail_menu_index = 3
+    state.detail_menu_index = 4
 
     handle_key("j", state)
 
-    assert state.detail_menu_index == 3
+    assert state.detail_menu_index == 4
 
 
 def test_handle_key_e_enters_context_edit_mode_seeded_from_summary():

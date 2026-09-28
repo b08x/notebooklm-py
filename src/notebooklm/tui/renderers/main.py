@@ -1,3 +1,5 @@
+from typing import Any
+
 from rich.align import Align
 from rich.console import Group
 from rich.panel import Panel
@@ -190,7 +192,7 @@ def render_main(state: TUIState) -> tuple[Panel, Panel]:
         )
 
         # Build details panel
-        detail_group = []
+        detail_group: list[Any] = []
 
         # 1. Summary
         summary_text = state.notebook_summaries.get(state.selected_notebook, "Loading summary...")

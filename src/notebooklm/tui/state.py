@@ -18,6 +18,14 @@ class View(Enum):
     LOGS = auto()
 
 
+SORT_MODES = ["name", "modified", "recent-artifacts"]
+SORT_LABELS = {
+    "name": "Alphabetical (A-Z)",
+    "modified": "Recent Activity",
+    "recent-artifacts": "Recent Artifacts",
+}
+
+
 @dataclass
 class TUIState:
     current_view: View = View.NOTEBOOK_LIST
@@ -27,6 +35,11 @@ class TUIState:
     chat_history: list[dict[str, str]] = field(default_factory=list)
     chat_input: str = ""
     sort_key: str = "name"
+    searching: bool = False
+    search_query: str = ""
+    filter_has_audio: bool = False
+    filter_min_sources: bool = False
+    tui_cache: Any | None = None
     sidebar_focus: bool = True
     background_task: concurrent.futures.Future | None = None
     error_message: str | None = None
@@ -59,6 +72,7 @@ class TUIState:
     api_max_tokens: int = 10
     api_last_update: float = 0.0
     download_dir: str | None = None
+    _last_rendered_tokens: int = -1
 
     def update_tokens(self) -> None:
         import time
@@ -78,3 +92,77 @@ class TUIState:
             self.api_tokens -= 1.0
             return True
         return False
+
+    def cycle_sort(self) -> str:
+        current = "modified" if self.sort_key == "recent-activity" else self.sort_key
+        try:
+            idx = SORT_MODES.index(current)
+            next_idx = (idx + 1) % len(SORT_MODES)
+        except ValueError:
+            next_idx = 0
+        self.sort_key = SORT_MODES[next_idx]
+        return self.sort_key
+
+    def get_filtered_and_sorted_notebooks(self) -> list[Any]:
+        import datetime
+
+        filtered = self.notebooks
+        if self.search_query.strip():
+            query = self.search_query.strip().lower()
+            filtered = [
+                nb
+                for nb in filtered
+                if query in getattr(nb, "title", "").lower()
+                or query in getattr(nb, "id", "").lower()
+            ]
+
+        if self.filter_has_audio:
+            filtered = [
+                nb
+                for nb in filtered
+                if self.notebook_stats.get(getattr(nb, "id", ""), {}).get("has_audio", False)
+            ]
+
+        if self.filter_min_sources:
+            filtered = [nb for nb in filtered if getattr(nb, "sources_count", 0) > 0]
+
+        if self.sort_key == "name":
+            return sorted(filtered, key=lambda nb: getattr(nb, "title", "").lower())
+        elif self.sort_key in ("recent-activity", "modified"):
+            return sorted(
+                filtered,
+                key=lambda nb: (
+                    getattr(nb, "modified_at", None)
+                    or getattr(nb, "created_at", None)
+                    or datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
+                ),
+                reverse=True,
+            )
+        elif self.sort_key == "recent-artifacts":
+
+            def _artifact_sort_key(nb: Any):
+                stats = self.notebook_stats.get(getattr(nb, "id", ""), {})
+                ts = stats.get("recent_generated_at")
+                if ts is not None:
+                    try:
+                        return datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc)
+                    except Exception:
+                        pass
+                return (
+                    getattr(nb, "modified_at", None)
+                    or getattr(nb, "created_at", None)
+                    or datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
+                )
+
+            return sorted(filtered, key=_artifact_sort_key, reverse=True)
+        elif self.sort_key == "created":
+            return sorted(
+                filtered,
+                key=lambda nb: (
+                    getattr(nb, "created_at", None)
+                    or datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
+                ),
+                reverse=True,
+            )
+
+        return filtered

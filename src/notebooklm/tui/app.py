@@ -1,6 +1,10 @@
+import concurrent.futures
+import logging
+
 from rich.console import Console
 from rich.live import Live
 
+from .cache import TUICache
 from .keypress import get_keys, handle_key, raw_terminal
 from .layout import build_layout
 from .logging_bridge import install_tui_log_handler
@@ -13,6 +17,8 @@ from .renderers import (
 from .state import TUIState, View
 from .theme import THEME
 from .views.notebook_list import load_notebooks_sync
+
+logger = logging.getLogger(__name__)
 
 
 def update_layout(layout, state):
@@ -37,18 +43,15 @@ def run_tui(download_dir: str | None = None) -> None:
 
     console = Console(theme=THEME)
 
-    import json
-    from pathlib import Path
+    # Initialize persistent cache
+    cache = TUICache()
+    state.tui_cache = cache
+    state.notebook_summaries = cache.get_all_summaries()
+    state.notebook_stats = cache.get_all_artifact_stats()
 
-    cache_file = Path.home() / ".notebooklm" / "tui_cache.json"
-    if cache_file.exists():
-        try:
-            state.notebook_summaries = json.loads(cache_file.read_text())
-        except Exception:
-            pass
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 
     # Load initial state
-
     with console.status("Loading notebooks...", spinner="dots"):
         load_notebooks_sync(state)
 
@@ -121,25 +124,8 @@ def run_tui(download_dir: str | None = None) -> None:
         except KeyboardInterrupt:
             pass
         finally:
-            import json
-            from pathlib import Path
-
-            cache_file = Path.home() / ".notebooklm" / "tui_cache.json"
             try:
-                cache_file.parent.mkdir(parents=True, exist_ok=True)
-                # Only save actual summaries, not placeholders
-                to_save = {
-                    k: v
-                    for k, v in state.notebook_summaries.items()
-                    if not v.startswith("Loading")
-                    and not v.startswith("Paused")
-                    and not v.startswith("Waiting for scroll")
-                    and "Error loading summary" not in v
-                }
-                if cache_file.exists():
-                    existing = json.loads(cache_file.read_text())
-                    existing.update(to_save)
-                    to_save = existing
-                cache_file.write_text(json.dumps(to_save))
+                cache.save_summaries(state.notebook_summaries)
             except Exception:
                 pass
+            executor.shutdown(wait=False)

@@ -9,6 +9,8 @@ def test_layout_structure():
     assert layout.get("footer") is not None
 
     body = layout.get("body")
-    sidebar = body.get("sidebar")
-    assert sidebar.get("notebooks") is not None
-    assert sidebar.get("commands") is not None
+    assert body.get("sidebar") is not None
+    assert body.get("content") is not None
+    content = body.get("content")
+    assert content.get("results") is not None
+    assert content.get("detail") is not None

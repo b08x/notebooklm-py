@@ -55,14 +55,16 @@ def trigger_assessment_grading(state):
             from notebooklm._app.assessment import generate_assessment_report
 
             artifact_id = state.assessment_state.get("artifact_id", "unknown_artifact")
-            download_dir = getattr(state, "download_dir", None) or os.path.expanduser("~/NotebookLM")
+            download_dir = getattr(state, "download_dir", None) or os.path.expanduser(
+                "~/NotebookLM"
+            )
             artifacts_dir = os.path.join(download_dir, "artifacts")
 
             report_path = generate_assessment_report(
                 artifact_id=artifact_id,
                 assessment_state=state.assessment_state,
                 scoring_result=res,
-                output_dir=artifacts_dir
+                output_dir=artifacts_dir,
             )
 
             state.assessment_state["llm_score"] += f"\n\nReport saved to:\n{report_path}"
@@ -71,6 +73,7 @@ def trigger_assessment_grading(state):
             if len(err_str) > 200:
                 err_str = err_str[:197] + "..."
             import re
+
             err_str = re.sub(r"\x1b\[[0-9;]*m", "", err_str)
             state.assessment_state["llm_score"] = f"Error: {err_str}"
 
@@ -90,7 +93,11 @@ def trigger_fact_check(state):
         return
 
     chunks = state.assessment_state.get("chunks", [])
-    chunks_with_ids = [c for c in chunks if getattr(c, "clause_external_id", None) and getattr(c, "fact_check_passed", None) is None]
+    chunks_with_ids = [
+        c
+        for c in chunks
+        if getattr(c, "clause_external_id", None) and getattr(c, "fact_check_passed", None) is None
+    ]
     if not chunks_with_ids:
         return
 
@@ -121,7 +128,9 @@ def trigger_fact_check(state):
                 chunk.fact_check_passed = result.passed
                 results.append(result)
                 framework_available = framework_available and result.framework_available
-                state.assessment_state["fact_check_status"] = f"Completed {completed}/{len(chunks_with_ids)} checks..."
+                state.assessment_state["fact_check_status"] = (
+                    f"Completed {completed}/{len(chunks_with_ids)} checks..."
+                )
 
             return framework_available
 
@@ -138,7 +147,6 @@ def trigger_fact_check(state):
 
     state.fact_check_task = _fact_check_executor.submit(run)
     state.fact_check_task.add_done_callback(on_done)
-
 
 
 def _render_chunk_text(chunk) -> Text:
@@ -210,20 +218,25 @@ class AssessmentView:
             acc_bar_str = make_sparkline(accuracy_pct, 23)
             prog_bar_str = make_sparkline(progress_pct, 23)
 
-            r1_c1 = Text.from_markup(f"[bold primary] [✔] CHUNK PROGRESS [/] [primary]{prog_bar_str}[/] {int(progress_pct)}% [[foreground]{completed}/{total}[/]]")
-            r1_c2 = Text.from_markup(f"[bold accent] [⏱] ELAPSED TIME [/]  [foreground]{timer_str}[/]")
+            r1_c1 = Text.from_markup(
+                f"[bold primary] [✔] CHUNK PROGRESS [/] [primary]{prog_bar_str}[/] {int(progress_pct)}% [[foreground]{completed}/{total}[/]]"
+            )
+            r1_c2 = Text.from_markup(
+                f"[bold accent] [⏱] ELAPSED TIME [/]  [foreground]{timer_str}[/]"
+            )
 
-            r2_c1 = Text.from_markup(f"[bold success] [★] ACCURACY RATIO [/] [success]{acc_bar_str}[/] {int(accuracy_pct)}%")
-            r2_c2 = Text.from_markup(f"[bold error] [⚠] UNVERIFIED   [/]  [foreground]{failed} Claims[/]")
+            r2_c1 = Text.from_markup(
+                f"[bold success] [★] ACCURACY RATIO [/] [success]{acc_bar_str}[/] {int(accuracy_pct)}%"
+            )
+            r2_c2 = Text.from_markup(
+                f"[bold error] [⚠] UNVERIFIED   [/]  [foreground]{failed} Claims[/]"
+            )
 
             header_table.add_row(r1_c1, r1_c2)
             header_table.add_row(r2_c1, r2_c2)
 
             header_panel = Panel(
-                header_table,
-                box=box.ROUNDED,
-                border_style="primary",
-                padding=(1, 2)
+                header_table, box=box.ROUNDED, border_style="primary", padding=(1, 2)
             )
 
             # Active claim panel
@@ -231,12 +244,14 @@ class AssessmentView:
             if hitl_prompt:
                 chunk_text = hitl_prompt.get("chunk", "")
                 active_claim = Panel(
-                    Text.from_markup(f"[warning]Meta-Dialogue / Satire Detected![/]\n\n[foreground italic]\"{chunk_text}\"[/]\n\n[bold]Skip fact-checking for this chunk?[/]\nPress [bold success]y[/] to bypass, [bold error]n[/] to force fact-check, or [bold accent]s[/] to toggle Auto-Skip."),
+                    Text.from_markup(
+                        f'[warning]Meta-Dialogue / Satire Detected![/]\n\n[foreground italic]"{chunk_text}"[/]\n\n[bold]Skip fact-checking for this chunk?[/]\nPress [bold success]y[/] to bypass, [bold error]n[/] to force fact-check, or [bold accent]s[/] to toggle Auto-Skip.'
+                    ),
                     title="⚠ HUMAN-IN-THE-LOOP REQUIRED",
                     title_align="left",
                     border_style="warning",
                     box=box.HEAVY,
-                    padding=(1, 2)
+                    padding=(1, 2),
                 )
             else:
                 current_chunk = assessment_state.get("current_chunk_text", "Waiting for chunks...")
@@ -246,7 +261,7 @@ class AssessmentView:
                     title_align="left",
                     border_style="primary",
                     box=box.ROUNDED,
-                    padding=(1, 2)
+                    padding=(1, 2),
                 )
 
             # Stream panel
@@ -258,7 +273,9 @@ class AssessmentView:
 
             if not items_to_show:
                 node = log_tree.add(Text("⏳ EVALUATING CURRENT CHUNK", style="muted"))
-                node.add(Text("Checking external knowledge bases and indexed sources...", style="muted"))
+                node.add(
+                    Text("Checking external knowledge bases and indexed sources...", style="muted")
+                )
             else:
                 for i, item in enumerate(items_to_show):
                     if isinstance(item, dict):
@@ -272,13 +289,20 @@ class AssessmentView:
                     color = "success" if is_passed else "error"
                     conf = "94" if is_passed else "--"
 
-                    node_text = Text.from_markup(f"[bold {color}]{mark}[/] [muted]─[/] [bold primary]CONFIDENCE: {conf}%[/] [muted]─ PANEL \\[{completed - i:03d}][/]")
+                    node_text = Text.from_markup(
+                        f"[bold {color}]{mark}[/] [muted]─[/] [bold primary]CONFIDENCE: {conf}%[/] [muted]─ PANEL \\[{completed - i:03d}][/]"
+                    )
                     node = log_tree.add(node_text)
 
                     if cit:
                         node.add(Text(f"Source: {cit[:150]}...", style="foreground"))
                     else:
-                        node.add(Text("Checking external knowledge bases and indexed sources...", style="muted"))
+                        node.add(
+                            Text(
+                                "Checking external knowledge bases and indexed sources...",
+                                style="muted",
+                            )
+                        )
 
             stream_panel = Panel(
                 log_tree,
@@ -286,17 +310,15 @@ class AssessmentView:
                 title_align="left",
                 border_style="muted",
                 box=box.ROUNDED,
-                padding=(1, 2)
+                padding=(1, 2),
             )
 
             assessment_dash = Layout()
             assessment_dash.split_column(
-                Layout(header_panel, name="header", size=6),
-                Layout(name="body")
+                Layout(header_panel, name="header", size=6), Layout(name="body")
             )
             assessment_dash["body"].split_row(
-                Layout(active_claim, name="claim_pane"),
-                Layout(stream_panel, name="log_pane")
+                Layout(active_claim, name="claim_pane"), Layout(stream_panel, name="log_pane")
             )
 
             current_sfl = assessment_state.get("current_chunk_sfl")
@@ -319,14 +341,18 @@ class AssessmentView:
                         return "[dim]None[/]"
                     if isinstance(items, str):
                         return f"[{color} reverse] {items} [/{color} reverse]"
-                    return " ".join(f"[{color} reverse] {item} [/{color} reverse]" for item in items)
+                    return " ".join(
+                        f"[{color} reverse] {item} [/{color} reverse]" for item in items
+                    )
 
                 sfl_table.add_row("Participants", make_badges(parts, "primary"))
                 sfl_table.add_row("Processes", make_badges(procs, "success"))
                 sfl_table.add_row("Circumstances", make_badges(circs, "warning"))
-                sfl_table.add_row("Tenor", make_badges(interpersonal.get('tenor', 'N/A'), "accent"))
-                sfl_table.add_row("Mood", make_badges(interpersonal.get('mood', 'N/A'), "accent"))
-                sfl_table.add_row("Modality", make_badges(interpersonal.get('modality', 'N/A'), "accent"))
+                sfl_table.add_row("Tenor", make_badges(interpersonal.get("tenor", "N/A"), "accent"))
+                sfl_table.add_row("Mood", make_badges(interpersonal.get("mood", "N/A"), "accent"))
+                sfl_table.add_row(
+                    "Modality", make_badges(interpersonal.get("modality", "N/A"), "accent")
+                )
 
                 sfl_panel = Panel(
                     sfl_table,
@@ -334,7 +360,7 @@ class AssessmentView:
                     title_align="left",
                     border_style="magenta",
                     box=box.ROUNDED,
-                    padding=(1, 2)
+                    padding=(1, 2),
                 )
             else:
                 sfl_panel = Panel(
@@ -343,7 +369,7 @@ class AssessmentView:
                     title_align="left",
                     border_style="muted",
                     box=box.ROUNDED,
-                    padding=(1, 2)
+                    padding=(1, 2),
                 )
 
             return assessment_dash, sfl_panel

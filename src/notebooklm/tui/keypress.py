@@ -65,6 +65,23 @@ def handle_key(key: str, state: TUIState) -> bool:
     elif key == "\x1b[B":
         key = "j"
 
+    if getattr(state, "searching", False):
+        if key == "\x1b":  # Escape
+            if state.search_query:
+                state.search_query = ""
+            state.searching = False
+            return True
+        elif key == "\r" or key == "\n":
+            state.searching = False
+            return True
+        elif key == "\x7f":  # Backspace
+            state.search_query = state.search_query[:-1]
+            return True
+        elif len(key) == 1 and not key.startswith("\x1b"):
+            state.search_query += key
+            return True
+        return True
+
     if state.editing_context:
         if key == "\x1b":  # Escape cancels without saving
             state.editing_context = False
@@ -123,12 +140,14 @@ def handle_key(key: str, state: TUIState) -> bool:
             return True
         elif key in ("j", "k") and getattr(state, "audio_artifacts", []):
             if key == "j":
-                state.artifact_cursor = min(state.artifact_cursor + 1, len(state.audio_artifacts) - 1)
+                state.artifact_cursor = min(
+                    state.artifact_cursor + 1, len(state.audio_artifacts) - 1
+                )
             else:
                 state.artifact_cursor = max(state.artifact_cursor - 1, 0)
             return True
         elif key == "\r" or key == "\n":
-            if not getattr(state, "audio_artifacts", []):
+            if not getattr(state, "audio_artifacts", []) or not state.selected_notebook:
                 return True
             selected_artifact = state.audio_artifacts[state.artifact_cursor]
             state.selecting_artifact = False
@@ -148,7 +167,11 @@ def handle_key(key: str, state: TUIState) -> bool:
             executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
             context_override = state.context_overrides.get(state.selected_notebook)
             state.background_task = executor.submit(
-                _run_assess_audio_overview, state, state.selected_notebook, context_override, selected_artifact.id
+                _run_assess_audio_overview,
+                state,
+                state.selected_notebook,
+                context_override,
+                selected_artifact.id,
             )
             return True
         return True
@@ -270,6 +293,7 @@ def handle_key(key: str, state: TUIState) -> bool:
                 start_assess_audio_overview(state)
             elif state.detail_menu_index == 4:
                 from .views.visual_assessment_view import start_assess_visual_artifacts
+
                 start_assess_visual_artifacts(state)
             else:
                 state.previous_view = state.current_view
@@ -296,11 +320,40 @@ def handle_key(key: str, state: TUIState) -> bool:
             state.previous_view = state.current_view
             state.current_view = target
     elif key == "\x1b":  # Escape
+        if state.search_query or state.filter_has_audio or state.filter_min_sources:
+            state.search_query = ""
+            state.filter_has_audio = False
+            state.filter_min_sources = False
+            return True
         if state.previous_view:
             state.current_view = state.previous_view
             state.previous_view = None
-    elif key == "s":
-        state.sort_key = "modified" if state.sort_key == "name" else "name"
+    elif key == "/" and state.current_view == View.NOTEBOOK_LIST:
+        state.searching = True
+        return True
+    elif key == "s" and state.current_view == View.NOTEBOOK_LIST:
+        state.cycle_sort()
+        return True
+    elif key == "o" and state.current_view == View.NOTEBOOK_LIST:
+        state.filter_has_audio = not state.filter_has_audio
+        return True
+    elif key == "z" and state.current_view == View.NOTEBOOK_LIST:
+        state.filter_min_sources = not state.filter_min_sources
+        return True
+    elif key == "r":
+        if state.current_view == View.NOTEBOOK_LIST:
+            from .views.notebook_list import load_notebooks_sync
+
+            load_notebooks_sync(state)
+            return True
+        elif state.current_view == View.NOTEBOOK_DETAIL and state.selected_notebook:
+            from .views.notebook_detail import fetch_stats_if_needed, fetch_summary_if_needed
+
+            state.notebook_stats.pop(state.selected_notebook, None)
+            state.notebook_summaries.pop(state.selected_notebook, None)
+            fetch_stats_if_needed(state)
+            fetch_summary_if_needed(state)
+            return True
     elif key == "e" and state.current_view == View.NOTEBOOK_DETAIL and state.selected_notebook:
         state.editing_context = True
         state.context_edit_buffer = state.context_overrides.get(
@@ -309,25 +362,13 @@ def handle_key(key: str, state: TUIState) -> bool:
         )
     elif key in ("j", "k") and state.current_view == View.NOTEBOOK_DETAIL:
         if key == "j":
-            state.detail_menu_index = min(state.detail_menu_index + 1, 3)
+            state.detail_menu_index = min(state.detail_menu_index + 1, 4)
         else:
             state.detail_menu_index = max(state.detail_menu_index - 1, 0)
-    elif key in ("j", "k") and state.notebooks:
-        # Sort current notebooks to match view
-        import datetime
-
-        if state.sort_key == "name":
-            notebooks = sorted(state.notebooks, key=lambda nb: getattr(nb, "title", "").lower())
-        else:
-            notebooks = sorted(
-                state.notebooks,
-                key=lambda nb: (
-                    getattr(nb, "modified_at", None)
-                    or getattr(nb, "created_at", None)
-                    or datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
-                ),
-                reverse=True,
-            )
+    elif key in ("j", "k") and state.current_view == View.NOTEBOOK_LIST and state.notebooks:
+        notebooks = state.get_filtered_and_sorted_notebooks()
+        if not notebooks:
+            return True
 
         current_id = state.selected_notebook
         try:
