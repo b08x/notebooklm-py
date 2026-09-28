@@ -1,0 +1,47 @@
+{
+  "stage": "facts",
+  "title": "TUI NLP Revamp",
+  "goalSlug": "tui-nlp-revamp",
+  "facts": [
+    {
+      "id": "layout-three-pane",
+      "text": "The TUI primary layout implements a three-pane design: a Tree sidebar for documents, a Results list, and a Selected document detail pane.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "input-bar",
+      "text": "The TUI includes a dedicated bottom input bar that activates upon a specific keypress (e.g., '/') to accept text queries.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "logging-panel",
+      "text": "NLP processing events (embedding, indexing, retrieving) are displayed in a dedicated live logging panel.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "results-table",
+      "text": "Search results display structured metadata (like scores and entities) using a table format.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "syntax-highlighting",
+      "text": "Code snippets within the TUI are displayed with syntax highlighting.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    }
+  ]
+}

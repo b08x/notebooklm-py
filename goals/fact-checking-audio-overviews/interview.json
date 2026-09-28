@@ -1,0 +1,59 @@
+{
+  "stage": "interview",
+  "title": "Audio Overview Fact-Checking",
+  "goalSlug": "fact-checking-audio-overviews",
+  "questions": [
+    {
+      "id": "audio_input",
+      "prompt": "How will the component ingest the Audio Overviews?",
+      "description": "Audio overviews are audio files. Do we need a transcription step, or will we intercept the intermediate text generation traces from the TTS pipeline?",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "generation_trace",
+      "recommendedOptionIds": ["generation_trace"],
+      "options": [
+        { "id": "transcription", "label": "Transcribe the generated audio back to text" },
+        { "id": "generation_trace", "label": "Intercept text transcripts before TTS generation" }
+      ],
+      "required": true
+    },
+    {
+      "id": "sift_focus",
+      "prompt": "How should the SIFT protocol map to NotebookLM sources?",
+      "description": "SIFT usually involves external web search, but NotebookLM is grounded in user-provided documents.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "trace_internal",
+      "recommendedOptionIds": ["trace_internal"],
+      "options": [
+        { "id": "trace_internal", "label": "Trace claims exclusively against provided notebook sources" },
+        { "id": "external_web", "label": "Include external web search to verify claims not found in sources" }
+      ],
+      "required": true
+    },
+    {
+      "id": "sfl_pipeline",
+      "prompt": "How should we apply the SFL pipeline to the two-host 'banter' format?",
+      "description": "Referencing sfl-engine, we can track tenor/modality shifts between speakers to see if 'banter' correlates with hallucinations.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "speaker_profiles,anomaly_detection",
+      "recommendedOptionIds": ["speaker_profiles", "anomaly_detection"],
+      "options": [
+        { "id": "speaker_profiles", "label": "Build speaker profiles and track shifts between the two hosts" },
+        { "id": "anomaly_detection", "label": "Flag semantic anomalies where banter drifts from source material" }
+      ],
+      "required": true
+    },
+    {
+      "id": "report_output",
+      "prompt": "What should the final report output look like?",
+      "description": "What actions should the user be able to take based on the fact-checking report?",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "markdown_report",
+      "recommendedOptionIds": ["markdown_report"],
+      "options": [
+        { "id": "markdown_report", "label": "A detailed Markdown report with inline citations and data quality warnings (similar to sfl-engine)" },
+        { "id": "json_data", "label": "Structured JSON data for programmatic consumption" }
+      ],
+      "required": true
+    }
+  ]
+}

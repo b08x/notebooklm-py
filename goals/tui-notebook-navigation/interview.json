@@ -1,0 +1,105 @@
+{
+  "stage": "interview",
+  "title": "TUI Notebook Sorting & Navigation Enhancement",
+  "goalSlug": "tui-notebook-navigation",
+  "questions": [
+    {
+      "id": "sort-criteria",
+      "prompt": "Which sorting criteria should be supported in the TUI?",
+      "description": "Currently sorting only toggles between alphabetical name and modified/last_viewed_at.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "recent-activity, created-date, recent-artifacts, alphabetical",
+      "recommendedOptionIds": ["recent-activity", "created-date", "recent-artifacts", "alphabetical"],
+      "options": [
+        { "id": "recent-activity", "label": "Recent Activity / Last Viewed (backend last_viewed_at)" },
+        { "id": "created-date", "label": "Creation Date (newest additions first)" },
+        { "id": "recent-artifacts", "label": "Recent Artifact Generation (notebooks with newest audio/notes/artifacts)" },
+        { "id": "alphabetical", "label": "Alphabetical (A-Z title)" },
+        { "id": "source-count", "label": "Source Count (most sources to least)" }
+      ],
+      "required": true
+    },
+    {
+      "id": "artifact-indicators",
+      "prompt": "How should recent artifact generations and artifact presence be displayed?",
+      "description": "The goal is to make newly generated audio overviews and other artifacts immediately recognizable across hundreds of notebooks.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "sidebar-plus-detail",
+      "recommendedOptionIds": ["sidebar-plus-detail"],
+      "options": [
+        { "id": "sidebar-plus-detail", "label": "Compact icon badges in sidebar row (e.g. 🎙️, 📄, ⚡) + rich artifact summary & timestamps in the detail panel (Recommended)" },
+        { "id": "badges-only", "label": "Only glyph badges in the sidebar row to keep it minimal" },
+        { "id": "detail-only", "label": "Only in the right-hand Notebook Info & Details panel (keep sidebar title lines plain)" }
+      ],
+      "required": true
+    },
+    {
+      "id": "domain-organization",
+      "prompt": "How should notebooks crossing various domains or tags (e.g., `[CLAUDE]`, `[GEMINI]`, topics) be navigated?",
+      "description": "Titles often carry bracketed tags or domain keywords.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "tag-filter-and-chips",
+      "recommendedOptionIds": ["tag-filter-and-chips"],
+      "options": [
+        { "id": "tag-filter-and-chips", "label": "Render tags as distinct colored chips in sidebar + provide quick tag filter (e.g. press 't' to filter by domain tag) (Recommended)" },
+        { "id": "collapsible-groups", "label": "Group notebooks into collapsible domain tree sections based on prefix tags" },
+        { "id": "flat-only", "label": "Keep list flat without special tag handling, rely purely on search and sorting" }
+      ],
+      "required": true
+    },
+    {
+      "id": "filtering-search",
+      "prompt": "What search and live filtering capabilities should be added?",
+      "description": "For navigating collections of hundreds of notebooks quickly.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "live-search, artifact-filter",
+      "recommendedOptionIds": ["live-search", "artifact-filter"],
+      "options": [
+        { "id": "live-search", "label": "Interactive title/tag search (press '/' to filter in real-time with instant keyboard navigation)" },
+        { "id": "artifact-filter", "label": "Filter by artifact presence (e.g. 'has audio overview', 'has recent artifacts')" },
+        { "id": "min-sources-filter", "label": "Filter by source count (e.g. exclude empty notebooks with 0 sources)" }
+      ],
+      "required": true
+    },
+    {
+      "id": "artifact-data-strategy",
+      "prompt": "How should artifact metadata and timestamps across hundreds of notebooks be fetched without lag or API rate limits?",
+      "description": "Querying artifacts for hundreds of notebooks sequentially via Google API would exceed rate limits and freeze the UI.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "cached-local-assets, background-scanner",
+      "recommendedOptionIds": ["cached-local-assets", "background-scanner"],
+      "options": [
+        { "id": "cached-local-assets", "label": "Persist discovered artifact metadata in local cache (~/.notebooklm/tui_cache.json / SQLite) across sessions" },
+        { "id": "background-scanner", "label": "Lazy background worker that trickles artifact metadata for visible/nearby notebooks using the token bucket" },
+        { "id": "on-focus-only", "label": "Fetch artifact details only when a notebook is focused/selected or opened" }
+      ],
+      "required": true
+    },
+    {
+      "id": "sort-ui-interaction",
+      "prompt": "How should sort modes and filters be controlled in the TUI?",
+      "description": "Currently 's' toggles between name and modified.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "sort-menu",
+      "recommendedOptionIds": ["sort-menu"],
+      "options": [
+        { "id": "sort-menu", "label": "Pressing 's' opens a clean sort popup/modal menu with options [a] Name, [m] Modified, [c] Created, [g] Recent Artifacts (Recommended)" },
+        { "id": "cycling-key", "label": "Pressing 's' cycles through sort modes sequentially, updating the sidebar header" }
+      ],
+      "required": true
+    },
+    {
+      "id": "scope-boundaries",
+      "prompt": "What is the scope boundary for this feature?",
+      "description": "Determine if changes are restricted to the TUI or should propagate to the CLI.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "tui-focused",
+      "recommendedOptionIds": ["tui-focused"],
+      "options": [
+        { "id": "tui-focused", "label": "TUI-only: Enhance sidebar rendering, key navigation, sorting, filtering, and local artifact metadata caching (Recommended)" },
+        { "id": "tui-and-cli", "label": "TUI + CLI parity: Also add `--sort` flags (created, modified, artifacts) to `notebooklm list`" }
+      ],
+      "required": true
+    }
+  ]
+}

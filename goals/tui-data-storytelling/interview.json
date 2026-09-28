@@ -1,0 +1,59 @@
+{
+  "stage": "interview",
+  "title": "TUI Data Storytelling Design",
+  "goalSlug": "tui-data-storytelling",
+  "questions": [
+    {
+      "id": "layout_structure",
+      "prompt": "How should we restructure the main assessment layout for better data storytelling?",
+      "description": "Right now, it's a stacked group in one main panel. We can use Rich's Layout to divide the screen into distinct architectural regions.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "A multi-pane dashboard using Rich Layout.",
+      "recommendedOptionIds": ["dashboard"],
+      "options": [
+        { "id": "dashboard", "label": "Multi-pane dashboard (header stats, left: active claim, right: log stream)" },
+        { "id": "stacked", "label": "Keep stacked but improve spacing and optical alignment" }
+      ],
+      "required": true
+    },
+    {
+      "id": "progress_visualization",
+      "prompt": "How should we visualize progress and accuracy?",
+      "description": "Currently we use simple ascii blocks. Rich has native Progress bars and Tables.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Use Rich's native Progress component for smoother, more precise visual tracking.",
+      "recommendedOptionIds": ["rich_progress"],
+      "options": [
+        { "id": "rich_progress", "label": "Rich native Progress columns" },
+        { "id": "custom_sparklines", "label": "Custom sparklines/minigraphs using Text" }
+      ],
+      "required": true
+    },
+    {
+      "id": "log_stream",
+      "prompt": "How should the verified evidence log stream be presented?",
+      "description": "Currently it's a scrolling text group. We could use Trees, Tables, or Live displays.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "A rich Table with clear status icons and staggered entrance animations.",
+      "recommendedOptionIds": ["table"],
+      "options": [
+        { "id": "table", "label": "Rich Table (structured columns for status, confidence, claim)" },
+        { "id": "tree", "label": "Hierarchical Tree (claim -> citations)" }
+      ],
+      "required": true
+    },
+    {
+      "id": "aesthetic_theme",
+      "prompt": "What visual aesthetic should guide the styling (colors, borders)?",
+      "description": "Currently using heavy borders and a mix of bright colors (magenta/cyan).",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Subtle concentric padding, rounded borders, and a restrained semantic color palette.",
+      "recommendedOptionIds": ["restrained"],
+      "options": [
+        { "id": "restrained", "label": "Restrained/Modern (rounded borders, semantic colors, deep spacing)" },
+        { "id": "retro", "label": "Retro Terminal (blocky, high contrast, heavy borders)" }
+      ],
+      "required": true
+    }
+  ]
+}

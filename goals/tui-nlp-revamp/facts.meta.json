@@ -1,0 +1,9 @@
+[
+  {
+    "id": "layout-three-pane",
+    "text": "The TUI primary layout implements a three-pane design: a Tree sidebar for documents, a Results list, and a Selected document detail pane.",
+    "comment": "adapt to all of the command notebook uses",
+    "recommendedAutomatedVerification": false,
+    "automatedVerification": false
+  }
+]

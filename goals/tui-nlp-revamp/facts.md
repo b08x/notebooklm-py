@@ -1,0 +1,1 @@
+- The TUI primary layout implements a three-pane design: a Tree sidebar for documents, a Results list, and a Selected document detail pane. (Note: adapt to all of the command notebook uses)

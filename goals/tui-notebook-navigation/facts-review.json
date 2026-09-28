@@ -1,0 +1,95 @@
+{
+  "stage": "facts",
+  "title": "TUI Notebook Sorting & Navigation Enhancement Facts",
+  "goalSlug": "tui-notebook-navigation",
+  "facts": [
+    {
+      "id": "fact-sort-modes",
+      "text": "The TUI supports cycling between three sorting modes: Alphabetical (A-Z title), Recent Activity (last viewed / modified timestamp), and Recent Artifacts (notebooks with newest artifacts/audio first).",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-sort-key-cycling",
+      "text": "Pressing 's' in the TUI cycles through the active sort modes sequentially, updating the sidebar header indicator (e.g. '[Sort: Activity]', '[Sort: Artifacts]', '[Sort: Name]').",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-artifact-indicators-sidebar",
+      "text": "Sidebar notebook rows display compact icon badges (e.g. 🎙️ for Audio Overview, 📄 for Notes/Reports, ⚡ for recent generation within 24h) reflecting artifact presence.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-artifact-detail-panel",
+      "text": "The Notebook Info / Details panel displays a rich artifact breakdown showing counts, types, recent generation relative timestamps (e.g. 'Audio · 2h ago'), and status.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-domain-hybrid-grouping",
+      "text": "Notebook domain/agent prefix tags (e.g. `[CLAUDE]`, `[GEMINI]`) are parsed and rendered as distinct styled chips, with hybrid section grouping in the sidebar list.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-live-search",
+      "text": "Pressing '/' activates an interactive live filter bar in the sidebar that filters notebook titles and tags in real time, with Escape canceling/clearing the filter.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-filter-toggles",
+      "text": "The TUI provides filter toggles to restrict the displayed notebook list by artifact presence (e.g. 'has audio overview') and source count (e.g. exclude 0-source empty notebooks).",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-artifact-metadata-caching",
+      "text": "Discovered artifact metadata (counts, types, latest timestamps) is persisted across sessions in local cache (`~/.notebooklm/tui_cache.json` / SQLite) so sort and badge states survive restarts.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-artifact-lazy-background-sync",
+      "text": "Artifact metadata is fetched immediately when a notebook is focused/selected, and trickled in the background for visible/nearby notebooks using the token bucket rate limiter.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-cli-list-sorting-parity",
+      "text": "The `notebooklm list` CLI command adds `--sort` options (`name`, `modified`/`recent`, `artifacts`) to maintain parity with TUI sorting capabilities.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-visual-hierarchy-better-ui",
+      "text": "The sidebar and detail panels maintain clean visual hierarchy, optical badge alignment, distinct structural borders, and instant feedback without screen redraw flicker or lag.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    }
+  ]
+}

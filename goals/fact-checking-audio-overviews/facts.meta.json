@@ -1,0 +1,32 @@
+[
+  {
+    "id": "fact-1-transcription",
+    "text": "The system transcribes the generated Audio Overview from an audio format into a text transcript.",
+    "recommendedAutomatedVerification": true,
+    "automatedVerification": true
+  },
+  {
+    "id": "fact-2-sift-external-search",
+    "text": "The system applies the SIFT protocol to the transcript, executing an external web search to fact-check claims made in the audio overview.",
+    "recommendedAutomatedVerification": true,
+    "automatedVerification": true
+  },
+  {
+    "id": "fact-3-sfl-speaker-profiles",
+    "text": "The system builds speaker profiles for the two hosts, tracking shifts in tenor and modality between them during the conversation.",
+    "recommendedAutomatedVerification": true,
+    "automatedVerification": true
+  },
+  {
+    "id": "fact-4-sfl-anomaly-detection",
+    "text": "The system detects and flags semantic anomalies where host banter drifts or hallucinated claims appear.",
+    "recommendedAutomatedVerification": true,
+    "automatedVerification": true
+  },
+  {
+    "id": "fact-5-report-generation",
+    "text": "The system generates a detailed Markdown report summarizing the findings, including inline citations to external sources and data quality warnings.",
+    "recommendedAutomatedVerification": true,
+    "automatedVerification": true
+  }
+]

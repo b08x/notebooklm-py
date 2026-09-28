@@ -1,0 +1,11 @@
+# Facts
+
+- From the notebook detail view, selecting a notebook that has a generated audio artifact triggers an action that pulls real system instructions, audio metadata, and source text via the client/_app layer, populates assessment_state with them, and opens the Assessment view. (Note: contextual semantic embedding must be performed on the transcript as part of this wiring.)
+- Running an assessment against real notebook source content no longer falls back to the hardcoded sample string ('Sample text for NotebookLM to assess. This contains a PII.') when real source text is available.
+- All preprocessing-pipeline and LLM-scoring orchestration (PreprocessingPipeline invocation, generate_assessment call, background task submission) lives in an _app-layer function; tui/views/assessment_view.py and tui/keypress.py contain no direct imports of PreprocessingPipeline or generate_assessment, only calls into that _app function and reads of assessment_state.
+- In the Contextualized Source Chunks panel, spaCy-tagged entities within each chunk are rendered with a distinct color per entity label (e.g. ORG, PERSON, DATE) instead of plain inline text.
+- Each chunk in the Contextualized Source Chunks panel displays a pass/fail gutter marker (e.g. green check / red x) reflecting FactCheckAdapter's per-chunk verdict, instead of the current plain 'Fact Check Passed: True/False' text line.
+- spaCy (with the en_core_web_md model) is added as a real, installed extra so SpacyAnnotator and StructuralCoherenceChunker produce real entity/sentence output in dev and CI, rather than the ImportError fallback path.
+- BERTopic and Docling remain optional dependencies with their existing soft-fail fallback behavior; this goal does not add them as required extras or build the topic-weight bar graph visualization. (Note: keep their integration points easy to plug in later.)
+- FactCheckAdapter keeps its current DSPy-based check() call against the external SIFT framework path (FACT_CHECK_FRAMEWORK_PATH); rebuilding SIFT/Deep Background as a proper DSPy pipeline is tracked separately in goals/rebuilding-sift-&-deep-background-as-a-dspy-pipeline.md and is out of scope here.
+- Score confirmation/editing and persistence (the '[Press Enter to confirm or edit score]' affordance) is not implemented in this goal; the view continues to show the LLM-suggested score only.

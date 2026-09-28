@@ -1,0 +1,4 @@
+- The assessment view layout is structured as a multi-pane dashboard using Rich Layout, dividing the screen into header stats, an active claim pane on the left, and a log stream pane on the right.
+- Progress and accuracy metrics are visualized using custom sparklines or minigraphs built with Rich Text components.
+- The verified evidence log stream is presented as a hierarchical Tree using Rich, where each claim serves as a root node and its citations as leaf nodes.
+- The TUI applies a restrained, modern aesthetic characterized by rounded borders, semantic color mapping, and deep concentric spacing.

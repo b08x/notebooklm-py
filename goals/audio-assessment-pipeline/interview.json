@@ -1,0 +1,88 @@
+{
+  "stage": "interview",
+  "title": "Audio Overview Assessment Pipeline",
+  "goalSlug": "audio-assessment-pipeline",
+  "questions": [
+    {
+      "id": "data_wiring",
+      "prompt": "How should the assessment view get its real inputs (system instructions, audio metadata, source text) instead of the current hardcoded sample text?",
+      "description": "Today assessment_state.raw_text/system_instructions/audio_metadata are never populated from a real notebook anywhere in the TUI — trigger_assessment_grading() falls back to a hardcoded sample string. There's no entry point from notebook_detail (or anywhere) that selects a notebook + generated audio artifact and launches the assessment.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Add an action from the notebook detail view: select a notebook that has a generated audio artifact, pull its audio metadata + system instructions + source documents via the existing client/_app layer, and populate assessment_state before entering AssessmentView.",
+      "recommendedOptionIds": ["wire_from_notebook_detail"],
+      "options": [
+        { "id": "wire_from_notebook_detail", "label": "Wire from notebook detail view (real data, in scope)" },
+        { "id": "keep_sample_data", "label": "Keep sample/manual data entry for now (defer real wiring)" }
+      ],
+      "required": true
+    },
+    {
+      "id": "visual_patterns",
+      "prompt": "Which of the TUI visual patterns discussed (entity color-highlighting, topic-weight bar graphs, fact-check pass/fail gutters, chunk density bars) should this goal actually implement, versus keep as the current plain-text panel?",
+      "description": "The current AssessmentView just dumps chunks + appended metadata text into a scrollable Panel. The richer patterns (ANSI entity colors, bar graphs comparing topic weights, red/green gutters for contradictions) are visual upgrades on top of that.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "Implement entity color-highlighting and fact-check pass/fail gutters (highest signal-to-effort); defer topic bar graphs and density bars as a follow-up goal.",
+      "recommendedOptionIds": ["entity_highlighting", "fact_check_gutters"],
+      "options": [
+        { "id": "entity_highlighting", "label": "Entity color-highlighting (spaCy entities in source text)" },
+        { "id": "fact_check_gutters", "label": "Fact-check pass/fail gutters per chunk" },
+        { "id": "topic_bars", "label": "BERTopic weight bar graphs (source vs audio)" },
+        { "id": "plain_text_only", "label": "Keep it plain text for now, no visual upgrades" }
+      ],
+      "required": true
+    },
+    {
+      "id": "architecture_layering",
+      "prompt": "trigger_assessment_grading() in tui/views/assessment_view.py directly instantiates PreprocessingPipeline and calls _app.assessment.generate_assessment, mixing business logic into the view layer (CLAUDE.md's architecture says tui/ should stay transport-neutral-logic-free, delegating to _app/). Should this goal move that orchestration into _app/assessment.py as part of the work?",
+      "description": "Not required for functionality, but matches the project's stated layering convention (cli/tui -> _app -> client -> rpc).",
+      "answerMode": "single",
+      "recommendedAnswer": "Yes — move pipeline invocation + background-task orchestration into _app/assessment.py; the TUI view/keypress code should only read state and call an _app function.",
+      "recommendedOptionIds": ["move_to_app_layer"],
+      "options": [
+        { "id": "move_to_app_layer", "label": "Yes, move orchestration into _app/ (Recommended)" },
+        { "id": "leave_as_is", "label": "No, leave orchestration in the view for now" }
+      ],
+      "required": true
+    },
+    {
+      "id": "fact_check_dependency",
+      "prompt": "FactCheckAdapter reads its prompt framework from ~/.syncopated/skills/fact-check/sift.skill (a personal machine path, overridable via FACT_CHECK_FRAMEWORK_PATH), and silently returns is_valid=True if that path doesn't exist. Is this external dependency intentional and should it stay as-is?",
+      "description": "This makes fact-check accuracy dependent on a file outside the repo that most environments won't have, with a silent always-pass fallback that could mask assessment failures.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Keep the env-var override mechanism, but bundle a minimal default fact-check prompt in the repo so behavior doesn't silently degrade to always-pass when the personal path is absent.",
+      "recommendedOptionIds": ["bundle_default"],
+      "options": [
+        { "id": "bundle_default", "label": "Bundle a repo-local default prompt as fallback (Recommended)" },
+        { "id": "leave_as_is", "label": "Leave as-is (personal path, silent pass-through fallback)" }
+      ],
+      "required": true
+    },
+    {
+      "id": "heavy_deps",
+      "prompt": "spaCy, BERTopic, and Docling are all optional/soft-fail in the current annotators (missing package -> empty/neutral results, not an error). Should this goal add them as installable extras so the pipeline does real NLP work in dev/CI, or keep them fully optional?",
+      "description": "Affects docs/installation.md extras and pyproject.toml, and whether tests can assert on real annotation output vs just fallback behavior.",
+      "answerMode": "single",
+      "recommendedAnswer": "Add spaCy (with en_core_web_sm) as a proper extra since it's cheap and central to entity highlighting; leave BERTopic/Docling soft-optional since they're heavier and only needed for the deferred visual patterns.",
+      "recommendedOptionIds": ["spacy_required_rest_optional"],
+      "options": [
+        { "id": "spacy_required_rest_optional", "label": "spaCy as a real extra, others stay optional (Recommended)" },
+        { "id": "all_optional", "label": "Keep all three fully optional/soft-fail" },
+        { "id": "all_required", "label": "Add all three as required extras" }
+      ],
+      "required": true
+    },
+    {
+      "id": "score_persistence",
+      "prompt": "The view already shows '[Press Enter to confirm or edit score]' but there's no handler for confirming/editing/persisting a score. Should this goal implement that (e.g., saving the human-confirmed score/feedback somewhere), or is it out of scope?",
+      "description": "In scope would mean deciding where confirmed assessments are stored (local file, db/session.py, etc.) and wiring an Enter-key handler.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Out of scope for this goal — persistence design deserves its own goal once the pipeline + display are solid.",
+      "recommendedOptionIds": ["out_of_scope"],
+      "options": [
+        { "id": "out_of_scope", "label": "Out of scope for this goal (Recommended)" },
+        { "id": "in_scope", "label": "In scope, implement score confirm/save" }
+      ],
+      "required": true
+    }
+  ]
+}

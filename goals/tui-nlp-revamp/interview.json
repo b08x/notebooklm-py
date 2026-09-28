@@ -1,0 +1,59 @@
+{
+  "stage": "interview",
+  "title": "TUI NLP Revamp",
+  "goalSlug": "tui-nlp-revamp",
+  "questions": [
+    {
+      "id": "layout_structure",
+      "prompt": "How should the primary layout be organized for the NLP UX?",
+      "description": "Currently, it uses a left sidebar for Notebooks/Commands and a right main area.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Three-pane design: Document tree sidebar (left), Results/Query list (top-right), Selected document/answer detail (bottom-right), with a query input at the bottom.",
+      "options": [
+        { "id": "three-pane", "label": "Three-pane: Tree sidebar, Results list, Selected document detail" },
+        { "id": "standard", "label": "Two-pane: Document tree sidebar, Main results area, Bottom query input" }
+      ],
+      "required": true
+    },
+    {
+      "id": "processing_feedback",
+      "prompt": "How should we display NLP processing (embedding, indexing, retrieving)?",
+      "description": "Rich offers several ways to show live feedback as demonstrated in the examples.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Use a multi-task Progress bar in a dedicated footer or overlay for pipeline stages.",
+      "options": [
+        { "id": "progress_footer", "label": "Multi-task Progress bar in the footer" },
+        { "id": "spinner_status", "label": "Status spinner next to the query input" },
+        { "id": "log_panel", "label": "Dedicated logging panel showing live pipeline events" }
+      ],
+      "required": true
+    },
+    {
+      "id": "search_results",
+      "prompt": "How should search results and NLP responses be formatted?",
+      "description": "Rich provides Markdown, Syntax highlighting, and Tables.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "Rich Table with score columns, combined with Markdown/Syntax highlighting for text snippets.",
+      "recommendedOptionIds": ["table", "markdown", "tree"],
+      "options": [
+        { "id": "table", "label": "Tables for structured metadata (scores, entities)" },
+        { "id": "markdown", "label": "Markdown for generated answers and document content" },
+        { "id": "syntax", "label": "Syntax highlighting for code snippets" },
+        { "id": "tree", "label": "Tree view for document hierarchy and semantic clustering" }
+      ],
+      "required": true
+    },
+    {
+      "id": "interactive_query",
+      "prompt": "How will the user input queries or commands?",
+      "description": "The current TUI uses raw single-keypress tracking. Text input requires special handling.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "A dedicated input bar at the bottom that activates an input mode to accept text (like Vim/Helix command mode).",
+      "options": [
+        { "id": "input_bar", "label": "Dedicated bottom input bar activated by a keypress (e.g. '/')" },
+        { "id": "popup_prompt", "label": "Popup prompt overlay using rich Prompt.ask" }
+      ],
+      "required": true
+    }
+  ]
+}
