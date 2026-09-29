@@ -321,3 +321,94 @@ def test_run_assess_audio_overview_source_fallback_switches_view():
     assert state.error_message is None
     assert state.current_view == View.ASSESSMENT
     assert state.assessment_state["assessment_mode"] == "sources"
+
+
+# --- notes in the ingestion picker (notebook-curation goal, step 4b) ------------
+
+
+@pytest.mark.asyncio
+async def test_ingest_notebook_async_ingests_selected_notes():
+    client = _make_client(["src-1"])
+    client.notes.list = AsyncMock(
+        return_value=[SimpleNamespace(id="note-1", title="Meeting note", content="note body text")]
+    )
+
+    with (
+        patch.object(notebook_detail.NotebookLMClient, "from_storage", return_value=client),
+        patch.object(db_session_module, "async_session_maker") as mock_maker,
+        patch.object(
+            ingestion_module.IngestionService,
+            "ingest_source",
+            new=AsyncMock(return_value=3),
+        ),
+        patch.object(
+            ingestion_module.IngestionService,
+            "ingest_text",
+            new=AsyncMock(return_value=2),
+        ) as mock_ingest_text,
+    ):
+        _patched_session_maker(mock_maker)
+
+        result = await _ingest_notebook_async("nb-1", selected_source_ids={"src-1", "note-1"})
+
+    assert "Ingested 5 clauses from 2 sources." in result
+    mock_ingest_text.assert_awaited_once()
+    assert mock_ingest_text.call_args.kwargs["document_id"] == "note-1"
+    assert mock_ingest_text.call_args.kwargs["text"] == "note body text"
+
+
+@pytest.mark.asyncio
+async def test_ingest_notebook_async_skips_unselected_notes():
+    client = _make_client(["src-1"])
+    client.notes.list = AsyncMock(
+        return_value=[SimpleNamespace(id="note-1", title="Meeting note", content="note body")]
+    )
+
+    with (
+        patch.object(notebook_detail.NotebookLMClient, "from_storage", return_value=client),
+        patch.object(db_session_module, "async_session_maker") as mock_maker,
+        patch.object(
+            ingestion_module.IngestionService,
+            "ingest_source",
+            new=AsyncMock(return_value=3),
+        ),
+        patch.object(
+            ingestion_module.IngestionService,
+            "ingest_text",
+            new=AsyncMock(return_value=2),
+        ) as mock_ingest_text,
+    ):
+        _patched_session_maker(mock_maker)
+
+        result = await _ingest_notebook_async("nb-1", selected_source_ids={"src-1"})
+
+    assert "Ingested 3 clauses from 1 sources." in result
+    mock_ingest_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_fetch_sources_async_returns_notes_tagged_for_picker():
+    from notebooklm.tui.views.notebook_detail import _fetch_sources_async
+
+    client = _make_client(["src-1"])
+    client.notes.list = AsyncMock(
+        return_value=[SimpleNamespace(id="note-1", title="Meeting note", content="body")]
+    )
+
+    with (
+        patch.object(notebook_detail.NotebookLMClient, "from_storage", return_value=client),
+        patch.object(db_session_module, "async_session_maker") as mock_maker,
+    ):
+        mock_session = _patched_session_maker(mock_maker)
+        mock_session.execute = AsyncMock(
+            return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None))
+        )
+
+        items, ingested = await _fetch_sources_async("nb-1")
+
+    kinds = {item.kind: item.id for item in items}
+    assert kinds == {"source": "src-1", "note": "note-1"}
+    note_item = next(item for item in items if item.kind == "note")
+    assert note_item.title == "Meeting note"
+    assert note_item.content == "body"
+    assert ingested == set()

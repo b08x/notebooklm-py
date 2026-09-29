@@ -92,6 +92,10 @@ def run_tui(download_dir: str | None = None) -> None:
                     state.source_fetch_task = None
                     state_changed = True
 
+                if state.curation_task and state.curation_task.done():
+                    state.curation_task = None
+                    state_changed = True
+
                 # Background ingestion/assessment and the Logs view both mutate
                 # state from a worker thread with no keypress to trigger a
                 # redraw — poll them each tick so progress and new log lines
@@ -100,6 +104,14 @@ def run_tui(download_dir: str | None = None) -> None:
                     state.current_view == View.LOGS
                     or state.background_task
                     and not state.background_task.done()
+                ):
+                    state_changed = True
+
+                # Curation workers (remove/add/delete/archive) mutate
+                # state.curation in place the same way; the archive progress
+                # display must advance without a keypress (fact 15).
+                if state.curation and (
+                    state.curation.get("busy") or state.curation.get("mode") == "archive_progress"
                 ):
                     state_changed = True
 

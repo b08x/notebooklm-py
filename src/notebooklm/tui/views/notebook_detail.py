@@ -337,17 +337,53 @@ async def _fetch_sources_async(notebook_id: str) -> tuple[list[Any], set[str]]:
 
     async with NotebookLMClient.from_storage() as client:
         sources = await client.sources.list(notebook_id)
+        try:
+            # Notes are offered alongside sources (fact 19); mind maps are
+            # excluded — they are JSON trees, not prose.
+            notes = await client.notes.list(notebook_id)
+        except Exception:
+            notes = []
 
-    source_ids = [s.id for s in sources]
+    items = [_IngestItem(src, "source") for src in sources] + [
+        _IngestItem(note, "note") for note in notes
+    ]
+    item_ids = [item.id for item in items]
     ingested_ids = set()
 
     async with async_session_maker() as session:
-        for sid in source_ids:
-            res = await session.execute(select(Clause.id).where(Clause.document_id == sid).limit(1))
+        for did in item_ids:
+            res = await session.execute(select(Clause.id).where(Clause.document_id == did).limit(1))
             if res.scalar_one_or_none() is not None:
-                ingested_ids.add(sid)
+                ingested_ids.add(did)
 
-    return sources, ingested_ids
+    return items, ingested_ids
+
+
+class _IngestItem:
+    """Picker-facing wrapper giving sources and notes one uniform shape."""
+
+    def __init__(self, obj: Any, kind: str) -> None:
+        self._obj = obj
+        self.kind = kind
+
+    @property
+    def id(self) -> str:
+        return self._obj.id
+
+    @property
+    def title(self) -> str:
+        return getattr(self._obj, "title", None) or self._obj.id
+
+    @property
+    def content(self) -> str | None:
+        return getattr(self._obj, "content", None)
+
+    @property
+    def source(self) -> Any:
+        return self._obj
+
+    def __repr__(self) -> str:  # pragma: no cover — debugging aid
+        return f"_IngestItem(kind={self.kind!r}, id={self.id!r})"
 
 
 def _run_fetch_sources(state: TUIState, notebook_id: str) -> None:
@@ -396,18 +432,24 @@ async def _ingest_notebook_async(
             async_session_maker() as session,
         ):
             sources = await client.sources.list(notebook_id)
+            try:
+                notes = await client.notes.list(notebook_id)
+            except Exception:
+                notes = []
+            items = [_IngestItem(src, "source") for src in sources]
+            items += [_IngestItem(note, "note") for note in notes]
             if selected_source_ids is not None:
-                sources = [s for s in sources if s.id in selected_source_ids]
+                items = [item for item in items if item.id in selected_source_ids]
 
             service = IngestionService(client)
-            progress["total_sources"] = len(sources)
+            progress["total_sources"] = len(items)
             progress["done_sources"] = 0
             progress["failures"] = []
             total_clauses = 0
             failures = 0
             first_error: Exception | None = None
-            for src in sources:
-                title = getattr(src, "title", None) or src.id
+            for item in items:
+                title = item.title
                 progress["current_title"] = title
                 progress["current_chunks_done"] = 0
                 progress["current_chunks_total"] = 0
@@ -417,22 +459,33 @@ async def _ingest_notebook_async(
                     progress["current_chunks_total"] = total
 
                 try:
-                    total_clauses += await service.ingest_source(
-                        session,
-                        notebook_id,
-                        src.id,
-                        context=context_override,
-                        on_progress=_on_progress,
-                    )
+                    if item.kind == "note":
+                        # Notes are keyed by the note id, so archived notebooks
+                        # keep their clauses findable (fact 19).
+                        total_clauses += await service.ingest_text(
+                            session,
+                            document_id=item.id,
+                            text=item.content or "",
+                            context=context_override,
+                            on_progress=_on_progress,
+                        )
+                    else:
+                        total_clauses += await service.ingest_source(
+                            session,
+                            notebook_id,
+                            item.id,
+                            context=context_override,
+                            on_progress=_on_progress,
+                        )
                 except Exception as e:
-                    logger.exception("Ingestion failed for source %s", src.id)
+                    logger.exception("Ingestion failed for %s", item.id)
                     failures += 1
                     progress["failures"].append((title, str(e)))
                     if first_error is None:
                         first_error = e
                 progress["done_sources"] += 1
 
-            summary = f"Ingested {total_clauses} clauses from {len(sources)} sources."
+            summary = f"Ingested {total_clauses} clauses from {len(items)} sources."
             if failures:
                 summary += f" ({failures} source(s) failed: {first_error})"
             return summary

@@ -69,6 +69,11 @@ class TUIState:
     artifact_cursor: int = 0
     notebook_stats: dict[str, dict] = field(default_factory=dict)
     download_progress: dict[str, Any] = field(default_factory=dict)
+    #: Curation modal state (item marking, add/remove, delete, archive). A
+    #: single dict slot following the ``assessment_state`` precedent; the
+    #: sub-modes live under ``mode`` (see ``tui/keypress.py``).
+    curation: dict[str, Any] = field(default_factory=dict)
+    curation_task: concurrent.futures.Future | None = None
 
     api_tokens: float = 10.0
     api_max_tokens: int = 10

@@ -1,0 +1,22 @@
+# Facts
+
+- In Notebook Detail, the user can mark several sources, artifacts, and notes, then remove them all in one action.
+- Removing items shows a y/N prompt that lists every marked item by title and type. 'N' or Escape cancels, and nothing is removed.
+- Every removal requires a reason from a fixed list (redundant, incorrect, experimental, hallucinated, other). The removal cannot run until a reason is chosen.
+- Every removal and every archive writes a record (timestamp, notebook id and title, item id, title, type, reason) to a local removal log in the Postgres database.
+- If some items in a batch fail to delete remotely, the TUI reports which ones failed. The items that were deleted are logged, and the failed ones stay listed.
+- In Notebook Detail, the user can add a source by entering a URL (including YouTube), a local file path, or pasted text. The new source appears in the source list without restarting the TUI.
+- An invalid local file path or empty input for 'add source' shows an error in the TUI and sends no request to NotebookLM.
+- The user can delete the selected notebook from the TUI. Deletion requires typing the notebook title (or a prefix of it) and choosing a reason. Afterwards the notebook disappears from the sidebar.
+- The user can archive the selected notebook from the TUI. This writes ~/Archive/NotebookLM/<slugified-title>_<id8>_<YYYYMMDD>.tar.gz and creates the directory if it does not exist.
+- The archive contains manifest.json (notebook metadata, reason, and per-item id, title, type, created date, archive path), source full text, original source files where downloadable, every downloadable artifact in its native format, notes as markdown, chat history, and a JSONL export of the notebook's local clauses and embeddings.
+- After writing, the archive is verified: the tarball opens, and every manifest entry exists in it with non-zero size. The TUI shows the verification result, including file count and total size.
+- If any item fails to download or verification fails, the remote notebook is not deleted. The TUI lists the failed items, and the partial tarball is kept with a .partial suffix.
+- After verification passes, the remote notebook is deleted only when the user confirms by typing the notebook title. If the user declines, the notebook and the archive both stay.
+- Deleting or archiving a notebook never deletes local clauses, embeddings, or LocalAsset rows. An archived-notebook record (notebook id, title, archive path, document ids, reason) is written so the local rows can still be found by notebook after the remote notebook is gone.
+- Archive runs in the background. The TUI stays responsive and shows progress (items downloaded out of total).
+- The new keybindings for add, remove, mark, delete, and archive appear in the TUI's on-screen key hints and in docs/tui-reference.md.
+- Archive and removal business logic lives in src/notebooklm/_app/, and the app-boundary guardrail test passes.
+- Out of scope: cross-notebook chat, clause distillation and annotation, article generation from archives, restoring archives into NotebookLM, multi-notebook batch archive, and CLI/MCP archive commands.
+- Notes appear in the Notebook Detail 'Ingest Sources' selection list with a [note] tag. Ingesting a note writes clauses keyed by the note id, and the archive DB export includes clauses keyed by note ids.
+- Artifacts that cannot be downloaded (failed or still generating) are marked not_downloadable in manifest.json with their kind, status, and generation prompt when available. They do not block remote deletion. Regenerating them from compiler templates is a separate goal.

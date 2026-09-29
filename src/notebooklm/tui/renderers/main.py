@@ -179,6 +179,165 @@ def _render_artifact_selection(state: TUIState) -> tuple[Panel, Panel]:
     return picker_panel, hint
 
 
+def _human_size(num_bytes: int | float | None) -> str:
+    """Human-readable byte size, e.g. ``12 B``, ``1.4 MB``."""
+    size = float(num_bytes or 0)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if size < 1024 or unit == "TB":
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TB"
+
+
+_KIND_TAG = {
+    "source": "src",
+    "artifact": "art",
+    "note": "note",
+    "mind_map": "map",
+}
+
+
+def _render_curation(state: TUIState) -> tuple[Panel, Panel] | None:
+    """Panels for the curation modal; ``None`` when it is closed."""
+    from notebooklm._app.curation import REMOVAL_REASONS
+
+    curation = state.curation
+    if not curation:
+        return None
+    mode = curation.get("mode")
+    error = curation.get("error")
+    notice = curation.get("notice")
+
+    body: Any
+    title = "Curation"
+    hints: list[tuple[str, str]] = [("esc", "close")]
+
+    if mode == "items":
+        items = curation.get("items", [])
+        marked = curation.get("marked", set())
+        rows = [
+            f"{'■' if item.id in marked else '□'} [{_KIND_TAG.get(item.kind, item.kind)}] {item.title}"
+            for item in items
+        ]
+        if curation.get("loading"):
+            body = Text("Loading items…", style="muted")
+        elif rows:
+            body = _cursor_list(rows, curation.get("cursor", 0))
+        else:
+            body = Text("No removable items.", style="muted")
+        title = f"Mark items to remove — {len(marked)} marked"
+        hints = [("j/k", "move"), ("space", "mark"), ("x", "remove marked"), ("esc", "close")]
+    elif mode == "confirm_yn":
+        marked = curation.get("marked", set())
+        lines = [
+            Text(f"[{_KIND_TAG.get(item.kind, item.kind)}] {item.title}", style="foreground")
+            for item in curation.get("items", [])
+            if item.id in marked
+        ]
+        body = Group(Text("Remove all marked items?", style="foreground"), Text(""), *lines)
+        title = "Confirm removal"
+        hints = [("y", "confirm"), ("N/esc", "cancel")]
+    elif mode == "reason":
+        pending = curation.get("pending")
+        heading = {
+            "remove": "Reason for removing the marked items",
+            "delete_notebook": "Reason for deleting this notebook",
+            "archive": "Reason for archiving this notebook",
+        }.get(pending or "", "Choose a reason")
+        options = [
+            Text(f"{i}  {reason}", style="selected" if i == 1 else "foreground")
+            for i, reason in enumerate(REMOVAL_REASONS, start=1)
+        ]
+        body = Group(Text(heading, style="heading"), Text(""), *options)
+        title = "Reason"
+        hints = [("1-5", "choose"), ("esc", "cancel")]
+    elif mode == "add_kind":
+        body = Group(
+            Text("Add a source", style="heading"),
+            Text(""),
+            Text("u  URL (including YouTube)", style="foreground"),
+            Text("f  Local file", style="foreground"),
+            Text("t  Pasted text", style="foreground"),
+        )
+        title = "Add source"
+        hints = [("u/f/t", "kind"), ("esc", "cancel")]
+    elif mode == "add_input":
+        label = {"url": "URL", "file": "File path", "text": "Text"}.get(
+            curation.get("add_kind", "url"), "URL"
+        )
+        buffer = Text(curation.get("buffer", ""), style="foreground")
+        buffer.append("▏", style="prompt")
+        body = Group(Text(label, style="label"), Text(""), buffer)
+        title = "Add source"
+        hints = [("enter", "add"), ("esc", "cancel")]
+    elif mode == "typed_confirm":
+        nb_title = curation.get("notebook_title", "")
+        buffer = Text(curation.get("buffer", ""), style="foreground")
+        buffer.append("▏", style="prompt")
+        body = Group(
+            Text(f"Type the notebook title to confirm: {nb_title}", style="heading"),
+            Text(
+                "Type the title (or a prefix of at least 4 characters) and press Enter.",
+                style="muted",
+            ),
+            Text(""),
+            buffer,
+        )
+        title = "Confirm"
+        hints = [("enter", "confirm"), ("esc", "cancel")]
+    elif mode == "archive_progress":
+        progress = curation.get("archive", {})
+        done = progress.get("done", 0)
+        total = progress.get("total", 0)
+        body = Group(
+            Text(f"Archiving… {done}/{total}", style="info"),
+            ProgressBar(
+                total=max(total, 1),
+                completed=min(done, max(total, 1)),
+                width=40,
+                complete_style="primary",
+                finished_style="success",
+                style="subtle",
+            ),
+        )
+        title = "Archive"
+        hints = [("esc", "hide (archive keeps running)")]
+    elif mode == "archive_result":
+        result = curation.get("archive_result")
+        parts: list[Any] = [Text(notice or "Archive finished.", style="info"), Text("")]
+        verify = getattr(result, "verify", None)
+        if verify is not None:
+            parts.append(
+                Text(
+                    f"Verified {verify.file_count} files, {_human_size(verify.total_bytes)}",
+                    style="foreground",
+                )
+            )
+            for item in getattr(result, "failed_items", []) or []:
+                parts.append(
+                    Text(
+                        f"✗ failed: {item.get('title', item.get('id', '?'))} — {item.get('error')}",
+                        style="error",
+                    )
+                )
+            for missing in verify.missing:
+                parts.append(Text(f"✗ missing: {missing}", style="error"))
+            for empty in verify.empty:
+                parts.append(Text(f"✗ empty: {empty}", style="error"))
+        body = Group(*parts)
+        title = "Archive result"
+        hints = [("esc", "close")]
+    else:
+        body = Text("…", style="muted")
+
+    if notice and mode == "items":
+        body = Group(body, Text(""), Text(notice, style="muted"))
+    if error:
+        body = Group(body, Text(""), Text(error, style="error"))
+
+    return panel(body, title, focused=True, padding=(1, 2)), hint_panel(hints)
+
+
 def _render_notebook_detail(state: TUIState, nb_id: str) -> tuple[Panel, Panel]:
     # Fetch stats and summary in background if needed
     from ..views.notebook_detail import fetch_stats_if_needed, fetch_summary_if_needed
@@ -292,6 +451,10 @@ def render_main(state: TUIState) -> tuple[Panel, Panel]:
     if state.selecting_artifact:
         return _render_artifact_selection(state)
 
+    curation_panels = _render_curation(state)
+    if curation_panels is not None:
+        return curation_panels
+
     if state.editing_context:
         buffer_text = Text(state.context_edit_buffer, style="foreground")
         buffer_text.append("▏", style="prompt")
@@ -320,6 +483,8 @@ def render_main(state: TUIState) -> tuple[Panel, Panel]:
             for src in state.ingest_sources:
                 checked = "■" if src.id in state.ingest_selected else "□"
                 src_title = getattr(src, "title", None) or src.id
+                if getattr(src, "kind", "source") == "note":
+                    src_title = f"[note] {src_title}"
                 if src.id in getattr(state, "ingest_completed", set()):
                     src_title += "  (already ingested)"
                 items.append(f"{checked} {src_title}")

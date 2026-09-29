@@ -85,6 +85,11 @@ A numbered action menu for the selected notebook:
 | `j` / `k` | Move menu selection down/up (clamped to the 4 items) |
 | `Enter` | Run the highlighted menu action |
 | `e` | Open the [context-edit overlay](#context-edit-overlay) for this notebook |
+| `m` | Open the [curation item list](#curation-mark-and-remove-items) |
+| `x` | Remove the items marked in the list (inside the curation modal) |
+| `+` | [Add a source](#curation-add-a-source) (URL, local file, or pasted text) |
+| `D` | [Delete this notebook](#curation-delete-a-notebook) |
+| `X` | [Archive this notebook](#curation-archive-then-delete) |
 
 Menu items (select with `j`/`k`, run with `Enter`):
 
@@ -94,6 +99,60 @@ Menu items (select with `j`/`k`, run with `Enter`):
 4. **Assess Audio Overview** — downloads the notebook's most recent generated audio overview, transcribes it, runs it through the NLP preprocessing pipeline (chunking, spaCy entity annotation), ingests the resulting chunks into the clause store, and switches to Assessment view to display/grade the result.
 
 Both "Ingest Sources" and "Assess Audio Overview" use this notebook's customized embedding context if one was saved (see below), otherwise the notebook's own AI-generated summary is fetched automatically and used as context — no separate LLM call is made for this.
+
+## Curation (mark and remove items)
+
+Opened with `m` from Notebook Detail. Lists every removable item — sources, artifacts, notes, and mind maps — each with a type tag (`[src]`, `[art]`, `[note]`, `[map]`).
+
+| Key | Action |
+|---|---|
+| `j` / `k` | Move the highlighted item down/up |
+| `Space` | Mark/unmark the highlighted item |
+| `x` | Confirm removing all marked items |
+| `Esc` | Close the list |
+
+Pressing `x` shows a y/N prompt listing every marked item by title and type. `y` continues, `N` or `Esc` cancels and nothing is removed. Confirming opens a reason picker (`1`–`5`):
+
+1. `redundant`
+2. `incorrect`
+3. `experimental`
+4. `hallucinated`
+5. `other`
+
+The removal does not run until a reason is chosen. Every removal writes a record (timestamp, notebook id and title, item id, title, type, reason) to the local `removal_log` table in Postgres. If some items in a batch fail to delete remotely, the ones that succeeded are logged and the failed ones stay listed (and are reported in the notice line).
+
+## Curation: add a source
+
+Opened with `+` from Notebook Detail. Pick a kind — `u` URL (including YouTube), `f` local file, `t` pasted text — then type the value and press `Enter` (`Esc` cancels, Backspace edits).
+
+Invalid input (a non-http(s) or empty URL, a path that is not an existing regular file, or empty text) shows an error and sends **no** request to NotebookLM. On success the new source appears in the item list and notebook stats without restarting the TUI.
+
+## Curation: delete a notebook
+
+Opened with `D` from Notebook Detail. Pick a reason (`1`–`5`), then type the notebook title — or a prefix of at least `min(len(title), 4)` characters — and press `Enter` to confirm. A mismatching title blocks the delete. Afterwards the notebook disappears from the sidebar, and the removal is written to `removal_log`.
+
+## Curation: archive, then delete
+
+Opened with `X` from Notebook Detail. Pick a reason (`1`–`5`). The archive then runs in the background — the TUI stays responsive and shows progress (items downloaded out of total).
+
+The archive is written to `~/Archive/NotebookLM/` (override with `NOTEBOOKLM_ARCHIVE_DIR`) as `<slugified-title>_<id[:8]>_<YYYYMMDD>.tar.gz`, containing:
+
+```
+sources/<slug>_<id8>.md        # each source's full text (markdown)
+artifacts/<slug>_<id8>.<ext>   # every downloadable artifact in its native format
+notes/<slug>_<id8>.md          # notes as markdown
+mind_maps/<slug>_<id8>.json    # note-backed mind map trees
+chat_history.md                # Q&A history
+db/clauses.jsonl               # local clauses keyed by source/artifact/note ids
+db/embeddings.jsonl            # their embeddings
+manifest.json                  # notebook metadata, reason, per-item entries
+```
+
+`manifest.json` records every item with `{id, title, type, created_at, archive_path, status, error}` plus `kind`, `artifact_status`, and `generation_prompt` for artifacts. Items that cannot be downloaded are kept honest: uploaded-file originals and still-generating/failed artifacts are marked `not_downloadable` and do **not** block the remote delete; anything whose download genuinely fails is marked `failed` and does block it.
+
+After writing, the tarball (first written as `<name>.tar.gz.partial`) is verified: it must open, `manifest.json` must be present, and every `ok` entry must exist inside with non-zero size. The TUI shows the verification result — file count and total size. On any failure the remote notebook is **not** deleted, the failed items are listed, and the `.partial` tarball is kept.
+
+When verification passes, the `.partial` file is promoted to the final `.tar.gz` and an `archived_notebooks` row is written. The remote notebook is deleted only after you confirm by typing the notebook title; declining (or `Esc`) keeps both the notebook and the archive. Local Postgres data — clauses, embeddings, `local_assets` — is never purged by any curation action, so archived notebooks stay findable through the `archived_notebooks` record.
 
 ## Source-selection picker
 
@@ -109,6 +168,8 @@ Opened by confirming Notebook Detail's "Ingest Sources" menu item, after that no
 | `Esc` | Cancel — returns to Notebook Detail, ingestion does not start |
 
 All sources are pre-selected by default (matching the old "ingest everything" behavior) — deselect the ones you don't want before confirming.
+
+The picker also lists the notebook's notes with a `[note]` tag, alongside sources. Confirming ingests the selected notes with `IngestionService.ingest_text`, keyed by the note id (so their clauses stay findable in archive exports); sources keep going through `ingest_source`. Mind maps are excluded — they are JSON trees, not prose.
 
 ## Context-edit overlay
 

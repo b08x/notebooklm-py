@@ -1,0 +1,157 @@
+{
+  "stage": "interview",
+  "title": "Notebook Curation: delete, add/remove sources, archive-then-delete",
+  "goalSlug": "notebook-curation",
+  "questions": [
+    {
+      "id": "surfaces",
+      "prompt": "Where should the curation actions be available?",
+      "description": "The client and _app layer already support notebook delete and source add/delete, and the CLI already exposes them. Archive is new everywhere. The TUI has no mutation actions yet.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "TUI actions for everything, plus a new CLI `notebooklm notebook archive` command. Archive logic goes in a new transport-neutral _app/archive.py so the CLI and TUI share it.",
+      "recommendedOptionIds": ["tui", "cli-archive", "app-layer"],
+      "options": [
+        { "id": "tui", "label": "TUI keybindings for delete / add / remove / archive" },
+        { "id": "cli-archive", "label": "CLI `notebook archive` command" },
+        { "id": "app-layer", "label": "Shared _app/archive.py business logic" },
+        { "id": "mcp", "label": "MCP tool for archive" }
+      ],
+      "required": true
+    },
+    {
+      "id": "removable-items",
+      "prompt": "Which items inside a notebook should be removable from the TUI?",
+      "description": "Much of the bad output (slop, hallucinations) is in generated artifacts and notes, not only in sources.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "Sources, artifacts, and notes, with multi-select so several can be removed in one confirmed batch.",
+      "recommendedOptionIds": ["sources", "artifacts", "notes", "multiselect"],
+      "options": [
+        { "id": "sources", "label": "Sources" },
+        { "id": "artifacts", "label": "Artifacts (audio, video, reports, quizzes, …)" },
+        { "id": "notes", "label": "Notes" },
+        { "id": "multiselect", "label": "Multi-select batch removal" }
+      ],
+      "required": true
+    },
+    {
+      "id": "add-source-types",
+      "prompt": "Which source types should the TUI 'add source' action support?",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "URL (includes YouTube), local file path, and pasted text. Drive is left out of the TUI.",
+      "recommendedOptionIds": ["url", "file", "text"],
+      "options": [
+        { "id": "url", "label": "URL / YouTube" },
+        { "id": "file", "label": "Local file path" },
+        { "id": "text", "label": "Pasted text" },
+        { "id": "drive", "label": "Google Drive document" }
+      ],
+      "required": true
+    },
+    {
+      "id": "archive-contents",
+      "prompt": "What goes into the .tar.gz archive?",
+      "description": "Future distillation and article writing will read from these archives, so their structure matters.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "All of: manifest.json (notebook metadata, and per-item id, title, type, and created date), source full text, original source files when downloadable, every downloadable artifact in its native format, notes as markdown, and chat history. Local DB clauses stay in Postgres and are not exported.",
+      "recommendedOptionIds": ["manifest", "source-fulltext", "source-originals", "artifacts", "notes", "chat"],
+      "options": [
+        { "id": "manifest", "label": "manifest.json with metadata for every item" },
+        { "id": "source-fulltext", "label": "Source full text (.md/.txt)" },
+        { "id": "source-originals", "label": "Original source files where available" },
+        { "id": "artifacts", "label": "All artifacts, native formats" },
+        { "id": "notes", "label": "Notes as markdown" },
+        { "id": "chat", "label": "Chat history" },
+        { "id": "db-export", "label": "Local DB clauses/embeddings export (JSONL)" }
+      ],
+      "required": true
+    },
+    {
+      "id": "archive-delete-policy",
+      "prompt": "After archiving, how should remote deletion work?",
+      "description": "A NotebookLM delete cannot be undone. The archive is checked (tar readable, every manifest entry present and non-empty) before any delete runs.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Archive always runs first. The remote notebook is then deleted only if verification passes and the user confirms. If any item fails to download, the notebook is kept and the failures are reported.",
+      "recommendedOptionIds": ["verify-then-confirm"],
+      "options": [
+        { "id": "verify-then-confirm", "label": "Verify archive, then confirm delete (abort on any failure)" },
+        { "id": "verify-auto", "label": "Verify archive, then delete automatically" },
+        { "id": "archive-only-default", "label": "Archive only by default; delete is an opt-in flag" },
+        { "id": "allow-partial", "label": "Allow delete with a partial archive after a warning" }
+      ]
+    },
+    {
+      "id": "confirm-style",
+      "prompt": "What confirmation should destructive TUI actions require?",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Notebook delete and archive-delete require typing the notebook title (or a short prefix). Removing a source, artifact, or note requires a y/N prompt that lists the items.",
+      "recommendedOptionIds": ["tiered"],
+      "options": [
+        { "id": "tiered", "label": "Tiered: typed title for notebooks, y/N for items" },
+        { "id": "yn-all", "label": "y/N for everything" },
+        { "id": "typed-all", "label": "Typed confirmation for everything" }
+      ]
+    },
+    {
+      "id": "archive-location",
+      "prompt": "Where should archives be written, and how should they be named?",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "~/.notebooklm/archives/<slugified-title>_<notebook-id-8>_<YYYYMMDD>.tar.gz. The directory can be changed with a config setting or env var.",
+      "recommendedOptionIds": ["home-archives"],
+      "options": [
+        { "id": "home-archives", "label": "~/.notebooklm/archives/ (configurable)" },
+        { "id": "cwd", "label": "Current working directory" },
+        { "id": "vault", "label": "A path inside my Obsidian vault" }
+      ]
+    },
+    {
+      "id": "local-db-on-delete",
+      "prompt": "When a notebook is deleted or archived, what happens to its local Postgres data (ingested clauses, embeddings, LocalAsset rows)?",
+      "description": "Clauses have no notebook_id column. Search finds them by listing the notebook's sources from Google, so once the remote notebook is deleted they can no longer be found by notebook.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Keep the rows and record an archived-notebook entry (notebook_id, title, archive path, list of document_ids) so later distillation can find them. Nothing is deleted.",
+      "recommendedOptionIds": ["keep-and-record"],
+      "options": [
+        { "id": "keep-and-record", "label": "Keep rows + record archive provenance table" },
+        { "id": "keep-untouched", "label": "Keep rows, record nothing" },
+        { "id": "purge", "label": "Purge the notebook's clauses/embeddings/assets" }
+      ]
+    },
+    {
+      "id": "reason-tag",
+      "prompt": "Should a removal or archive record a reason (e.g. redundant, incorrect, experimental, hallucinated, keep-reference)?",
+      "description": "Distillation itself is out of scope for this goal. A reason label stored now would let later distillation steps filter on it.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Yes, as an optional field: a single-key reason picker when removing items or archiving. It is written to manifest.json and to a local removal log. The user can skip it.",
+      "recommendedOptionIds": ["optional-reason"],
+      "options": [
+        { "id": "optional-reason", "label": "Optional reason picker, logged" },
+        { "id": "none", "label": "No reason tracking in this goal" },
+        { "id": "required-reason", "label": "Reason required for every removal" }
+      ]
+    },
+    {
+      "id": "batch-scope",
+      "prompt": "Should archive and delete work on several notebooks at once in this goal?",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "No. This goal handles one notebook at a time. Multi-notebook batch archive can come later, after the single-notebook path is tested on real data.",
+      "recommendedOptionIds": ["single"],
+      "options": [
+        { "id": "single", "label": "Single notebook only" },
+        { "id": "multi", "label": "Multi-select notebooks in the sidebar for batch archive/delete" }
+      ]
+    },
+    {
+      "id": "out-of-scope",
+      "prompt": "Confirm what is out of scope for this goal (add anything else):",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "Cross-notebook chat, clause-level distillation and annotation, and article/documentation generation from archives are all out of scope. Restoring an archive back into NotebookLM is also out of scope.",
+      "recommendedOptionIds": ["xnb-chat", "distill", "article-gen", "restore"],
+      "options": [
+        { "id": "xnb-chat", "label": "Cross-notebook chat" },
+        { "id": "distill", "label": "Clause/content distillation & annotation" },
+        { "id": "article-gen", "label": "Article/documentation generation from archives" },
+        { "id": "restore", "label": "Restore archive back into NotebookLM" }
+      ]
+    }
+  ]
+}

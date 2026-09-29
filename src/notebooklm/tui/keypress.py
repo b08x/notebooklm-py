@@ -176,6 +176,9 @@ def handle_key(key: str, state: TUIState) -> bool:
             return True
         return True
 
+    if state.curation:
+        return _handle_curation_key(key, state)
+
     if state.current_view == View.CHAT:
         if key == "\x1b" or key == "\t":  # Escape or Tab
             if state.previous_view:
@@ -360,6 +363,26 @@ def handle_key(key: str, state: TUIState) -> bool:
             state.selected_notebook,
             state.notebook_summaries.get(state.selected_notebook, ""),
         )
+    elif key == "m" and state.current_view == View.NOTEBOOK_DETAIL and state.selected_notebook:
+        from .views.curation_view import start_curation_list
+
+        start_curation_list(state)
+        return True
+    elif key == "+" and state.current_view == View.NOTEBOOK_DETAIL and state.selected_notebook:
+        from .views.curation_view import start_add_source_modal
+
+        start_add_source_modal(state)
+        return True
+    elif key == "D" and state.current_view == View.NOTEBOOK_DETAIL and state.selected_notebook:
+        from .views.curation_view import start_notebook_delete_modal
+
+        start_notebook_delete_modal(state)
+        return True
+    elif key == "X" and state.current_view == View.NOTEBOOK_DETAIL and state.selected_notebook:
+        from .views.curation_view import start_archive_modal
+
+        start_archive_modal(state)
+        return True
     elif key in ("j", "k") and state.current_view == View.NOTEBOOK_DETAIL:
         if key == "j":
             state.detail_menu_index = min(state.detail_menu_index + 1, 4)
@@ -386,4 +409,146 @@ def handle_key(key: str, state: TUIState) -> bool:
                 state.scroll_offset = new_idx
 
         state.selected_notebook = notebooks[new_idx].id
+    return True
+
+
+def _handle_curation_key(key: str, state: TUIState) -> bool:
+    """Key dispatch while the curation modal is open.
+
+    The modal captures every key, mirroring the ``selecting_sources`` block:
+    sub-modes live under ``state.curation["mode"]`` — ``items`` (mark list),
+    ``confirm_yn`` (y/N removal prompt), ``reason`` (1–5 picker),
+    ``add_kind`` / ``add_input`` (add-source prompt), ``typed_confirm``
+    (destructive title confirmation), and ``archive_progress`` /
+    ``archive_result``.
+    """
+    from notebooklm._app.curation import (
+        REMOVAL_REASONS,
+        title_confirmation_matches,
+        validate_add_source,
+    )
+
+    curation = state.curation
+    mode = curation.get("mode")
+
+    if key == "q":
+        return False
+
+    if key == "\x1b":  # Escape
+        if mode == "confirm_yn" or (mode == "reason" and curation.get("items")):
+            curation["mode"] = "items"
+            return True
+        if mode == "archive_progress":
+            # Dismiss the modal; the background archive keeps running and its
+            # summary is surfaced through the footer when it finishes.
+            state.curation = {}
+            return True
+        state.curation = {}
+        return True
+
+    if mode == "items":
+        items = curation.get("items", [])
+        if key in ("j", "k") and items:
+            cursor = curation.get("cursor", 0)
+            if key == "j":
+                curation["cursor"] = min(cursor + 1, len(items) - 1)
+            else:
+                curation["cursor"] = max(cursor - 1, 0)
+        elif key == " " and items:
+            item = items[curation.get("cursor", 0)]
+            marked = curation.setdefault("marked", set())
+            if item.id in marked:
+                marked.discard(item.id)
+            else:
+                marked.add(item.id)
+        elif key == "x":
+            marked = curation.get("marked", set())
+            if not marked:
+                curation["error"] = "No items marked — move with j/k and mark with Space."
+            else:
+                curation["error"] = None
+                curation["mode"] = "confirm_yn"
+        return True
+
+    if mode == "confirm_yn":
+        if key.lower() == "y":
+            curation["mode"] = "reason"
+            curation["pending"] = "remove"
+        elif key.lower() == "n":
+            curation["mode"] = "items"
+        return True
+
+    if mode == "reason":
+        if key in ("1", "2", "3", "4", "5"):
+            reason = REMOVAL_REASONS[int(key) - 1]
+            curation["reason"] = reason
+            pending = curation.get("pending")
+            if pending == "remove":
+                from .views.curation_view import start_remove_items
+
+                marked = curation.get("marked", set())
+                selected = [item for item in curation.get("items", []) if item.id in marked]
+                if selected:
+                    start_remove_items(state, selected, reason)
+            elif pending == "delete_notebook":
+                curation["mode"] = "typed_confirm"
+                curation["buffer"] = ""
+            elif pending == "archive":
+                from .views.curation_view import start_archive
+
+                start_archive(state, reason)
+        return True
+
+    if mode == "add_kind":
+        if key in ("u", "f", "t"):
+            curation["add_kind"] = {"u": "url", "f": "file", "t": "text"}[key]
+            curation["mode"] = "add_input"
+            curation["buffer"] = ""
+            curation["error"] = None
+        return True
+
+    if mode == "add_input":
+        if key == "\x7f":  # Backspace
+            curation["buffer"] = curation.get("buffer", "")[:-1]
+        elif key in ("\r", "\n"):
+            kind = curation.get("add_kind", "url")
+            value = validate_add_source(kind, curation.get("buffer", ""))
+            if value is None:
+                # Invalid input: show an error and send no request (fact 7).
+                curation["error"] = {
+                    "url": "Enter a non-empty http(s) URL.",
+                    "file": "Enter the path of an existing file.",
+                    "text": "Enter non-empty text.",
+                }[kind]
+            else:
+                from .views.curation_view import start_add_source
+
+                start_add_source(state, kind, value)
+        elif len(key) == 1 and not key.startswith("\x1b"):
+            curation["buffer"] = curation.get("buffer", "") + key
+        return True
+
+    if mode == "typed_confirm":
+        if key == "\x7f":  # Backspace
+            curation["buffer"] = curation.get("buffer", "")[:-1]
+        elif key in ("\r", "\n"):
+            typed = curation.get("buffer", "")
+            if not title_confirmation_matches(curation.get("notebook_title", ""), typed):
+                curation["error"] = "Title does not match — nothing was deleted."
+            else:
+                curation["error"] = None
+                if curation.get("pending") == "archive_delete":
+                    from .views.curation_view import start_archive_delete
+
+                    start_archive_delete(state, typed)
+                else:
+                    from .views.curation_view import start_notebook_delete
+
+                    start_notebook_delete(state, curation.get("reason", "other"))
+        elif len(key) == 1 and not key.startswith("\x1b"):
+            curation["buffer"] = curation.get("buffer", "") + key
+        return True
+
+    # archive_progress / archive_result swallow plain keys; the worker drives
+    # the mode transitions and the render loop polls the progress each tick.
     return True

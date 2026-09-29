@@ -135,6 +135,13 @@ class TUICache:
         """Get all cached artifact statistics."""
         return self._load_raw()["artifacts"]
 
+    def forget(self, notebook_id: str) -> None:
+        """Drop every cached entry for a notebook (deleted/archived remotely)."""
+        data = self._load_raw(reload=True)
+        data["summaries"].pop(notebook_id, None)
+        data["artifacts"].pop(notebook_id, None)
+        self._save_raw(data)
+
     def save_artifacts(self, notebook_id: str, raw_artifacts: list[Any]) -> dict[str, Any]:
         """Summarize and cache artifacts for a notebook."""
         counts: dict[str, int] = {}

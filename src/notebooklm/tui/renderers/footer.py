@@ -5,7 +5,7 @@ from rich.spinner import Spinner
 from rich.table import Table
 from rich.text import Text
 
-from ..state import TUIState
+from ..state import TUIState, View
 from ._widgets import key_hints
 
 _GLOBAL_KEYS = [
@@ -18,11 +18,24 @@ _GLOBAL_KEYS = [
     ("esc", "back"),
 ]
 
+#: Curation keys shown while Notebook Detail is active (fact 16).
+_CURATION_KEYS = [
+    ("m", "mark items"),
+    ("x", "remove marked"),
+    ("+", "add source"),
+    ("D", "delete nb"),
+    ("X", "archive nb"),
+]
+
 
 def render_footer(state: TUIState) -> Panel:
     table = Table.grid(expand=True)
     table.add_column(ratio=1)
     table.add_column(justify="right", no_wrap=True)
+
+    left_keys = _GLOBAL_KEYS
+    if state.current_view == View.NOTEBOOK_DETAIL:
+        left_keys = _GLOBAL_KEYS + _CURATION_KEYS
 
     right: RenderableType
     progress = state.ingest_progress
@@ -42,6 +55,6 @@ def render_footer(state: TUIState) -> Panel:
     else:
         right = Text("● ready", style="success")
 
-    table.add_row(key_hints(_GLOBAL_KEYS), right)
+    table.add_row(key_hints(left_keys), right)
 
     return Panel(table, style="footer", border_style="border", box=box.ROUNDED, height=3)
