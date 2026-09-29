@@ -11,10 +11,10 @@ Guidance for Claude Code working in this repo. Also follow the file/naming conve
 ## Development Commands
 
 ```bash
-# Canonical contributor install — matches the extras CI's test job installs.
+# Canonical contributor install — CI's test-job extras plus `assessment`.
 # Full guide: docs/installation.md
 uv sync --frozen --extra browser --extra dev --extra markdown \
-        --extra mcp --extra server --extra impersonate
+        --extra mcp --extra server --extra impersonate --extra assessment
 source .venv/bin/activate
 uv run playwright install chromium
 
@@ -31,6 +31,13 @@ uncovered. Measured on one commit: the three-extra install runs **13,939** tests
 at **84.39%** coverage and fails the 90% gate, while CI's set runs **15,478** at
 **96.61%** and passes. That ~1,500-test blind spot hid a real MCP-adapter defect
 through eight red CI jobs on #2198.
+
+**`assessment` is required for the TUI tests.** `dspy` is declared only in the
+`assessment` extra, and `tests/unit/tui/test_notebook_detail.py` imports it with
+no `importorskip` guard. Without the extra, collection fails with
+`ModuleNotFoundError: No module named 'dspy'`; the test does not skip.
+`uv sync` also removes packages outside the requested extras, so running the
+command without `--extra assessment` uninstalls an already-present `dspy`.
 
 To reproduce a CI test run exactly (`.github/workflows/test.yml`):
 
