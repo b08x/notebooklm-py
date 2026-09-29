@@ -74,6 +74,9 @@ class TUIState:
     #: sub-modes live under ``mode`` (see ``tui/keypress.py``).
     curation: dict[str, Any] = field(default_factory=dict)
     curation_task: concurrent.futures.Future | None = None
+    #: Compile/generate worker future for the Compiler view (see
+    #: ``tui/views/compiler_gen.py``); polled each tick like ``curation_task``.
+    compiler_task: concurrent.futures.Future | None = None
 
     api_tokens: float = 10.0
     api_max_tokens: int = 10

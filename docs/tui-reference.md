@@ -1,7 +1,7 @@
 # TUI Reference
 
 **Status:** Active
-**Last Updated:** 2026-09-17
+**Last Updated:** 2026-09-29
 
 Command reference for the interactive Terminal User Interface (`notebooklm tui`). The TUI is a single-key, non-blocking keyboard interface (`src/notebooklm/tui/`) built on `rich.Live`; it does not accept line-edited shell commands — every action below is a single keystroke, except where a view puts you into a text-input mode.
 
@@ -197,13 +197,35 @@ Free-text input targeting `client.chat.ask` for the current notebook — **separ
 
 ## Compiler
 
-Lists local compiler project configs (`compiler_bridge.list_project_configs`) and compiles the selected one (audio or video project) into a preview.
+Lists local compiler project configs (`compiler_bridge.list_project_configs`) — audio projects from `examples/notebooklm-audio/projects/`, video projects from `examples/notebooklm-video/projects/`. Audio projects compile (and generate) against the notebook selected in the sidebar; the YAML's own `notebook_id` is ignored and the YAML file is never modified.
+
+### Compile → review → edit
 
 | Key | Action |
 |---|---|
-| `j` / `k` | Move config selection down/up |
-| `Enter` | Compile the selected config and show its preview |
+| `j` / `k` | Move config selection down/up (before a compile) — or scroll the compiled prompt once one is showing |
+| `Enter` | Compile the selected audio project against the selected sidebar notebook (in the background); video projects still compile to a plain preview |
+| `e` | Open the compiled prompt in `$EDITOR` (nvim, then vi). The edit shows marked `edited` and is never written back to the YAML or template |
+| `g` | Open the generate confirmation panel (notebook, project, format, length, char count, edited status) |
+| `y` | Send — generate with the YAML's `audio_format` and `audio_length` |
+| `n` / `Esc` | Cancel the confirmation panel (no request is made) |
 | `Esc` | Return to the previous view |
+
+With `auto_extract: true`, template slots (the four lexical states, topics, escalations) are filled in the background from the notebook's **ingested clauses** — hybrid retrieval (Postgres full-text + pgvector) merged by Reciprocal Rank Fusion, then one LLM call. The preview shows the supporting clauses in an `Evidence` section. If the notebook has nothing ingested, NotebookLM chat (`examples/notebooklm-audio/compiler/auto_bind.py`) fills the slots instead, with a warning; if that also fails, the YAML's own values are kept, with a warning.
+
+The preview header shows the project, target notebook, format, length, and the prompt's character count. The count turns amber above 5,000 characters — a warning only, never a block.
+
+### Generate
+
+Generation runs in the background; the panel shows the state (`submitted → generating → downloading → done`) and elapsed time, and stays responsive throughout. On completion the MP3 lands in:
+
+```
+~/Archive/NotebookLM/audio/<project-slug>/<YYYYMMDD-HHMM>_<notebook-slug>.mp3
+```
+
+(override the root with `$NOTEBOOKLM_AUDIO_DIR`), with a `<same-name>.json` sidecar recording the project YAML path, template, notebook, artifact id, format, length, the exact prompt sent, the edited flag, per-slot evidence, and start/finish timestamps. Failed generations also write a sidecar, with the error. On failure the prompt — including any edits — is kept, so pressing `g` retries without recompiling or re-editing.
+
+Non-interactive equivalent: `examples/notebooklm-audio/runner.py <proj.yaml> -n <notebook> --emit` prints only the compiled prompt (after auto-bind), suitable for `notebooklm generate audio --prompt-file -`.
 
 ## Assessment
 

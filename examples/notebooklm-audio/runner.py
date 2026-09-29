@@ -19,9 +19,32 @@ from compiler.loaders import load_audio_config
 from compiler.models import AudioProjectConfig
 from compiler.prompt import compile_audio_prompt
 
-from notebooklm import NotebookLMClient
+from notebooklm import AudioFormat, AudioLength, NotebookLMClient
 
 DEFAULT_PROJECT = Path(__file__).parent / "projects" / "custom-telemetry-session.yaml"
+
+
+def to_audio_enums(fmt: str, length: str) -> tuple[AudioFormat | None, AudioLength | None]:
+    """Map YAML ``audio_format`` / ``audio_length`` onto the client enums.
+
+    "default" or empty maps to ``None`` (the API default). Duplicated from
+    ``tui/views/compiler_gen.py`` — importing the TUI from examples is worse
+    than six lines of duplication.
+    """
+
+    def _map(value, enum_cls):
+        normalized = value.strip().replace("-", "_").upper()
+        if not normalized or normalized == "DEFAULT":
+            return None
+        try:
+            return enum_cls[normalized]
+        except KeyError:
+            choices = ", ".join(m.name.lower().replace("_", "-") for m in enum_cls)
+            raise ValueError(
+                f"unknown audio setting {value!r} — valid choices: default, {choices}"
+            ) from None
+
+    return _map(fmt, AudioFormat), _map(length, AudioLength)
 
 
 def parse_args() -> argparse.Namespace:
@@ -52,6 +75,13 @@ def parse_args() -> argparse.Namespace:
         default="generated_diagnostic_session.mp3",
         help="Output filepath for downloaded MP3 when executing live generation.",
     )
+    parser.add_argument(
+        "--emit",
+        action="store_true",
+        help="After auto-binding, print ONLY the compiled prompt to stdout "
+        "(diagnostics to stderr) so it can be piped into "
+        "`notebooklm generate audio --prompt-file -`.",
+    )
     return parser.parse_args()
 
 
@@ -65,6 +95,8 @@ async def execute_audio_pipeline(
             "An explicit, valid existing notebook ID (-n / --notebook-id or in YAML) is required for live audio execution!"
         )
 
+    audio_format, audio_length = to_audio_enums(config.audio_format, config.audio_length)
+
     print("Initializing async NotebookLM client from local storage...")
     async with NotebookLMClient.from_storage() as client:
         print(f"\n[1/4] Interrogating existing notebook ({target_id}) for auto-binding...")
@@ -77,6 +109,8 @@ async def execute_audio_pipeline(
         gen_status = await client.artifacts.generate_audio(
             notebook_id=target_id,
             instructions=compiled_instructions,
+            audio_format=audio_format,
+            audio_length=audio_length,
         )
         print(f"      Task submitted successfully! Task ID: {gen_status.task_id}")
 
@@ -101,6 +135,21 @@ async def execute_audio_pipeline(
             print(f"  [Error] Audio synthesis failed or timed out: {final_status}")
 
 
+async def emit_compiled_prompt(config: AudioProjectConfig, notebook_id: str) -> None:
+    """Auto-bind, then print only the compiled prompt to stdout (fact 13).
+
+    Diagnostics go to stderr so the stdout pipe stays clean for
+    ``notebooklm generate audio --prompt-file -``.
+    """
+    async with NotebookLMClient.from_storage() as client:
+        config = await auto_populate_from_notebook(client, notebook_id, config, verbose=False)
+        compiled = compile_audio_prompt(config)
+        sys.stdout.write(compiled)
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+        print(f"[emit] compiled prompt: {len(compiled)} chars", file=sys.stderr)
+
+
 def main() -> None:
     args = parse_args()
     project_file = Path(args.project).resolve()
@@ -111,6 +160,16 @@ def main() -> None:
     config = load_audio_config(project_file)
     if args.notebook_id:
         config.notebook_id = args.notebook_id
+
+    # --emit: auto-bind against the notebook, then print only the compiled
+    # prompt to stdout for piping into `notebooklm generate audio --prompt-file -`.
+    if args.emit:
+        if not args.notebook_id:
+            print("[emit] --emit requires -n / --notebook-id", file=sys.stderr)
+            sys.exit(2)
+        print("[emit] binding and compiling...", file=sys.stderr)
+        asyncio.run(emit_compiled_prompt(config, args.notebook_id))
+        return
 
     # In dry-run mode without network execution, compile immediately with offline defaults
     if not args.execute:

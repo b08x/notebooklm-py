@@ -25,6 +25,31 @@ def raw_terminal():
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
+@contextlib.contextmanager
+def suspend_raw_terminal():
+    """Hand the terminal to an external program (``$EDITOR``) and come back.
+
+    Used inside the ``raw_terminal()`` block: restores cooked mode (ECHO +
+    ICANON) so the editor sees a normal terminal, then re-enters cbreak on
+    exit because ``raw_terminal``'s own restore has not run yet.
+    """
+    if not sys.stdin.isatty():
+        yield
+        return
+
+    import typing
+
+    fd = typing.cast(int, sys.stdin.fileno())
+    cbreak_attrs = termios.tcgetattr(fd)
+    try:
+        iflag, oflag, cflag, lflag, ispeed, ospeed, cc = termios.tcgetattr(fd)
+        lflag |= termios.ECHO | termios.ICANON
+        termios.tcsetattr(fd, termios.TCSADRAIN, [iflag, oflag, cflag, lflag, ispeed, ospeed, cc])
+        yield
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, cbreak_attrs)
+
+
 def parse_keys(buffer: str) -> list[str]:
     keys = []
     i = 0
@@ -200,25 +225,63 @@ def handle_key(key: str, state: TUIState) -> bool:
             return True
 
     elif state.current_view == View.COMPILER:
+        cs = state.compiler_state
         if key == "\x1b":  # Escape
+            if cs.get("confirm"):
+                cs["confirm"] = False
+                return True
             if state.previous_view:
                 state.current_view = state.previous_view
                 state.previous_view = None
             return True
+        elif cs.get("confirm"):
+            # Confirmation panel: y sends, n cancels and makes no request (fact 7).
+            if key.lower() == "y":
+                from .views.compiler_gen import start_generate
+
+                start_generate(state)
+            elif key.lower() == "n":
+                cs["confirm"] = False
+            return True
         elif key in ("j", "k"):
-            configs = state.compiler_state.get("configs", [])
-            selected_idx = state.compiler_state.get("selected_config", 0)
-            if configs:
-                if key == "j":
-                    selected_idx = min(selected_idx + 1, len(configs) - 1)
-                else:
-                    selected_idx = max(selected_idx - 1, 0)
-                state.compiler_state["selected_config"] = selected_idx
+            if cs.get("prompt"):
+                # A compiled prompt is showing — j/k scroll the preview (fact 4).
+                scroll = cs.get("scroll", 0)
+                cs["scroll"] = scroll + 1 if key == "j" else max(0, scroll - 1)
+            else:
+                configs = cs.get("configs", [])
+                selected_idx = cs.get("selected_config", 0)
+                if configs:
+                    if key == "j":
+                        selected_idx = min(selected_idx + 1, len(configs) - 1)
+                    else:
+                        selected_idx = max(selected_idx - 1, 0)
+                    cs["selected_config"] = selected_idx
             return True
         elif key == "\r" or key == "\n":
             from .views.compiler_view import compile_selected
 
             compile_selected(state)
+            return True
+        elif key == "e":
+            # The key handler never touches the terminal itself — the app
+            # loop performs the Live suspend around $EDITOR (fact 6).
+            if cs.get("prompt") and cs.get("phase") not in (
+                "compiling",
+                "submitted",
+                "generating",
+                "downloading",
+            ):
+                cs["edit_requested"] = True
+            return True
+        elif key == "g":
+            if cs.get("prompt") and cs.get("phase") not in (
+                "compiling",
+                "submitted",
+                "generating",
+                "downloading",
+            ):
+                cs["confirm"] = True
             return True
 
     elif state.current_view == View.ASSESSMENT:

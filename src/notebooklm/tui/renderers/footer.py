@@ -27,6 +27,15 @@ _CURATION_KEYS = [
     ("X", "archive nb"),
 ]
 
+#: Compiler-view keys (fact 16): compile, edit, generate, scroll, back.
+_COMPILER_KEYS = [
+    ("enter", "compile"),
+    ("e", "edit"),
+    ("g", "generate"),
+    ("j/k", "scroll"),
+    ("esc", "back"),
+]
+
 
 def render_footer(state: TUIState) -> Panel:
     table = Table.grid(expand=True)
@@ -36,6 +45,8 @@ def render_footer(state: TUIState) -> Panel:
     left_keys = _GLOBAL_KEYS
     if state.current_view == View.NOTEBOOK_DETAIL:
         left_keys = _GLOBAL_KEYS + _CURATION_KEYS
+    elif state.current_view == View.COMPILER:
+        left_keys = _COMPILER_KEYS
 
     right: RenderableType
     progress = state.ingest_progress

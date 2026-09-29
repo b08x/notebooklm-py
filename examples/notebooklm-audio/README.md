@@ -59,6 +59,26 @@ uv run --with pyyaml --with pydantic --with jinja2 examples/notebooklm-audio/run
   --out diagnostic_session.mp3
 ```
 
+The pipeline passes the YAML's `audio_format` and `audio_length` through to `client.artifacts.generate_audio` (`"default"` means the API default; valid choices: `deep-dive`, `brief`, `critique`, `debate` and `short`, `default`, `long`).
+
+### 3. Emit-Only Mode (pipe into `notebooklm generate audio`)
+
+`--emit` runs the auto-bind step, then prints **only** the compiled prompt to stdout (diagnostics go to stderr), so it can be piped straight into the CLI's generate command:
+
+```bash
+uv run --with pyyaml --with pydantic --with jinja2 examples/notebooklm-audio/runner.py \
+  examples/notebooklm-audio/projects/sfl-engine-pipeline-mechanics.yaml \
+  -n <YOUR_EXISTING_NOTEBOOK_UUID> \
+  --emit \
+  | notebooklm generate audio --prompt-file - -n <YOUR_EXISTING_NOTEBOOK_UUID> --no-wait
+```
+
+`--emit` requires `-n` / `--notebook-id`.
+
+### 4. From the TUI (compile → review → edit → generate)
+
+`notebooklm tui` (Compiler view, `p`) drives this whole compiler interactively: select a project YAML, `Enter` compiles it against the notebook selected in the sidebar, `e` edits the prompt in `$EDITOR`, `g` + `y` generates with the YAML's format and length. Slot filling prefers the notebook's **ingested clauses** (hybrid Postgres full-text + pgvector retrieval merged by Reciprocal Rank Fusion, then one LLM call) — the chat-based `auto_bind` extraction above is the fallback when nothing is ingested. Finished MP3s land in `~/Archive/NotebookLM/audio/<project-slug>/` with a sidecar JSON recording the exact prompt sent. See the [TUI Reference](../../docs/tui-reference.md#compiler) for the keys.
+
 ## Customizing Telemetry without Editing Markdown Templates
 
 Instead of manually editing verbose markdown templates, you can override specific parameters directly in your concise project YAML:

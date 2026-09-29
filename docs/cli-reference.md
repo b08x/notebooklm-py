@@ -469,6 +469,13 @@ notebooklm tui
 - `Enter` / `Return`: Confirm / update score and feedback state
 - `Esc`: Return to previous view
 
+**Compiler View Keybindings** (full reference: [TUI Reference](tui-reference.md#compiler)):
+- `Enter`: Compile the selected audio project against the notebook selected in the sidebar
+- `e`: Open the compiled prompt in `$EDITOR` (nvim, then vi); the edit is never written back to the YAML
+- `g`: Open the generate confirmation panel; `y` sends, `n` / `Esc` cancels
+- `j` / `k`: Move config selection (before a compile) or scroll the compiled prompt
+- `Esc`: Return to previous view
+
 ### Features Beyond the Web UI
 These CLI capabilities are not available in NotebookLM's web interface:
 

@@ -54,7 +54,8 @@ class MatchedClause:
     document_id: str
     text: str
     #: pgvector L2 distance to the query embedding — lower is a closer match.
-    distance: float
+    #: ``None`` for keyword-only matches that never went through the index.
+    distance: float | None = None
 
 
 @dataclass
@@ -129,3 +130,123 @@ async def search_clauses(
         answer = "LLM synthesis unavailable; showing matched clauses only."
 
     return ClauseSearchResult(answer=answer, matched_clauses=matched)
+
+
+#: Rank-list depth for each hybrid leg before fusion (RRF only needs the head).
+_HYBRID_LEG_LIMIT = 25
+
+
+def _rrf_fuse(
+    rank_lists: list[list[MatchedClause]],
+    k: int = 60,
+    top_k: int = 8,
+) -> list[MatchedClause]:
+    """Merge ranked clause lists by Reciprocal Rank Fusion.
+
+    Each clause scores ``Σ 1/(k + rank)`` over every list it appears in
+    (1-based ranks), so a clause retrieved by both legs outranks one retrieved
+    by a single leg at a comparable position. Ties break on clause id so the
+    output is deterministic.
+    """
+    scores: dict[str, float] = {}
+    clauses: dict[str, MatchedClause] = {}
+    for ranked in rank_lists:
+        for rank, clause in enumerate(ranked, start=1):
+            scores[clause.clause_id] = scores.get(clause.clause_id, 0.0) + 1.0 / (k + rank)
+            clauses.setdefault(clause.clause_id, clause)
+    ranked_ids = sorted(scores, key=lambda cid: (-scores[cid], cid))
+    return [clauses[cid] for cid in ranked_ids[:top_k]]
+
+
+async def _keyword_ranked_clauses(
+    session: AsyncSession,
+    document_ids: list[str],
+    query: str,
+    limit: int,
+) -> list[MatchedClause]:
+    """Full-text leg: Postgres ``websearch_to_tsquery`` over ``Clause.text``.
+
+    Matches through the existing ``idx_clauses_tsv`` GIN index, so no migration
+    is needed; ranking is ``ts_rank``.
+    """
+    from sqlalchemy import func
+
+    tsv = func.to_tsvector("english", Clause.text)
+    tsq = func.websearch_to_tsquery("english", query)
+    stmt = (
+        select(Clause)
+        .where(Clause.document_id.in_(document_ids))
+        .where(tsv.op("@@")(tsq))
+        .order_by(func.ts_rank(tsv, tsq).desc())
+        .limit(limit)
+    )
+    rows = (await session.execute(stmt)).scalars().all()
+    return [
+        MatchedClause(clause_id=c.external_id, document_id=c.document_id, text=c.text) for c in rows
+    ]
+
+
+async def _vector_ranked_clauses(
+    session: AsyncSession,
+    document_ids: list[str],
+    query: str,
+    limit: int,
+    embedder: EmbeddingAdapter | None,
+) -> list[MatchedClause]:
+    """pgvector leg: same L2-distance join as :func:`search_clauses`.
+
+    Embedding failures (e.g. Ollama down) degrade to an empty leg — the caller
+    still gets keyword-only RRF ranking instead of a failed search.
+    """
+    try:
+        embed = embedder or OllamaEmbeddingAdapter()
+        query_vector = (await asyncio.to_thread(embed.embed, [query]))[0]
+    except Exception as e:
+        logger.warning("RRF vector leg skipped — query embedding failed: %s", e)
+        return []
+
+    distance = Embedding.embedding.l2_distance(query_vector)
+    stmt = (
+        select(Clause, distance.label("distance"))
+        .join(Embedding, Embedding.clause_id == Clause.external_id)
+        .where(Clause.document_id.in_(document_ids))
+        .order_by(distance)
+        .limit(limit)
+    )
+    rows = (await session.execute(stmt)).all()
+    return [
+        MatchedClause(
+            clause_id=clause.external_id,
+            document_id=clause.document_id,
+            text=clause.text,
+            distance=dist,
+        )
+        for clause, dist in rows
+    ]
+
+
+async def rrf_search(
+    session: AsyncSession,
+    document_ids: list[str],
+    query: str,
+    top_k: int = 8,
+    k: int = 60,
+    embedder: EmbeddingAdapter | None = None,
+) -> list[MatchedClause]:
+    """Hybrid retrieval: Postgres full-text + pgvector similarity, fused by RRF.
+
+    The two legs are each ranked to a depth of 25 and merged by Reciprocal Rank
+    Fusion (``score = Σ 1/(k + rank)``) into one ranked list. This makes no LLM
+    call and never invokes ``setup_dspy_router()`` — callers decide what to do
+    with the retrieved clauses.
+    """
+    if not document_ids:
+        return []
+
+    keyword_ranked = await _keyword_ranked_clauses(
+        session, document_ids, query, limit=_HYBRID_LEG_LIMIT
+    )
+    vector_ranked = await _vector_ranked_clauses(
+        session, document_ids, query, limit=_HYBRID_LEG_LIMIT, embedder=embedder
+    )
+    return _rrf_fuse([keyword_ranked, vector_ranked], k=k, top_k=top_k)

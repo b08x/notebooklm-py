@@ -5,7 +5,7 @@ from rich.console import Console
 from rich.live import Live
 
 from .cache import TUICache
-from .keypress import get_keys, handle_key, raw_terminal
+from .keypress import get_keys, handle_key, raw_terminal, suspend_raw_terminal
 from .layout import build_layout
 from .logging_bridge import install_tui_log_handler
 from .renderers import (
@@ -30,6 +30,29 @@ def update_layout(layout, state):
     layout["content"]["detail"].update(detail_panel)
 
     layout["footer"].update(render_footer(state))
+
+
+def _run_editor_handoff(state: TUIState, live: Live) -> None:
+    """Suspend the Live display, edit the compiled prompt in ``$EDITOR``, resume.
+
+    Requested via ``state.compiler_state["edit_requested"]`` — the key handler
+    never touches the terminal itself (fact 6). The edit lands in the preview
+    marked ``edited`` and is never written back to the YAML or the template.
+    """
+    from .views.compiler_gen import apply_editor_result, edit_prompt_via_editor
+
+    cs = state.compiler_state
+    prompt = cs.get("prompt")
+    if not prompt:
+        return
+
+    live.stop()
+    try:
+        with suspend_raw_terminal():
+            result = edit_prompt_via_editor(prompt)
+    finally:
+        live.start(refresh=True)
+    apply_editor_result(state, result)
 
 
 def run_tui(download_dir: str | None = None) -> None:
@@ -94,6 +117,28 @@ def run_tui(download_dir: str | None = None) -> None:
 
                 if state.curation_task and state.curation_task.done():
                     state.curation_task = None
+                    state_changed = True
+
+                if state.compiler_task and state.compiler_task.done():
+                    state.compiler_task = None
+                    state_changed = True
+
+                # The Compiler view's workers advance phase/spinner/elapsed
+                # time with no keypress to trigger a redraw (fact 9).
+                if state.current_view == View.COMPILER and state.compiler_state.get("phase") in (
+                    "compiling",
+                    "submitted",
+                    "generating",
+                    "downloading",
+                ):
+                    state_changed = True
+
+                # $EDITOR handoff — outside the Live refresh, in cooked mode.
+                if state.current_view == View.COMPILER and state.compiler_state.get(
+                    "edit_requested"
+                ):
+                    state.compiler_state["edit_requested"] = False
+                    _run_editor_handoff(state, live)
                     state_changed = True
 
                 # Background ingestion/assessment and the Logs view both mutate
