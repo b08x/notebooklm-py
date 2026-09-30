@@ -439,10 +439,14 @@ def start_generate(state: TUIState) -> None:
     if cs.get("phase") in _ACTIVE_PHASES:
         return
 
+    # A retry after a failure resumes the prior artifact when it still exists
+    # (checked in the worker), instead of spending a new generation on it.
+    resume_artifact_id = cs.get("artifact_id") if cs.get("phase") == "failed" else None
+
     cs["confirm"] = False
     cs["phase"] = "submitted"
     cs["error"] = None
-    cs["artifact_id"] = None
+    cs["artifact_id"] = resume_artifact_id
     cs["started_at"] = time.time()
     base = audio_output_base(cs.get("project") or "project", cs.get("notebook_title") or "notebook")
     cs["output_base"] = str(base)
@@ -460,10 +464,19 @@ def start_generate(state: TUIState) -> None:
         "evidence": cs.get("evidence") or {},
         "output_base": str(base),
         "started_at": cs["started_at"],
+        "resume_artifact_id": resume_artifact_id,
     }
 
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     state.compiler_task = executor.submit(_run_generate, state, payload)
+
+
+async def _artifact_still_listed(client: Any, notebook_id: str, artifact_id: str) -> bool:
+    """True when ``artifact_id`` is in the notebook's listing and not server-FAILED."""
+    for artifact in await client.artifacts.list(notebook_id):
+        if artifact.id == artifact_id:
+            return not artifact.is_failed
+    return False
 
 
 def _sidecar_data(
@@ -516,30 +529,50 @@ def _run_generate(state: TUIState, payload: dict[str, Any]) -> None:
             payload.get("audio_format") or "default",
             payload.get("audio_length") or "default",
         )
+        notebook_id = payload["notebook_id"]
         async with NotebookLMClient.from_storage() as client:
-            status = await client.artifacts.generate_audio(
-                notebook_id=payload["notebook_id"],
-                instructions=payload["prompt"],
-                audio_format=fmt,
-                audio_length=length,
-            )
-            artifact_id = status.task_id
+            resume_id = payload.get("resume_artifact_id")
+            if resume_id and await _artifact_still_listed(client, notebook_id, resume_id):
+                logger.info("Compiler: resuming existing artifact %s", resume_id)
+                artifact_id = resume_id
+            else:
+                status = await client.artifacts.generate_audio(
+                    notebook_id=notebook_id,
+                    instructions=payload["prompt"],
+                    audio_format=fmt,
+                    audio_length=length,
+                )
+                artifact_id = status.task_id
             cs["artifact_id"] = artifact_id
             cs["phase"] = "generating"
-            final = await client.artifacts.wait_for_completion(
-                payload["notebook_id"],
-                artifact_id,
-                initial_interval=10.0,
-                max_interval=20.0,
-                timeout=GENERATION_TIMEOUT,
-            )
+
+            async def _wait() -> Any:
+                return await client.artifacts.wait_for_completion(
+                    notebook_id,
+                    artifact_id,
+                    initial_interval=10.0,
+                    max_interval=20.0,
+                    timeout=GENERATION_TIMEOUT,
+                )
+
+            final = await _wait()
+            # "removed" is inferred from a run of listing misses. If the artifact
+            # is back in the listing, the omission was transient: keep waiting.
+            if getattr(final, "is_removed", False) and await _artifact_still_listed(
+                client, notebook_id, artifact_id
+            ):
+                logger.warning(
+                    "Compiler: artifact %s reported removed but is still listed; resuming wait",
+                    artifact_id,
+                )
+                final = await _wait()
             if not final.is_complete:
                 raise RuntimeError(f"generation did not complete: {final.status}")
             cs["phase"] = "downloading"
             mp3_path = base.with_suffix(".mp3")
             mp3_path.parent.mkdir(parents=True, exist_ok=True)
             await client.artifacts.download_audio(
-                payload["notebook_id"],
+                notebook_id,
                 output_path=str(mp3_path),
                 artifact_id=artifact_id,
             )

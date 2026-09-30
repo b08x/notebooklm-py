@@ -472,6 +472,74 @@ class TestWaitForCompletionQuotaDetection:
         assert result.is_complete is True
         assert call_count == 6
 
+    @pytest.mark.asyncio
+    async def test_seen_artifact_survives_long_omission_and_completes(self):
+        """An artifact already seen in the listing is not declared removed by
+        the fast never-seen thresholds.
+
+        Regression for a live long-format audio overview: the artifact was
+        listed as in-progress for ~11 minutes, then omitted from LIST_ARTIFACTS
+        for 80s+ (5 consecutive polls), then reappeared completed. The fast
+        quota-rejection thresholds (``max_not_found`` / the ``max_not_found * 2``
+        window-independent trigger) fired and reported ``"removed"`` for an
+        artifact that finished successfully.
+        """
+        api = _make_api()
+        responses = [GenerationStatus(task_id="task_abc", status="in_progress")]
+        # 12 consecutive misses: past max_not_found=3 and past the
+        # window-independent trigger (3 * 2 = 6).
+        responses += [GenerationStatus(task_id="task_abc", status="not_found")] * 12
+        responses.append(GenerationStatus(task_id="task_abc", status="completed"))
+        api.poll_status = AsyncMock(side_effect=responses)
+
+        result = await api.wait_for_completion(
+            "nb1",
+            "task_abc",
+            initial_interval=0.01,
+            max_interval=0.01,
+            max_not_found=3,
+            min_not_found_window=0.0,
+            seen_not_found_window=9999.0,
+        )
+
+        assert result.is_complete is True
+        assert result.is_removed is False
+        assert api.poll_status.call_count == 14
+
+    @pytest.mark.asyncio
+    async def test_seen_artifact_sustained_absence_still_removed(self):
+        """A seen artifact that stays absent past ``seen_not_found_window`` is
+        still reported ``"removed"`` — the grace window delays, not disables,
+        removal detection."""
+        api = _make_api()
+        responses = [GenerationStatus(task_id="task_abc", status="in_progress")]
+        responses += [GenerationStatus(task_id="task_abc", status="not_found")] * 20
+        api.poll_status = AsyncMock(side_effect=responses)
+
+        result = await api.wait_for_completion(
+            "nb1",
+            "task_abc",
+            initial_interval=0.01,
+            max_interval=0.01,
+            max_not_found=3,
+            min_not_found_window=0.0,
+            seen_not_found_window=0.0,
+        )
+
+        assert result.is_removed is True
+        assert result.is_failed is False
+        # 1 sighting + max_not_found consecutive misses.
+        assert api.poll_status.call_count == 4
+
+    def test_seen_not_found_window_default_is_300(self):
+        """The seen-artifact grace window defaults to 5 minutes."""
+        import inspect
+
+        from notebooklm._artifacts import ArtifactsAPI
+
+        sig = inspect.signature(ArtifactsAPI.wait_for_completion)
+        assert sig.parameters["seen_not_found_window"].default == 300.0
+
 
 # ---------------------------------------------------------------------------
 # GenerationStatus.is_not_found property

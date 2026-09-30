@@ -157,6 +157,7 @@ class ArtifactPollingService:
         timeout: float = 300.0,
         max_not_found: int = 5,
         min_not_found_window: float = 10.0,
+        seen_not_found_window: float = 300.0,
         poll_status: PollStatusCallback,
         on_status_change: StatusChangeCallback | None = None,
     ) -> GenerationStatus:
@@ -209,6 +210,7 @@ class ArtifactPollingService:
                 timeout=timeout,
                 max_not_found=max_not_found,
                 min_not_found_window=min_not_found_window,
+                seen_not_found_window=seen_not_found_window,
                 poll_status=poll_status,
                 on_status_change=on_status_change,
             ),
@@ -252,6 +254,7 @@ class ArtifactPollingService:
         timeout: float,
         max_not_found: int,
         min_not_found_window: float,
+        seen_not_found_window: float,
         poll_status: PollStatusCallback,
         on_status_change: StatusChangeCallback | None,
     ) -> GenerationStatus:
@@ -264,6 +267,7 @@ class ArtifactPollingService:
                 timeout=timeout,
                 max_not_found=max_not_found,
                 min_not_found_window=min_not_found_window,
+                seen_not_found_window=seen_not_found_window,
                 poll_status=poll_status,
                 on_status_change=on_status_change,
             )
@@ -278,6 +282,7 @@ class ArtifactPollingService:
         timeout: float,
         max_not_found: int,
         min_not_found_window: float,
+        seen_not_found_window: float,
         poll_status: PollStatusCallback,
         on_status_change: StatusChangeCallback | None,
     ) -> GenerationStatus:
@@ -287,6 +292,9 @@ class ArtifactPollingService:
         consecutive_not_found = 0
         poll_retry_count = 0
         first_not_found_time: float | None = None
+        # Set once the artifact appears in the listing. A seen artifact gets the
+        # longer ``seen_not_found_window`` grace before a removal is declared.
+        seen_in_listing = False
         last_status: str | None = None
         last_emitted_status: str | None = None
         status_transitions: list[GenerationStatus] = []
@@ -373,11 +381,23 @@ class ArtifactPollingService:
                 #  - window-independent: a long consecutive run (2x the
                 #    threshold) trips removal even when ``min_not_found_window``
                 #    has not yet elapsed.
-                consecutive_trigger = (
-                    consecutive_not_found >= max_not_found
-                    and not_found_elapsed >= min_not_found_window
-                )
-                window_independent_trigger = consecutive_not_found >= max_not_found * 2
+                #
+                # Once the artifact has been seen in the listing, both fast
+                # triggers give way to ``seen_not_found_window``: a delisting
+                # right after submission is the quota-rejection signature, but a
+                # long-running generation (e.g. a long audio overview) can drop
+                # out of LIST_ARTIFACTS for over a minute and still complete.
+                if seen_in_listing:
+                    consecutive_trigger = consecutive_not_found >= max_not_found and (
+                        not_found_elapsed >= max(min_not_found_window, seen_not_found_window)
+                    )
+                    window_independent_trigger = False
+                else:
+                    consecutive_trigger = (
+                        consecutive_not_found >= max_not_found
+                        and not_found_elapsed >= min_not_found_window
+                    )
+                    window_independent_trigger = consecutive_not_found >= max_not_found * 2
 
                 if consecutive_trigger or window_independent_trigger:
                     trigger = (
@@ -421,6 +441,7 @@ class ArtifactPollingService:
                 # timeout fires.
                 consecutive_not_found = 0
                 first_not_found_time = None
+                seen_in_listing = True
 
             if deadline.exceeded():
                 raise _artifact_timeout_error(

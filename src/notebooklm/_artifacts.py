@@ -746,6 +746,7 @@ class ArtifactsAPI:
         max_not_found: int = 5,
         min_not_found_window: float = 10.0,
         on_status_change: Callable[[GenerationStatus], object] | None = None,
+        seen_not_found_window: float = 300.0,
     ) -> GenerationStatus:
         """Wait for a generation task to complete (exponential-backoff polling).
 
@@ -770,6 +771,13 @@ class ArtifactsAPI:
         avoiding false positives on slow networks. ``on_status_change`` is an
         optional sync/async callback invoked when the leader observes a new
         status (followers receive only the final status).
+        ``seen_not_found_window`` (default 300.0) applies once the artifact has
+        appeared in the listing at least once: a removal then also requires this
+        many seconds of continuous absence, and the window-independent
+        ``max_not_found * 2`` trigger is disabled. The fast thresholds above
+        target quota rejections, where the artifact is delisted right after
+        submission; an artifact already seen in progress can drop out of
+        ``LIST_ARTIFACTS`` for over a minute mid-generation and still complete.
 
         Raises:
             TimeoutError: If task doesn't complete within ``timeout``.
@@ -782,6 +790,7 @@ class ArtifactsAPI:
             timeout=timeout,
             max_not_found=max_not_found,
             min_not_found_window=min_not_found_window,
+            seen_not_found_window=seen_not_found_window,
             poll_status=self.poll_status,
             on_status_change=on_status_change,
         )

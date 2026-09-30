@@ -81,6 +81,13 @@ class FakeArtifacts:
         self.download_calls: list[dict] = []
         self.fail_generate = False
         self.incomplete = False
+        self.wait_calls: list[str] = []
+        # Queue of statuses for successive wait_for_completion calls; when empty,
+        # falls back to complete/incomplete.
+        self.wait_results: list[SimpleNamespace] = []
+        # Rows returned by list(): SimpleNamespace(id=..., is_failed=...).
+        self.listed: list[SimpleNamespace] = []
+        self.list_calls = 0
 
     async def generate_audio(
         self, notebook_id, instructions=None, audio_format=None, audio_length=None, **kw
@@ -99,10 +106,19 @@ class FakeArtifacts:
         return SimpleNamespace(task_id="art-123")
 
     async def wait_for_completion(self, notebook_id, task_id, **kw):
+        self.wait_calls.append(task_id)
         self._log_phase()
+        if self.wait_results:
+            return self.wait_results.pop(0)
         return SimpleNamespace(
-            is_complete=not self.incomplete, status="incomplete" if self.incomplete else "complete"
+            is_complete=not self.incomplete,
+            is_removed=False,
+            status="incomplete" if self.incomplete else "complete",
         )
+
+    async def list(self, notebook_id, **kw):
+        self.list_calls += 1
+        return list(self.listed)
 
     async def download_audio(self, notebook_id, output_path, artifact_id=None, **kw):
         self.download_calls.append(
@@ -695,6 +711,81 @@ def test_generate_incomplete_status_fails(monkeypatch, tmp_path, no_router):
     assert cs["phase"] == "failed"
     assert "did not complete" in cs["error"]
     assert cs["artifact_id"] == "art-123"
+
+
+_REMOVED = SimpleNamespace(is_complete=False, is_removed=True, status="removed")
+_COMPLETE = SimpleNamespace(is_complete=True, is_removed=False, status="complete")
+
+
+def test_generate_removed_but_still_listed_keeps_waiting(monkeypatch, tmp_path, no_router):
+    """A "removed" poll result for an artifact that is still in the listing is a
+    transient omission: keep waiting and download it instead of failing."""
+    state = _compiled_state()
+    artifacts = _patch_client(monkeypatch, state)
+    artifacts.wait_results = [_REMOVED, _COMPLETE]
+    artifacts.listed = [SimpleNamespace(id="art-123", is_failed=False)]
+    monkeypatch.setenv("NOTEBOOKLM_AUDIO_DIR", str(tmp_path))
+
+    gen.start_generate(state)
+    state.compiler_task.result()
+
+    cs = state.compiler_state
+    assert cs["phase"] == "done"
+    assert len(artifacts.generate_calls) == 1
+    assert artifacts.wait_calls == ["art-123", "art-123"]
+    assert artifacts.download_calls[0]["artifact_id"] == "art-123"
+
+
+def test_generate_removed_and_gone_fails(monkeypatch, tmp_path, no_router):
+    state = _compiled_state()
+    artifacts = _patch_client(monkeypatch, state)
+    artifacts.wait_results = [_REMOVED]
+    artifacts.listed = []
+    monkeypatch.setenv("NOTEBOOKLM_AUDIO_DIR", str(tmp_path))
+
+    gen.start_generate(state)
+    state.compiler_task.result()
+
+    cs = state.compiler_state
+    assert cs["phase"] == "failed"
+    assert "removed" in cs["error"]
+    assert artifacts.wait_calls == ["art-123"]
+    assert cs["artifact_id"] == "art-123"
+
+
+def test_retry_after_failure_resumes_existing_artifact(monkeypatch, tmp_path, no_router):
+    """Pressing g after a failure whose artifact still exists resumes that
+    artifact (wait + download) instead of starting a new generation."""
+    state = _compiled_state(phase="failed", artifact_id="art-9", error="removed")
+    artifacts = _patch_client(monkeypatch, state)
+    artifacts.listed = [SimpleNamespace(id="art-9", is_failed=False)]
+    monkeypatch.setenv("NOTEBOOKLM_AUDIO_DIR", str(tmp_path))
+
+    gen.start_generate(state)
+    state.compiler_task.result()
+
+    cs = state.compiler_state
+    assert artifacts.generate_calls == []
+    assert artifacts.wait_calls == ["art-9"]
+    assert artifacts.download_calls[0]["artifact_id"] == "art-9"
+    assert cs["phase"] == "done"
+    data = json.loads(Path(cs["sidecar_path"]).read_text())
+    assert data["artifact_id"] == "art-9"
+
+
+def test_retry_after_failed_artifact_regenerates(monkeypatch, tmp_path, no_router):
+    """A server-FAILED or vanished artifact is not resumed; g generates anew."""
+    state = _compiled_state(phase="failed", artifact_id="art-9", error="failed")
+    artifacts = _patch_client(monkeypatch, state)
+    artifacts.listed = [SimpleNamespace(id="art-9", is_failed=True)]
+    monkeypatch.setenv("NOTEBOOKLM_AUDIO_DIR", str(tmp_path))
+
+    gen.start_generate(state)
+    state.compiler_task.result()
+
+    assert len(artifacts.generate_calls) == 1
+    assert artifacts.wait_calls == ["art-123"]
+    assert state.compiler_state["phase"] == "done"
 
 
 def test_start_generate_does_nothing_while_running(no_router):
