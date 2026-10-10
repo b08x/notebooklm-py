@@ -110,3 +110,29 @@ def test_assessment_view_module_has_no_pipeline_or_generate_assessment_imports()
             names = [alias.name for alias in node.names]
             assert "PreprocessingPipeline" not in names
             assert "generate_assessment" not in names
+
+
+def test_sfl_panel_shows_nested_tenor_values_not_keys():
+    """fact-43: a nested-dict tenor renders its values via the shared formatter."""
+    state = TUIState()
+    state.assessment_state = {
+        "is_loading": True,
+        "current_chunk_sfl": {
+            "ideational": {"participants": ["kernel panics"], "processes": [], "circumstances": []},
+            "interpersonal": {
+                "tenor": {"formality": "informal", "stance": "expert-to-peer"},
+                "mood": "declarative",
+                "modality": {"usuality": "usually"},
+            },
+        },
+    }
+    _, sfl_panel = AssessmentView(state).render()
+    console = Console(theme=THEME, width=160, record=True, file=io.StringIO())
+    console.print(sfl_panel)
+    out = console.export_text()
+    assert "formality: informal" in out
+    assert "stance: expert-to-peer" in out
+    assert "usuality: usually" in out
+    assert "declarative" in out
+    # The bare key list (the old bug) never appears on its own.
+    assert "formality  stance" not in out

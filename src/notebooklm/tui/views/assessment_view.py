@@ -8,6 +8,7 @@ from rich.text import Text
 from rich.tree import Tree
 
 from notebooklm._app.assessment import run_assessment_scoring
+from notebooklm._app.sfl_format import format_sfl
 
 from ..renderers._widgets import key_hints, panel
 
@@ -365,18 +366,15 @@ class AssessmentView:
             sfl_table.add_column("Metafunction", style="label", width=14, no_wrap=True)
             sfl_table.add_column("Parsing / Tagging")
 
-            ideational = current_sfl.get("ideational", {})
-            interpersonal = current_sfl.get("interpersonal", {})
+            formatted = format_sfl(current_sfl)
+            ideational = formatted["ideational"]
+            interpersonal = formatted["interpersonal"]
 
-            sfl_table.add_row(
-                "Participants", _badges(ideational.get("participants", []), "entity.person")
-            )
-            sfl_table.add_row("Processes", _badges(ideational.get("processes", []), "entity.org"))
-            sfl_table.add_row(
-                "Circumstances", _badges(ideational.get("circumstances", []), "entity.time")
-            )
+            sfl_table.add_row("Participants", _badges(ideational["participants"], "entity.person"))
+            sfl_table.add_row("Processes", _badges(ideational["processes"], "entity.org"))
+            sfl_table.add_row("Circumstances", _badges(ideational["circumstances"], "entity.time"))
             for key in ("tenor", "mood", "modality"):
-                sfl_table.add_row(key.title(), _badges(interpersonal.get(key, "N/A"), "foreground"))
+                sfl_table.add_row(key.title(), _badges(interpersonal[key], "foreground"))
             sfl_panel = panel(sfl_table, "SFL metafunctions", padding=(1, 2))
         else:
             sfl_panel = panel(

@@ -220,8 +220,9 @@ class FactCheck(Base):
 class RemovalLog(Base):
     """One row per curated removal, notebook delete, or archive.
 
-    Local Postgres data is never purged; this table is the audit trail that
-    records what was removed, when, and why.
+    Local Postgres data is purged only by the Corpus Explorer's confirmed
+    delete (``action="delete_local"``, ``item_type`` clause/parent/document/run);
+    this table is the audit trail that records what was removed, when, and why.
     """
 
     __tablename__ = "removal_log"
@@ -234,9 +235,10 @@ class RemovalLog(Base):
     notebook_title: Mapped[str] = mapped_column(String, nullable=False)
     item_id: Mapped[str] = mapped_column(String, nullable=False)
     item_title: Mapped[str] = mapped_column(String, nullable=False)
-    #: One of ``source`` | ``artifact`` | ``note`` | ``mind_map`` | ``notebook``.
+    #: One of ``source`` | ``artifact`` | ``note`` | ``mind_map`` | ``notebook``,
+    #: or (local deletes) ``clause`` | ``parent`` | ``document`` | ``run``.
     item_type: Mapped[str] = mapped_column(String, nullable=False)
-    #: One of ``remove`` | ``delete_notebook`` | ``archive``.
+    #: One of ``remove`` | ``delete_notebook`` | ``archive`` | ``delete_local``.
     action: Mapped[str] = mapped_column(String, nullable=False)
     #: One of ``REMOVAL_REASONS`` (see ``notebooklm._app.curation``).
     reason: Mapped[str] = mapped_column(String, nullable=False)

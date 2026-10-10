@@ -3,7 +3,13 @@
 Transport-neutral orchestration shared by the TUI (and any future adapter).
 Never imports ``tui`` / ``click`` / ``rich`` (see
 ``tests/_guardrails/test_app_boundary.py``). Every removal is logged to the
-local ``removal_log`` table; local clauses/embeddings are never purged.
+local ``removal_log`` table; local clauses/embeddings are never purged here.
+
+The one exception is the Corpus Explorer's *confirmed* chunk delete
+(:mod:`notebooklm._app.corpus_mutations`): after a preview-and-confirm step it
+hard-deletes clauses (with their embeddings and fact-checks), parents,
+documents or runs, and logs each delete to ``removal_log`` as
+``action="delete_local"``.
 """
 
 from __future__ import annotations
