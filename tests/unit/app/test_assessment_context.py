@@ -16,6 +16,7 @@ import pytest
 
 import notebooklm._app.assessment as assessment_module
 from notebooklm._app.assessment import run_full_assessment
+from notebooklm._preprocessing.ingestion import IngestResult
 
 
 def _make_client() -> MagicMock:
@@ -39,7 +40,9 @@ def _stub_pipeline_and_transcription():
         ),
         patch.object(assessment_module.PreprocessingPipeline, "process", return_value=[fake_chunk]),
         patch.object(
-            assessment_module.IngestionService, "ingest_chunks", new=AsyncMock(return_value=1)
+            assessment_module.IngestionService,
+            "ingest_chunks",
+            new=AsyncMock(return_value=IngestResult(run_id=1, external_ids=["art:1:0"])),
         ) as mock_ingest_chunks,
         patch.object(
             assessment_module, "setup_dspy_router", return_value=(MagicMock(), MagicMock())

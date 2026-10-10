@@ -428,21 +428,24 @@ async def run_full_assessment(
     if progress_callback:
         progress_callback(f"Embedding and ingesting {len(processed_chunks)} chunks...")
     ingestion = IngestionService(client)
-    await ingestion.ingest_chunks(
+    kept_chunks = [c for c in processed_chunks if c.text.strip()]
+    ingested = await ingestion.ingest_chunks(
         session,
         document_id=artifact_id,
-        chunks=[c.text for c in processed_chunks],
+        chunks=[c.text for c in kept_chunks],
+        notebook_id=notebook_id,
         context=context,
     )
+    clause_ids = ingested.external_ids if ingested else []
 
     assessment_chunks = [
         AssessmentChunk(
             text=c.text,
-            clause_external_id=f"{artifact_id}:{i}",
+            clause_external_id=clause_ids[i],
             topic_id=c.topic_id,
             entities=c.entities,
         )
-        for i, c in enumerate(processed_chunks)
+        for i, c in enumerate(kept_chunks)
     ]
 
     # Run fact checking sequentially to preserve podcast dialog order

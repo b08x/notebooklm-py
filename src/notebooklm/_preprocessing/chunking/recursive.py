@@ -199,12 +199,14 @@ class RecursiveSplitter:
         child_max_chars: int = 512,
         nlp: Any | None = None,
         use_entity_guard: bool = True,
+        spacy_model: str = SPACY_MODEL,
     ) -> None:
         if child_max_chars < 1 or parent_max_chars < child_max_chars:
             raise ValueError("require 1 <= child_max_chars <= parent_max_chars")
         self.parent_max_chars = parent_max_chars
         self.child_max_chars = child_max_chars
         self.use_entity_guard = use_entity_guard
+        self.spacy_model = spacy_model
         self._nlp = nlp
 
     @property
@@ -213,7 +215,7 @@ class RecursiveSplitter:
             "parent_max_chars": self.parent_max_chars,
             "child_max_chars": self.child_max_chars,
             "use_entity_guard": self.use_entity_guard,
-            "spacy_model": SPACY_MODEL,
+            "spacy_model": self.spacy_model,
         }
 
     def chunk(self, text: str) -> ChunkResult:
@@ -245,7 +247,7 @@ class RecursiveSplitter:
 
     def _model(self) -> Any:
         if self._nlp is None:
-            self._nlp = load_spacy(SPACY_MODEL)
+            self._nlp = load_spacy(self.spacy_model)
         return self._nlp
 
     def _parent_spans(self, text: str) -> list[Span]:

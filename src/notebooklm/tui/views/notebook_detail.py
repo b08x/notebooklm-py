@@ -209,113 +209,30 @@ def start_source_selection(state: TUIState) -> None:
     state.source_fetch_task = executor.submit(_run_fetch_sources, state, state.selected_notebook)
 
 
-async def _ingest_notebook_async(
-    notebook_id: str,
-    context_override: str | None = None,
-    selected_source_ids: set[str] | None = None,
-    progress: dict[str, Any] | None = None,
-) -> str:
-    from notebooklm._preprocessing.ingestion import IngestionService
-    from notebooklm.db.session import async_session_maker
-
-    if progress is None:
-        progress = {}
-
-    try:
-        async with (
-            NotebookLMClient.from_storage() as client,
-            async_session_maker() as session,
-        ):
-            sources = await client.sources.list(notebook_id)
-            try:
-                notes = await client.notes.list(notebook_id)
-            except Exception:
-                notes = []
-            items = [_IngestItem(src, "source") for src in sources]
-            items += [_IngestItem(note, "note") for note in notes]
-            if selected_source_ids is not None:
-                items = [item for item in items if item.id in selected_source_ids]
-
-            service = IngestionService(client)
-            progress["total_sources"] = len(items)
-            progress["done_sources"] = 0
-            progress["failures"] = []
-            total_clauses = 0
-            failures = 0
-            first_error: Exception | None = None
-            for item in items:
-                title = item.title
-                progress["current_title"] = title
-                progress["current_chunks_done"] = 0
-                progress["current_chunks_total"] = 0
-
-                def _on_progress(done: int, total: int) -> None:
-                    progress["current_chunks_done"] = done
-                    progress["current_chunks_total"] = total
-
-                try:
-                    if item.kind == "note":
-                        # Notes are keyed by the note id, so archived notebooks
-                        # keep their clauses findable (fact 19).
-                        total_clauses += await service.ingest_text(
-                            session,
-                            document_id=item.id,
-                            text=item.content or "",
-                            context=context_override,
-                            on_progress=_on_progress,
-                        )
-                    else:
-                        total_clauses += await service.ingest_source(
-                            session,
-                            notebook_id,
-                            item.id,
-                            context=context_override,
-                            on_progress=_on_progress,
-                        )
-                except Exception as e:
-                    logger.exception("Ingestion failed for %s", item.id)
-                    failures += 1
-                    progress["failures"].append((title, str(e)))
-                    if first_error is None:
-                        first_error = e
-                progress["done_sources"] += 1
-
-            summary = f"Ingested {total_clauses} clauses from {len(items)} sources."
-            if failures:
-                summary += f" ({failures} source(s) failed: {first_error})"
-            return summary
-    except Exception as e:
-        return f"Ingestion failed: {e}"
-
-
-def _run_ingestion(
+def start_ingestion(
     state: TUIState,
-    notebook_id: str,
-    context_override: str | None = None,
     selected_source_ids: set[str] | None = None,
-    progress: dict[str, Any] | None = None,
+    strategy: str = "recursive",
+    params: dict[str, Any] | None = None,
 ) -> None:
-    result = asyncio.run(
-        _ingest_notebook_async(notebook_id, context_override, selected_source_ids, progress)
-    )
-    state.error_message = result
-
-
-def start_ingestion(state: TUIState, selected_source_ids: set[str] | None = None) -> None:
+    """Queue an ``ingest`` job for the selected notebook (see ``jobs/handlers/ingest.py``)."""
     if not state.selected_notebook:
         return
-    state.error_message = f"Starting ingestion for {state.selected_notebook}..."
-    state.ingest_progress = {}
-    context_override = state.context_overrides.get(state.selected_notebook)
-    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    state.background_task = executor.submit(
-        _run_ingestion,
-        state,
+    if state.job_store is None:
+        state.error_message = "Job queue unavailable"
+        return
+    state.job_store.enqueue(
+        "ingest",
         state.selected_notebook,
-        context_override,
-        selected_source_ids,
-        state.ingest_progress,
+        {
+            "strategy": strategy,
+            "params": params or {},
+            "source_ids": sorted(selected_source_ids) if selected_source_ids is not None else None,
+            "context": state.context_overrides.get(state.selected_notebook),
+        },
     )
+    state.jobs_snapshot_at = 0.0
+    state.error_message = f"Queued ingest ({strategy}) for {state.selected_notebook}"
 
 
 async def _assess_audio_overview_async(

@@ -179,3 +179,12 @@ def test_split_sentences_uses_punctuation_and_blank_lines():
     text = "First sentence here. Second one.\n\nThird."
     spans = RecursiveSplitter().split_sentences(text)
     assert [text[s:e] for s, e in spans] == ["First sentence here.", "Second one.", "Third."]
+
+
+def test_params_round_trip_through_make_strategy() -> None:
+    """chunk_runs.params must rebuild an identical strategy (``r`` re-run)."""
+    from notebooklm._preprocessing.chunking import make_strategy
+
+    original = RecursiveSplitter(parent_max_chars=900, child_max_chars=300)
+    rebuilt = make_strategy("recursive", **original.params)
+    assert rebuilt.params == original.params

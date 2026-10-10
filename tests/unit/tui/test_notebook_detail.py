@@ -4,13 +4,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import notebooklm._app.assessment as assessment_module
-import notebooklm._preprocessing.ingestion as ingestion_module
 import notebooklm.db.session as db_session_module
 from notebooklm.tui.state import TUIState, View
 from notebooklm.tui.views import assessment_view, notebook_detail
 from notebooklm.tui.views.notebook_detail import (
     _assess_audio_overview_async,
-    _ingest_notebook_async,
     _run_fetch_sources,
     start_assess_audio_overview,
     start_ingestion,
@@ -33,45 +31,8 @@ def _patched_session_maker(mock_maker) -> MagicMock:
     return mock_session
 
 
-@pytest.mark.asyncio
-async def test_ingest_notebook_async_sums_clause_counts():
-    client = _make_client(["src-1", "src-2"])
-
-    with (
-        patch.object(notebook_detail.NotebookLMClient, "from_storage", return_value=client),
-        patch.object(db_session_module, "async_session_maker") as mock_maker,
-        patch.object(
-            ingestion_module.IngestionService,
-            "ingest_source",
-            new=AsyncMock(side_effect=[3, 5]),
-        ),
-    ):
-        _patched_session_maker(mock_maker)
-
-        result = await _ingest_notebook_async("nb-1")
-
-    assert "Ingested 8 clauses from 2 sources." in result
 
 
-@pytest.mark.asyncio
-async def test_ingest_notebook_async_reports_source_failures():
-    client = _make_client(["src-1", "src-2"])
-
-    with (
-        patch.object(notebook_detail.NotebookLMClient, "from_storage", return_value=client),
-        patch.object(db_session_module, "async_session_maker") as mock_maker,
-        patch.object(
-            ingestion_module.IngestionService,
-            "ingest_source",
-            new=AsyncMock(side_effect=[Exception("boom"), 4]),
-        ),
-    ):
-        _patched_session_maker(mock_maker)
-
-        result = await _ingest_notebook_async("nb-1")
-
-    assert "Ingested 4 clauses from 2 sources." in result
-    assert "1 source(s) failed" in result
 
 
 def test_start_ingestion_noop_without_selected_notebook():
@@ -79,56 +40,11 @@ def test_start_ingestion_noop_without_selected_notebook():
     state.selected_notebook = None
     start_ingestion(state)
     assert state.background_task is None
+    assert state.job_store is None
 
 
-@pytest.mark.asyncio
-async def test_ingest_notebook_async_filters_by_selected_source_ids():
-    client = _make_client(["src-1", "src-2", "src-3"])
-
-    with (
-        patch.object(notebook_detail.NotebookLMClient, "from_storage", return_value=client),
-        patch.object(db_session_module, "async_session_maker") as mock_maker,
-        patch.object(
-            ingestion_module.IngestionService,
-            "ingest_source",
-            new=AsyncMock(return_value=2),
-        ) as mock_ingest_source,
-    ):
-        _patched_session_maker(mock_maker)
-
-        result = await _ingest_notebook_async("nb-1", selected_source_ids={"src-1", "src-3"})
-
-    assert "Ingested 4 clauses from 2 sources." in result
-    ingested_ids = {call.args[2] for call in mock_ingest_source.call_args_list}
-    assert ingested_ids == {"src-1", "src-3"}
 
 
-@pytest.mark.asyncio
-async def test_ingest_notebook_async_updates_progress_dict_live():
-    client = _make_client(["src-1", "src-2"])
-    progress: dict = {}
-
-    async def fake_ingest_source(self, session, notebook_id, source_id, **kwargs):
-        on_progress = kwargs.get("on_progress")
-        if on_progress:
-            on_progress(1, 2)
-            on_progress(2, 2)
-        return 2
-
-    with (
-        patch.object(notebook_detail.NotebookLMClient, "from_storage", return_value=client),
-        patch.object(db_session_module, "async_session_maker") as mock_maker,
-        patch.object(ingestion_module.IngestionService, "ingest_source", new=fake_ingest_source),
-    ):
-        _patched_session_maker(mock_maker)
-
-        await _ingest_notebook_async("nb-1", progress=progress)
-
-    assert progress["total_sources"] == 2
-    assert progress["done_sources"] == 2
-    assert progress["current_chunks_done"] == 2
-    assert progress["current_chunks_total"] == 2
-    assert progress["failures"] == []
 
 
 def test_start_source_selection_noop_without_selected_notebook():
@@ -326,64 +242,8 @@ def test_run_assess_audio_overview_source_fallback_switches_view():
 # --- notes in the ingestion picker (notebook-curation goal, step 4b) ------------
 
 
-@pytest.mark.asyncio
-async def test_ingest_notebook_async_ingests_selected_notes():
-    client = _make_client(["src-1"])
-    client.notes.list = AsyncMock(
-        return_value=[SimpleNamespace(id="note-1", title="Meeting note", content="note body text")]
-    )
-
-    with (
-        patch.object(notebook_detail.NotebookLMClient, "from_storage", return_value=client),
-        patch.object(db_session_module, "async_session_maker") as mock_maker,
-        patch.object(
-            ingestion_module.IngestionService,
-            "ingest_source",
-            new=AsyncMock(return_value=3),
-        ),
-        patch.object(
-            ingestion_module.IngestionService,
-            "ingest_text",
-            new=AsyncMock(return_value=2),
-        ) as mock_ingest_text,
-    ):
-        _patched_session_maker(mock_maker)
-
-        result = await _ingest_notebook_async("nb-1", selected_source_ids={"src-1", "note-1"})
-
-    assert "Ingested 5 clauses from 2 sources." in result
-    mock_ingest_text.assert_awaited_once()
-    assert mock_ingest_text.call_args.kwargs["document_id"] == "note-1"
-    assert mock_ingest_text.call_args.kwargs["text"] == "note body text"
 
 
-@pytest.mark.asyncio
-async def test_ingest_notebook_async_skips_unselected_notes():
-    client = _make_client(["src-1"])
-    client.notes.list = AsyncMock(
-        return_value=[SimpleNamespace(id="note-1", title="Meeting note", content="note body")]
-    )
-
-    with (
-        patch.object(notebook_detail.NotebookLMClient, "from_storage", return_value=client),
-        patch.object(db_session_module, "async_session_maker") as mock_maker,
-        patch.object(
-            ingestion_module.IngestionService,
-            "ingest_source",
-            new=AsyncMock(return_value=3),
-        ),
-        patch.object(
-            ingestion_module.IngestionService,
-            "ingest_text",
-            new=AsyncMock(return_value=2),
-        ) as mock_ingest_text,
-    ):
-        _patched_session_maker(mock_maker)
-
-        result = await _ingest_notebook_async("nb-1", selected_source_ids={"src-1"})
-
-    assert "Ingested 3 clauses from 1 sources." in result
-    mock_ingest_text.assert_not_awaited()
 
 
 @pytest.mark.asyncio

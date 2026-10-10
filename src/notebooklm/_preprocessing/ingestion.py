@@ -1,14 +1,26 @@
 import asyncio
+import hashlib
 import logging
+import math
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import delete
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from notebooklm._preprocessing.chunkers import StructuralCoherenceChunker
+from notebooklm._app.tracing import current_trace_id
+from notebooklm._preprocessing.chunking import (
+    ChildChunk,
+    ChunkResult,
+    ChunkStats,
+    ChunkStrategy,
+    ParentChunk,
+)
 from notebooklm._preprocessing.embeddings import EmbeddingAdapter, OllamaEmbeddingAdapter
-from notebooklm.db.models import Clause, Embedding
+from notebooklm._preprocessing.features import ClauseFeatures, extract
+from notebooklm.db.models import ChunkRun, Clause, Embedding
+from notebooklm.db.models import ParentChunk as ParentChunkRow
 
 logger = logging.getLogger(__name__)
 
@@ -40,44 +52,91 @@ async def resolve_source_context(client: Any, notebook_id: str, source_id: str) 
     return None
 
 
-class IngestionService:
-    """Ingests text into the clauses/embeddings tables.
+#: ``chunk_runs.strategy`` for chunks a caller produced itself (``ingest_chunks``).
+PROVIDED_STRATEGY = "provided"
+PROVIDED_VERSION = "1"
 
-    :meth:`ingest_source` fetches full text from the NotebookLM API
-    (`client.sources.get_fulltext`); :meth:`ingest_text` chunks, embeds, and
-    persists any already-resolved text (e.g. an audio overview transcript)
-    under a caller-supplied ``document_id``.
+
+@dataclass
+class IngestResult:
+    run_id: int
+    #: Child ``Clause.external_id`` values in document order.
+    external_ids: list[str] = field(default_factory=list)
+
+    @property
+    def n_children(self) -> int:
+        return len(self.external_ids)
+
+
+def _p95(values: list[int]) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    return float(ordered[min(len(ordered) - 1, math.ceil(0.95 * len(ordered)) - 1)])
+
+
+def _default_strategy() -> ChunkStrategy:
+    from notebooklm._preprocessing.chunking.recursive import RecursiveSplitter
+
+    return RecursiveSplitter()
+
+
+def _provided_result(text_chunks: list[str]) -> tuple[str, ChunkResult]:
+    """One parent and one child per caller-supplied chunk, joined by blank lines."""
+    parents: list[ParentChunk] = []
+    pieces: list[str] = []
+    offset = 0
+    for chunk in text_chunks:
+        start, end = offset, offset + len(chunk)
+        parents.append(ParentChunk(chunk, start, end, [ChildChunk(chunk, start, end)]))
+        pieces.append(chunk)
+        offset = end + 2
+    return "\n\n".join(pieces), ChunkResult(parents=parents, stats=ChunkStats())
+
+
+class IngestionService:
+    """Chunks text into parents/children and persists one ``chunk_runs`` run.
+
+    :meth:`ingest_source` fetches full text from the NotebookLM API (or the local
+    download cache); :meth:`ingest_text` runs a :class:`ChunkStrategy` over any
+    resolved text; :meth:`ingest_chunks` stores caller-produced chunks 1:1
+    (audio transcript turns). Every call writes a new run: ``parent_chunks``,
+    child ``clauses`` (``external_id`` = ``{document_id}:{run_id}:{index}``) with
+    spaCy features, and embeddings for children only. The new run becomes the
+    document's active run; older runs are kept for comparison.
 
     Chunks are embedded with the source's summary prepended as context
-    (``resolve_source_context``), unless ``use_source_context=False`` or a
-    caller passes its own ``context`` override (e.g. a user-edited summary from
-    the TUI, or ``""`` to force no context). The prefix is embedding-input only
-    — ``Clause.text`` always stores the unprefixed chunk.
+    (``resolve_source_context``), unless ``use_source_context=False`` or a caller
+    passes its own ``context`` (``""`` forces none). The prefix is embedding
+    input only — ``Clause.text`` stores the unprefixed chunk. A strategy that
+    returns precomputed vectors (cluster-semantic) is reused only when no
+    context prefix applies, so all stored vectors share one embedding input
+    format per run.
     """
 
     def __init__(
         self,
         client: Any,
         embedder: EmbeddingAdapter | None = None,
-        chunker: Any | None = None,
+        strategy: ChunkStrategy | None = None,
         embedding_model_name: str = "embeddinggemma-300m",
         use_source_context: bool = True,
         embed_batch_size: int = 32,
         use_notebook_context: bool | None = None,
+        nlp: Any | None = None,
+        features: Callable[[list[str]], list[ClauseFeatures]] | None = None,
     ):
         self.client = client
         self.embedder = embedder or OllamaEmbeddingAdapter()
-        self.chunker = chunker or StructuralCoherenceChunker()
+        self.strategy = strategy
         self.embedding_model_name = embedding_model_name
         self.use_source_context = (
             use_notebook_context if use_notebook_context is not None else use_source_context
         )
         #: A single ``/api/embed`` request holds all its texts in memory for the
-        #: whole request/response round trip; capping the batch size bounds how
-        #: long any one request can legitimately take, so a slow/remote Ollama
-        #: host degrades to a slower ingest rather than a single-request timeout
-        #: partway through a large document.
+        #: whole round trip; capping the batch bounds any one request's duration.
         self.embed_batch_size = embed_batch_size
+        self._features = features or (lambda texts: extract(texts, nlp))
 
     @property
     def use_notebook_context(self) -> bool:
@@ -106,29 +165,19 @@ class IngestionService:
         source_id: str,
         *,
         context: str | None = None,
+        strategy: ChunkStrategy | None = None,
         on_progress: Callable[[int, int], None] | None = None,
     ) -> int:
-        """Chunk, embed, and persist one source's text. Returns clauses written."""
+        """Chunk, embed, and persist one source's text. Returns children written."""
         import os
 
         from sqlalchemy import select
 
         from notebooklm.db.models import LocalAsset
 
-        # Check local cache first
         result = await session.execute(select(LocalAsset).where(LocalAsset.asset_id == source_id))
-        local_asset = None
-        if hasattr(result, "scalar_one_or_none"):
-            res_val = result.scalar_one_or_none()
-            if not asyncio.iscoroutine(res_val):
-                local_asset = res_val
-
-        if (
-            local_asset
-            and hasattr(local_asset, "local_path")
-            and isinstance(local_asset.local_path, str)
-            and os.path.exists(local_asset.local_path)
-        ):
+        local_asset = result.scalar_one_or_none()
+        if local_asset and os.path.exists(local_asset.local_path):
             with open(local_asset.local_path, encoding="utf-8") as f:
                 content = f.read()
         else:
@@ -140,7 +189,9 @@ class IngestionService:
             session,
             document_id=source_id,
             text=content,
+            notebook_id=notebook_id,
             context=resolved_context,
+            strategy=strategy,
             on_progress=on_progress,
         )
 
@@ -150,14 +201,22 @@ class IngestionService:
         document_id: str,
         text: str,
         *,
+        notebook_id: str | None = None,
         context: str | None = None,
+        strategy: ChunkStrategy | None = None,
         on_progress: Callable[[int, int], None] | None = None,
     ) -> int:
-        """Chunk, embed, and persist already-resolved text. Returns clauses written."""
-        sentences = [s for s in self.chunker.chunk(text) if s.strip()]
-        return await self.ingest_chunks(
-            session, document_id, sentences, context=context, on_progress=on_progress
+        """Chunk ``text`` with ``strategy`` and persist a run. Returns children written."""
+        result = await self.ingest_document(
+            session,
+            document_id,
+            text,
+            notebook_id=notebook_id,
+            context=context,
+            strategy=strategy,
+            on_progress=on_progress,
         )
+        return result.n_children if result else 0
 
     async def ingest_chunks(
         self,
@@ -165,69 +224,178 @@ class IngestionService:
         document_id: str,
         chunks: list[str],
         *,
+        notebook_id: str | None = None,
         context: str | None = None,
         on_progress: Callable[[int, int], None] | None = None,
-    ) -> int:
-        """Embed and persist already-chunked text. Returns clauses written.
+    ) -> IngestResult | None:
+        """Persist caller-produced chunks 1:1 as parent+child pairs.
 
-        Callers that need clause rows keyed 1:1 to chunks they already produced
-        (e.g. the assessment pipeline's structured chunks) call this directly
-        instead of ``ingest_text``, whose own chunker would otherwise produce a
-        different split than the caller's.
-
-        Re-ingesting the same ``document_id`` (e.g. re-running an assessment)
-        deletes that document's existing clauses first, since ``Clause.external_id``
-        (``f"{document_id}:{index}"``) is unique and would otherwise collide.
-
-        ``context``, when given, is prepended to each chunk's embedding input
-        only (not stored as clause text) — this method does not auto-fetch it
-        since it has no ``notebook_id``; use :func:`resolve_notebook_context` or
-        ``ingest_source``/``ingest_text``, which do.
-
-        Embedding requests are sent in batches of ``self.embed_batch_size`` (not
-        all chunks in one request) to bound how long any single request can
-        take. ``on_progress(embedded_count, total_count)``, when given, is
-        called after each batch — callers driving a UI progress indicator wire
-        it to update finer than "started"/"done" for a single large document.
+        Used for audio transcripts, whose turns are already the units the
+        assessment pipeline keys its results to. Returns the run (with child
+        external ids in chunk order), or ``None`` when every chunk is blank.
         """
-        sentences = [s for s in chunks if s.strip()]
-        if not sentences:
+        kept = [c for c in chunks if c.strip()]
+        if not kept:
             logger.info("Document %s produced no clauses to ingest", document_id)
-            return 0
+            return None
+        text, chunked = _provided_result(kept)
+        return await self._persist(
+            session,
+            document_id,
+            text,
+            chunked,
+            strategy_name=PROVIDED_STRATEGY,
+            strategy_version=PROVIDED_VERSION,
+            params={},
+            notebook_id=notebook_id,
+            context=context,
+            on_progress=on_progress,
+        )
 
-        embed_inputs = [f"{context}\n\n{s}" for s in sentences] if context else sentences
+    async def ingest_document(
+        self,
+        session: AsyncSession,
+        document_id: str,
+        text: str,
+        *,
+        notebook_id: str | None = None,
+        context: str | None = None,
+        strategy: ChunkStrategy | None = None,
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> IngestResult | None:
+        """Run ``strategy`` (default recursive) over ``text`` and persist the run."""
+        strat = strategy or self.strategy or _default_strategy()
+        # to_thread copies contextvars, so an LM bound by the job runner's
+        # dspy.context reaches the strategy (dynamic-window needs it).
+        chunked = await asyncio.to_thread(strat.chunk, text)
+        if not any(p.children for p in chunked.parents):
+            logger.info("Document %s produced no clauses to ingest", document_id)
+            return None
+        return await self._persist(
+            session,
+            document_id,
+            text,
+            chunked,
+            strategy_name=strat.name,
+            strategy_version=strat.version,
+            params=dict(strat.params),
+            notebook_id=notebook_id,
+            context=context,
+            on_progress=on_progress,
+        )
+
+    async def _embed(
+        self,
+        children: list[ChildChunk],
+        context: str | None,
+        on_progress: Callable[[int, int], None] | None,
+    ) -> list[list[float]]:
+        reuse = context is None and all(c.vector is not None for c in children)
+        if reuse:
+            return [list(c.vector or []) for c in children]
+        inputs = [f"{context}\n\n{c.text}" if context else c.text for c in children]
         vectors: list[list[float]] = []
-        for start in range(0, len(embed_inputs), self.embed_batch_size):
-            batch = embed_inputs[start : start + self.embed_batch_size]
-            batch_vectors = await asyncio.to_thread(self.embedder.embed, batch)
-            vectors.extend(batch_vectors)
+        for start in range(0, len(inputs), self.embed_batch_size):
+            batch = inputs[start : start + self.embed_batch_size]
+            vectors.extend(await asyncio.to_thread(self.embedder.embed, batch))
             if on_progress is not None:
-                on_progress(len(vectors), len(embed_inputs))
-        if len(vectors) != len(sentences):
+                on_progress(len(vectors), len(inputs))
+        if len(vectors) != len(children):
             raise ValueError(
-                f"Embedding count mismatch: {len(vectors)} vectors for {len(sentences)} sentences"
+                f"Embedding count mismatch: {len(vectors)} vectors for {len(children)} children"
             )
+        return vectors
 
-        await session.execute(delete(Clause).where(Clause.document_id == document_id))
+    async def _persist(
+        self,
+        session: AsyncSession,
+        document_id: str,
+        text: str,
+        chunked: ChunkResult,
+        *,
+        strategy_name: str,
+        strategy_version: str,
+        params: dict[str, Any],
+        notebook_id: str | None,
+        context: str | None,
+        on_progress: Callable[[int, int], None] | None,
+    ) -> IngestResult:
+        children = [c for p in chunked.parents for c in p.children]
+        vectors = await self._embed(children, context, on_progress)
+        features = await asyncio.to_thread(self._features, [c.text for c in children])
+        lengths = [len(c.text) for c in children]
 
-        for index, (sentence, vector) in enumerate(zip(sentences, vectors, strict=True)):
-            external_id = f"{document_id}:{index}"
-            session.add(
-                Clause(
-                    external_id=external_id,
-                    text=sentence,
-                    document_id=document_id,
-                    sentence_index=index,
-                )
+        run = ChunkRun(
+            document_id=document_id,
+            notebook_id=notebook_id,
+            strategy=strategy_name,
+            params={**params, **chunked.stats.extra, "embed_context": bool(context)},
+            chunker_version=strategy_version,
+            source_hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            trace_id=current_trace_id(),
+            n_parents=len(chunked.parents),
+            n_children=len(children),
+            mean_len=sum(lengths) / len(lengths),
+            p95_len=_p95(lengths),
+            entity_vetoes=chunked.stats.entity_vetoes,
+            is_active=True,
+        )
+        session.add(run)
+        await session.flush()
+        # Read ids before commit: sessions with expire_on_commit would reload them.
+        run_id = run.id
+        await session.execute(
+            update(ChunkRun)
+            .where(ChunkRun.document_id == document_id, ChunkRun.id != run_id)
+            .values(is_active=False)
+        )
+
+        external_ids: list[str] = []
+        child_i = 0
+        for p_index, parent in enumerate(chunked.parents):
+            prow = ParentChunkRow(
+                run_id=run_id,
+                document_id=document_id,
+                index=p_index,
+                text=parent.text,
+                char_start=parent.char_start,
+                char_end=parent.char_end,
             )
-            session.add(
-                Embedding(
-                    clause_id=external_id,
-                    embedding=vector,
-                    model=self.embedding_model_name,
+            session.add(prow)
+            await session.flush()
+            for child in parent.children:
+                external_id = f"{document_id}:{run_id}:{child_i}"
+                feats = features[child_i]
+                session.add(
+                    Clause(
+                        external_id=external_id,
+                        text=child.text,
+                        document_id=document_id,
+                        run_id=run_id,
+                        parent_id=prow.id,
+                        sentence_index=child_i,
+                        root_index=feats.root_index,
+                        tokens=feats.tokens,
+                        groups=feats.groups,
+                    )
                 )
-            )
+                session.add(
+                    Embedding(
+                        clause_id=external_id,
+                        embedding=vectors[child_i],
+                        model=self.embedding_model_name,
+                    )
+                )
+                external_ids.append(external_id)
+                child_i += 1
 
         await session.commit()
-        logger.info("Ingested %d clauses for document %s", len(sentences), document_id)
-        return len(sentences)
+        logger.info(
+            "Ingested %d children / %d parents for %s (run %d, %s)",
+            len(children),
+            len(chunked.parents),
+            document_id,
+            run_id,
+            strategy_name,
+        )
+        return IngestResult(run_id=run_id, external_ids=external_ids)
