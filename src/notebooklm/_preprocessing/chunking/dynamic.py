@@ -47,22 +47,30 @@ def _normalize(text: str, spans: Sequence[Span]) -> list[Span]:
     out: list[Span] = []
     last_end = 0
     for start, end in sorted(spans):
-        stripped = _strip(text, max(start, last_end), min(end, len(text)))
-        if stripped is None:
+        span = _strip(text, max(start, last_end), min(end, len(text)))
+        if span is None:
             continue
-        out.append(stripped)
-        last_end = stripped[1]
+        out.append(span)
+        _, last_end = span
     return out
+
+
+def _append_packed(out: list[Span], start: int, end: int, max_chars: int) -> None:
+    """Append a span, merging it into the last span when the merge stays within ``max_chars``."""
+    if out:
+        head, tail = out.pop()
+        if end - head <= max_chars:
+            out.append((head, end))
+            return
+        out.append((head, tail))
+    out.append((start, end))
 
 
 def _pack(spans: Sequence[Span], max_chars: int) -> list[Span]:
     """Merge consecutive spans while the merged span stays within ``max_chars``."""
     out: list[Span] = []
     for start, end in spans:
-        if out and end - out[-1][0] <= max_chars:
-            out[-1] = (out[-1][0], end)
-        else:
-            out.append((start, end))
+        _append_packed(out, start, end, max_chars)
     return out
 
 
@@ -123,10 +131,8 @@ def _greedy(text: str, sentences: Sequence[Span], max_chars: int) -> list[Span]:
     for start, end in sentences:
         if end - start > max_chars:
             out.extend(_hard_split(text, start, end, max_chars))
-        elif out and end - out[-1][0] <= max_chars:
-            out[-1] = (out[-1][0], end)
         else:
-            out.append((start, end))
+            _append_packed(out, start, end, max_chars)
     return out
 
 
@@ -215,7 +221,7 @@ class DynamicWindowChunker:
 
     def _children(self, text: str, sub: list[Span]) -> tuple[list[Span], bool]:
         """Return child spans for one parent and whether the fallback was used."""
-        if len(sub) == 1 and sub[0][1] - sub[0][0] <= self.max_child_chars:
+        if len(sub) == 1 and all(e - s <= self.max_child_chars for s, e in sub):
             return sub, False
         if len(sub) > 1:
             proposed = self._propose(text, sub)
