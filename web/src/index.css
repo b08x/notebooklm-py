@@ -1,0 +1,140 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Light theme */
+:root {
+  --bg: #fafafa;
+  --surface: #ffffff;
+  --surface-2: #f1f1f4;
+  --line: #e4e4e7;
+  --fg: #18181b;
+  --muted: #5f5f69;
+  --subtle: #8b8b94;
+  --primary: #7c5cf0;
+  --primary-fg: #ffffff;
+  --primary-soft: #7c5cf01f;
+  --secondary: #0284c7;
+  --selection: #ede8ff;
+  --ok: #15803d;
+  --warn: #b45309;
+  --bad: #dc2626;
+  --mark: #7c5cf02e;
+  --cat-blue: #2563eb;
+  --cat-pink: #c026d3;
+  --cat-amber: #b45309;
+  --cat-green: #15803d;
+  --cat-teal: #0f766e;
+  --shadow: 0 1px 2px #0000000f, 0 8px 24px -8px #00000026;
+}
+
+/* Dark theme (default) — tui/theme.py COLORS */
+.dark {
+  --bg: #18181b;
+  --surface: #1f1f24;
+  --surface-2: #26262c;
+  --line: #2f2f36;
+  --fg: #e4e4e7;
+  --muted: #8b8b94;
+  --subtle: #52525b;
+  --primary: #a78bfa;
+  --primary-fg: #1b1530;
+  --primary-soft: #a78bfa26;
+  --secondary: #7dd3fc;
+  --selection: #221f30;
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --bad: #f87171;
+  --mark: #a78bfa33;
+  --cat-blue: #93c5fd;
+  --cat-pink: #f0abfc;
+  --cat-amber: #fcd34d;
+  --cat-green: #86efac;
+  --cat-teal: #5eead4;
+  --shadow: 0 1px 2px #00000066, 0 16px 40px -12px #000000cc;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-primary: var(--primary);
+  --color-primary-fg: var(--primary-fg);
+  --color-primary-soft: var(--primary-soft);
+  --color-secondary: var(--secondary);
+  --color-selection: var(--selection);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --color-cat-blue: var(--cat-blue);
+  --color-cat-pink: var(--cat-pink);
+  --color-cat-amber: var(--cat-amber);
+  --color-cat-green: var(--cat-green);
+  --color-cat-teal: var(--cat-teal);
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --shadow-pop: var(--shadow);
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+}
+
+@layer base {
+  * {
+    border-color: var(--line);
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+  ::selection {
+    background: var(--mark);
+  }
+  mark {
+    background: var(--mark);
+    color: inherit;
+    border-radius: 3px;
+    padding: 0 2px;
+  }
+  :focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  .text-pretty {
+    text-wrap: pretty;
+  }
+}
+
+/* Theme switch: the class below is set for one frame so nothing cross-fades. */
+.theme-switching,
+.theme-switching * {
+  transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -299,12 +299,17 @@ def _normalize_client_startup_error(exc: Exception) -> AuthError | None:
     local profiles. Keep that compatibility at the SDK layer; the REST server
     only normalizes the exception it records in app state so its existing error
     projector can return an auth envelope instead of a generic unexpected bug.
+
+    A missing storage file whose message says to run ``notebooklm login`` (a
+    profile that never signed in) is the same "needs login" state, so the
+    server still starts: the local Corpus Explorer routes work without a
+    NotebookLM session, and client routes answer with an auth error.
     """
     if isinstance(exc, AuthError):
         return AuthError(str(exc))
     if isinstance(exc, NotebookLMError):
         return None
-    if isinstance(exc, ValueError):
+    if isinstance(exc, ValueError | FileNotFoundError):
         message = " ".join(str(exc).split()).casefold()
         if any(marker in message for marker in _STALE_AUTH_STARTUP_MARKERS):
             return AuthError(str(exc))

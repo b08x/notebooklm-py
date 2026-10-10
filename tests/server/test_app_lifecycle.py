@@ -336,3 +336,21 @@ def _factory(client: FakeClient):  # type: ignore[no-untyped-def]
         yield client
 
     return factory
+
+
+def test_never_logged_in_profile_degrades_to_auth_state() -> None:
+    """A missing storage file that says 'run notebooklm login' keeps the server up."""
+
+    @asynccontextmanager
+    async def factory() -> AsyncIterator[FakeClient]:
+        raise FileNotFoundError(
+            "Storage file not found: /x/storage_state.json\n"
+            "Run 'notebooklm login' to authenticate first."
+        )
+        yield FakeClient()  # pragma: no cover - makes this an async context manager
+
+    app = create_app(client_factory=factory)
+    headers = {"Authorization": "Bearer test-secret-token", "Host": "127.0.0.1"}
+    with TestClient(app, headers=headers, client=("127.0.0.1", 5555)) as client:
+        assert client.get("/healthz").status_code == 200
+        assert client.get("/v1/notebooks").status_code == 401
