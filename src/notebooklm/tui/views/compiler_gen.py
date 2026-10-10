@@ -11,14 +11,12 @@ Two background workers drive the flow:
   completion, download the MP3 under ``~/Archive/NotebookLM/audio/``, and
   write a sidecar JSON recording the run (facts 10–11).
 
-Both run on throwaway ``ThreadPoolExecutor`` threads following the existing
-``tui/views/notebook_detail.py`` pattern: each worker calls ``asyncio.run``
-with its own ``NotebookLMClient.from_storage()``, satisfying the
-one-client-per-event-loop rule.
+Both are queued on the job store (``compile`` and ``generate`` kinds). The
+handlers in ``tui/jobs/handlers`` run the async workers below inside the job
+runner's event loop, each with its own ``NotebookLMClient.from_storage()``,
+satisfying the one-client-per-event-loop rule.
 """
 
-import asyncio
-import concurrent.futures
 import json
 import logging
 import os
@@ -27,7 +25,7 @@ import shutil
 import subprocess
 import tempfile
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -251,22 +249,23 @@ async def _chat_fallback(client: NotebookLMClient, notebook_id: str, config: Any
 
 
 def start_compile(state: TUIState, project_file: str | Path) -> None:
-    """Compile ``project_file`` against the notebook selected in the sidebar."""
+    """Queue a compile of ``project_file`` against the notebook selected in the sidebar."""
     cs = state.compiler_state
     if cs.get("phase") in _ACTIVE_PHASES:
         return
     if not state.selected_notebook:
         cs["error"] = "select a notebook first"
         return
+    if state.job_store is None:
+        cs["error"] = "job queue unavailable"
+        return
 
     from notebooklm._app.assessment import setup_dspy_router
 
     try:
         setup_dspy_router()
-        lm = dspy.settings.lm
     except Exception as e:
         logger.warning("DSPy router unavailable; slot filling will fall back: %s", e)
-        lm = None
 
     for key in ("error", "warning", "prompt", "edited", "evidence", "scroll"):
         cs.pop(key, None)
@@ -274,60 +273,71 @@ def start_compile(state: TUIState, project_file: str | Path) -> None:
     cs["project_yaml"] = str(project_file)
     cs["notebook_id"] = state.selected_notebook
 
-    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    state.compiler_task = executor.submit(
-        _run_compile, state, Path(project_file), state.selected_notebook, lm
-    )
+    state.job_store.enqueue("compile", state.selected_notebook, {"project_file": str(project_file)})
 
 
-def _run_compile(state: TUIState, project_file: Path, notebook_id: str, lm: Any) -> None:
+async def run_compile(
+    state: TUIState,
+    project_file: Path,
+    notebook_id: str,
+    lm: Any,
+    *,
+    progress: Callable[[str], None] | None = None,
+    before_api: Callable[[], Awaitable[None]] | None = None,
+) -> None:
+    """Bind, fill, and compile ``project_file``; sets ``compiler_state`` (facts 1–5).
+
+    Raises after recording the error in ``compiler_state`` so the job fails.
+    """
     cs = state.compiler_state
+    gate = before_api or _no_gate
     try:
         config = load_audio_project(project_file)
         # Bind to the sidebar selection; the YAML file itself is never written (fact 2).
         config.notebook_id = notebook_id
         audio_format, audio_length = to_audio_enums(config.audio_format, config.audio_length)
 
-        async def _bind() -> tuple[str, str | None, dict[str, list[tuple[str, str]]]]:
-            warning: str | None = None
-            evidence: dict[str, list[tuple[str, str]]] = {}
-            async with NotebookLMClient.from_storage() as client:
-                notebook = await client.notebooks.get(notebook_id)
-                if config.auto_extract:
-                    # Slot extraction failures never fail the compile — the
-                    # YAML's own values are kept with a warning (fact 3).
-                    try:
-                        from notebooklm.db.session import async_session_maker
+        warning: str | None = None
+        evidence: dict[str, list[tuple[str, str]]] = {}
+        async with NotebookLMClient.from_storage() as client:
+            await gate()
+            notebook = await client.notebooks.get(notebook_id)
+            if config.auto_extract:
+                # Slot extraction failures never fail the compile — the
+                # YAML's own values are kept with a warning (fact 3).
+                try:
+                    from notebooklm.db.session import async_session_maker
 
-                        async with async_session_maker() as session:
-                            fill = await fill_slots_from_clauses(
-                                client, session, notebook_id, config, lm
-                            )
-                        if fill is not None:
-                            evidence = fill.evidence
-                        else:
-                            # No ingested clauses — chat fallback (fact 3).
-                            await _chat_fallback(client, notebook_id, config)
-                            warning = (
-                                "No ingested clauses found — slots filled via "
-                                "NotebookLM chat fallback."
-                            )
-                    except Exception as e:
-                        warning = f"Slot extraction failed ({e}); the YAML's own values were used."
-                else:
-                    try:
+                    async with async_session_maker() as session:
+                        fill = await fill_slots_from_clauses(
+                            client, session, notebook_id, config, lm
+                        )
+                    if fill is not None:
+                        evidence = fill.evidence
+                    else:
+                        # No ingested clauses — chat fallback (fact 3).
+                        await gate()
                         await _chat_fallback(client, notebook_id, config)
-                    except Exception as e:
-                        warning = f"Notebook binding failed ({e}); the YAML's own values were used."
-                return notebook.title, warning, evidence
-
-        notebook_title, warning, evidence = asyncio.run(_bind())
+                        warning = (
+                            "No ingested clauses found — slots filled via NotebookLM chat fallback."
+                        )
+                except Exception as e:
+                    warning = f"Slot extraction failed ({e}); the YAML's own values were used."
+            else:
+                try:
+                    await gate()
+                    await _chat_fallback(client, notebook_id, config)
+                except Exception as e:
+                    warning = f"Notebook binding failed ({e}); the YAML's own values were used."
+            notebook_title = notebook.title
         prompt = compile_audio_config(config)
     except Exception as e:
         logger.exception("Compiler: compile of %s failed", project_file)
         cs["phase"] = "error"
         cs["error"] = str(e)
-        return
+        if progress:
+            progress("error")
+        raise
 
     cs.update(
         {
@@ -344,6 +354,12 @@ def _run_compile(state: TUIState, project_file: Path, notebook_id: str, lm: Any)
             "scroll": 0,
         }
     )
+    if progress:
+        progress("compiled")
+
+
+async def _no_gate() -> None:
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -438,6 +454,9 @@ def start_generate(state: TUIState) -> None:
         return
     if cs.get("phase") in _ACTIVE_PHASES:
         return
+    if state.job_store is None:
+        cs["error"] = "job queue unavailable"
+        return
 
     # A retry after a failure resumes the prior artifact when it still exists
     # (checked in the worker), instead of spending a new generation on it.
@@ -467,8 +486,7 @@ def start_generate(state: TUIState) -> None:
         "resume_artifact_id": resume_artifact_id,
     }
 
-    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    state.compiler_task = executor.submit(_run_generate, state, payload)
+    state.job_store.enqueue("generate", state.selected_notebook, payload)
 
 
 async def _artifact_still_listed(client: Any, notebook_id: str, artifact_id: str) -> bool:
@@ -515,13 +533,28 @@ def _write_sidecar(base: Path, data: dict[str, Any]) -> Path:
     return path
 
 
-def _run_generate(state: TUIState, payload: dict[str, Any]) -> None:
-    """Generate, wait, download, and write the sidecar. Every path writes a sidecar (fact 11)."""
+async def run_generate(
+    state: TUIState,
+    payload: dict[str, Any],
+    *,
+    progress: Callable[[str], None] | None = None,
+    before_api: Callable[[], Awaitable[None]] | None = None,
+) -> None:
+    """Generate, wait, download, and write the sidecar. Every path writes a sidecar (fact 11).
+
+    Raises after recording the failure in ``compiler_state`` so the job fails.
+    """
     cs = state.compiler_state
+    gate = before_api or _no_gate
     base = Path(payload["output_base"])
     artifact_id: str | None = None
     error: str | None = None
     mp3_path: Path | None = None
+
+    def _phase(phase: str) -> None:
+        cs["phase"] = phase
+        if progress:
+            progress(phase)
 
     async def _pipeline() -> None:
         nonlocal artifact_id, mp3_path
@@ -532,6 +565,7 @@ def _run_generate(state: TUIState, payload: dict[str, Any]) -> None:
         notebook_id = payload["notebook_id"]
         async with NotebookLMClient.from_storage() as client:
             resume_id = payload.get("resume_artifact_id")
+            await gate()
             if resume_id and await _artifact_still_listed(client, notebook_id, resume_id):
                 logger.info("Compiler: resuming existing artifact %s", resume_id)
                 artifact_id = resume_id
@@ -544,9 +578,10 @@ def _run_generate(state: TUIState, payload: dict[str, Any]) -> None:
                 )
                 artifact_id = status.task_id
             cs["artifact_id"] = artifact_id
-            cs["phase"] = "generating"
+            _phase("generating")
 
             async def _wait() -> Any:
+                await gate()
                 return await client.artifacts.wait_for_completion(
                     notebook_id,
                     artifact_id,
@@ -568,9 +603,10 @@ def _run_generate(state: TUIState, payload: dict[str, Any]) -> None:
                 final = await _wait()
             if not final.is_complete:
                 raise RuntimeError(f"generation did not complete: {final.status}")
-            cs["phase"] = "downloading"
+            _phase("downloading")
             mp3_path = base.with_suffix(".mp3")
             mp3_path.parent.mkdir(parents=True, exist_ok=True)
+            await gate()
             await client.artifacts.download_audio(
                 notebook_id,
                 output_path=str(mp3_path),
@@ -578,17 +614,17 @@ def _run_generate(state: TUIState, payload: dict[str, Any]) -> None:
             )
 
     try:
-        asyncio.run(_pipeline())
+        await _pipeline()
     except Exception as e:
         logger.exception("Compiler: audio generation failed")
         error = str(e)
-        cs["phase"] = "failed"
         cs["error"] = error
         if artifact_id:
             cs["artifact_id"] = artifact_id
+        _phase("failed")
         # The prompt and edited flag are kept so `g` retries (fact 12).
     else:
-        cs["phase"] = "done"
+        _phase("done")
         cs["error"] = None
         cs["mp3_path"] = str(mp3_path)
 
@@ -611,3 +647,5 @@ def _run_generate(state: TUIState, payload: dict[str, Any]) -> None:
             cs["error"] = f"sidecar write failed: {e}"
         else:
             cs["error"] = f"{cs['error']}; sidecar write failed: {e}"
+    if cs["phase"] == "failed":
+        raise RuntimeError(cs["error"])

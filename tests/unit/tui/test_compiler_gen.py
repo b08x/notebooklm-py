@@ -10,12 +10,17 @@ import contextlib
 import json
 import re
 import threading
+import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 import notebooklm.tui.views.compiler_gen as gen
+from notebooklm.tui.jobs.handlers.compile import handle as compile_handle
+from notebooklm.tui.jobs.handlers.generate import handle as generate_handle
+from notebooklm.tui.jobs.runner import JobRunner
+from notebooklm.tui.jobs.store import Job, JobStatus, JobStore, RedisUnavailable, connect, redis_url
 from notebooklm.tui.keypress import handle_key
 from notebooklm.tui.state import TUIState, View
 
@@ -195,6 +200,38 @@ def _compiled_state(**overrides) -> TUIState:
     return state
 
 
+@pytest.fixture
+def store():
+    """Live Redis job store under a unique prefix; fails (never skips) when Redis is down."""
+    try:
+        client = connect()
+    except RedisUnavailable as e:
+        pytest.fail(f"{e} (set NOTEBOOKLM_REDIS_URL; current {redis_url()})", pytrace=False)
+    prefix = f"nblm:test:{uuid.uuid4().hex[:10]}:"
+    job_store = JobStore(client, prefix=prefix)
+    yield job_store
+    keys = list(client.scan_iter(match=f"{prefix}*", count=500))
+    if keys:
+        client.delete(*keys)
+
+
+def _run_next(state: TUIState) -> Job:
+    """Claim the oldest queued job and run it through the real runner."""
+    store = state.job_store
+    job = store.claim()
+    assert job is not None, "no job was queued"
+    runner = JobRunner(
+        store,
+        {"compile": compile_handle, "generate": generate_handle},
+        state=state,
+        workers=1,
+    )
+    runner.run_job(job)
+    finished = store.get(job.id)
+    assert finished is not None
+    return finished
+
+
 # ---------------------------------------------------------------------------
 # to_audio_enums (fact 8, fact 14)
 # ---------------------------------------------------------------------------
@@ -244,14 +281,17 @@ def test_to_audio_enums_invalid_raises_with_choices():
 # ---------------------------------------------------------------------------
 
 
-def test_start_compile_requires_selected_notebook(no_router):
+def test_start_compile_requires_selected_notebook(no_router, store):
     state = TUIState()
+    state.job_store = store
     gen.start_compile(state, "proj.yaml")
     assert state.compiler_state["error"] == "select a notebook first"
-    assert state.compiler_task is None
+    assert store.list_jobs() == []
 
 
-def test_compile_overrides_notebook_id_and_leaves_yaml_untouched(monkeypatch, tmp_path, no_router):
+def test_compile_overrides_notebook_id_and_leaves_yaml_untouched(
+    monkeypatch, tmp_path, no_router, store
+):
     yaml_path = tmp_path / "proj.yaml"
     yaml_path.write_text(AUDIO_YAML)
     before_bytes = yaml_path.read_bytes()
@@ -268,10 +308,11 @@ def test_compile_overrides_notebook_id_and_leaves_yaml_untouched(monkeypatch, tm
     _patch_client(monkeypatch, TUIState())
 
     state = _compiled_state()
+    state.job_store = store
     state.compiler_state = {}
     state.selected_notebook = "nb-1"
     gen.start_compile(state, yaml_path)
-    state.compiler_task.result()
+    _run_next(state)
 
     # The YAML's notebook_id is ignored (fact 2) and the file is untouched.
     assert seen["notebook_id"] == "nb-1"
@@ -289,13 +330,14 @@ def test_compile_overrides_notebook_id_and_leaves_yaml_untouched(monkeypatch, tm
     assert cs["template"] == "mr-and-mrs-language-model"
 
 
-def test_compile_refuses_while_already_compiling(monkeypatch, no_router):
+def test_compile_refuses_while_already_compiling(monkeypatch, no_router, store):
     state = _compiled_state(phase="compiling")
+    state.job_store = store
     gen.start_compile(state, "proj.yaml")
-    assert state.compiler_task is None
+    assert store.list_jobs() == []
 
 
-def test_compile_with_auto_extract_uses_rrf_slots(monkeypatch, no_router):
+def test_compile_with_auto_extract_uses_rrf_slots(monkeypatch, no_router, store):
     config = FakeConfig(auto_extract=True)
     monkeypatch.setattr(gen, "load_audio_project", lambda path: config)
     monkeypatch.setattr(gen, "compile_audio_config", lambda config: "COMPILED PROMPT")
@@ -315,9 +357,10 @@ def test_compile_with_auto_extract_uses_rrf_slots(monkeypatch, no_router):
     _patch_client(monkeypatch, TUIState())
 
     state = _compiled_state()
+    state.job_store = store
     state.compiler_state = {}
     gen.start_compile(state, "proj.yaml")
-    state.compiler_task.result()
+    _run_next(state)
 
     assert calls[0]["notebook_id"] == "nb-1"
     cs = state.compiler_state
@@ -325,7 +368,7 @@ def test_compile_with_auto_extract_uses_rrf_slots(monkeypatch, no_router):
     assert cs.get("warning") is None
 
 
-def test_compile_without_clauses_falls_back_to_chat_with_warning(monkeypatch, no_router):
+def test_compile_without_clauses_falls_back_to_chat_with_warning(monkeypatch, no_router, store):
     config = FakeConfig(auto_extract=True)
     monkeypatch.setattr(gen, "load_audio_project", lambda path: config)
     monkeypatch.setattr(gen, "compile_audio_config", lambda config: "COMPILED PROMPT")
@@ -344,15 +387,16 @@ def test_compile_without_clauses_falls_back_to_chat_with_warning(monkeypatch, no
     _patch_client(monkeypatch, TUIState())
 
     state = _compiled_state()
+    state.job_store = store
     state.compiler_state = {}
     gen.start_compile(state, "proj.yaml")
-    state.compiler_task.result()
+    _run_next(state)
 
     assert chat_calls and chat_calls[0][0] == "nb-1"
     assert "chat fallback" in state.compiler_state["warning"]
 
 
-def test_compile_extraction_failure_keeps_yaml_values_with_warning(monkeypatch, no_router):
+def test_compile_extraction_failure_keeps_yaml_values_with_warning(monkeypatch, no_router, store):
     config = FakeConfig(auto_extract=True)
     monkeypatch.setattr(gen, "load_audio_project", lambda path: config)
     monkeypatch.setattr(gen, "compile_audio_config", lambda config: "COMPILED PROMPT")
@@ -369,9 +413,10 @@ def test_compile_extraction_failure_keeps_yaml_values_with_warning(monkeypatch, 
     _patch_client(monkeypatch, TUIState())
 
     state = _compiled_state()
+    state.job_store = store
     state.compiler_state = {}
     gen.start_compile(state, "proj.yaml")
-    state.compiler_task.result()
+    _run_next(state)
 
     cs = state.compiler_state
     assert cs["phase"] == "compiled"
@@ -381,22 +426,23 @@ def test_compile_extraction_failure_keeps_yaml_values_with_warning(monkeypatch, 
     assert config.topics == ["yaml topic"]
 
 
-def test_compile_invalid_format_shows_error(monkeypatch, no_router):
+def test_compile_invalid_format_shows_error(monkeypatch, no_router, store):
     config = FakeConfig(fmt="bogus")
     monkeypatch.setattr(gen, "load_audio_project", lambda path: config)
     _patch_client(monkeypatch, TUIState())
 
     state = _compiled_state()
+    state.job_store = store
     state.compiler_state = {}
     gen.start_compile(state, "proj.yaml")
-    state.compiler_task.result()
+    _run_next(state)
 
     cs = state.compiler_state
     assert cs["phase"] == "error"
     assert "bogus" in cs["error"]
 
 
-def test_worker_never_calls_setup_dspy_router_off_main_thread(monkeypatch, no_router):
+def test_worker_never_calls_setup_dspy_router_off_main_thread(monkeypatch, no_router, store):
     """Fact 20: the LM is captured on the main thread; the worker never reconfigures."""
     import notebooklm._app.assessment as assessment
 
@@ -422,9 +468,10 @@ def test_worker_never_calls_setup_dspy_router_off_main_thread(monkeypatch, no_ro
     _patch_client(monkeypatch, TUIState())
 
     state = _compiled_state()
+    state.job_store = store
     state.compiler_state = {}
     gen.start_compile(state, "proj.yaml")
-    state.compiler_task.result()  # raises inside the worker if fact 20 is violated
+    assert _run_next(state).status == JobStatus.DONE  # fact 20: no router call in the worker
     assert state.compiler_state["phase"] == "compiled"
 
 
@@ -626,14 +673,15 @@ def test_apply_editor_result_marks_edited_and_never_touches_yaml():
 
 
 def test_generate_sends_exact_prompt_enums_and_writes_mp3_and_sidecar(
-    monkeypatch, tmp_path, no_router
+    monkeypatch, tmp_path, no_router, store
 ):
     state = _compiled_state(prompt="EDITED PROMPT", edited=True, audio_length="long")
+    state.job_store = store
     artifacts = _patch_client(monkeypatch, state)
     monkeypatch.setenv("NOTEBOOKLM_AUDIO_DIR", str(tmp_path))
 
     gen.start_generate(state)
-    state.compiler_task.result()
+    _run_next(state)
 
     # The instructions argument equals the edited prompt byte for byte (fact 8).
     assert artifacts.generate_calls[0]["instructions"] == "EDITED PROMPT"
@@ -672,15 +720,16 @@ def test_generate_sends_exact_prompt_enums_and_writes_mp3_and_sidecar(
 
 
 def test_generate_failure_writes_sidecar_and_keeps_prompt_for_retry(
-    monkeypatch, tmp_path, no_router
+    monkeypatch, tmp_path, no_router, store
 ):
     state = _compiled_state(prompt="EDITED PROMPT", edited=True)
+    state.job_store = store
     artifacts = _patch_client(monkeypatch, state)
     artifacts.fail_generate = True
     monkeypatch.setenv("NOTEBOOKLM_AUDIO_DIR", str(tmp_path))
 
     gen.start_generate(state)
-    state.compiler_task.result()
+    _run_next(state)
 
     cs = state.compiler_state
     assert cs["phase"] == "failed"
@@ -698,14 +747,15 @@ def test_generate_failure_writes_sidecar_and_keeps_prompt_for_retry(
     assert data["edited"] is True
 
 
-def test_generate_incomplete_status_fails(monkeypatch, tmp_path, no_router):
+def test_generate_incomplete_status_fails(monkeypatch, tmp_path, no_router, store):
     state = _compiled_state()
+    state.job_store = store
     artifacts = _patch_client(monkeypatch, state)
     artifacts.incomplete = True
     monkeypatch.setenv("NOTEBOOKLM_AUDIO_DIR", str(tmp_path))
 
     gen.start_generate(state)
-    state.compiler_task.result()
+    _run_next(state)
 
     cs = state.compiler_state
     assert cs["phase"] == "failed"
@@ -717,17 +767,18 @@ _REMOVED = SimpleNamespace(is_complete=False, is_removed=True, status="removed")
 _COMPLETE = SimpleNamespace(is_complete=True, is_removed=False, status="complete")
 
 
-def test_generate_removed_but_still_listed_keeps_waiting(monkeypatch, tmp_path, no_router):
+def test_generate_removed_but_still_listed_keeps_waiting(monkeypatch, tmp_path, no_router, store):
     """A "removed" poll result for an artifact that is still in the listing is a
     transient omission: keep waiting and download it instead of failing."""
     state = _compiled_state()
+    state.job_store = store
     artifacts = _patch_client(monkeypatch, state)
     artifacts.wait_results = [_REMOVED, _COMPLETE]
     artifacts.listed = [SimpleNamespace(id="art-123", is_failed=False)]
     monkeypatch.setenv("NOTEBOOKLM_AUDIO_DIR", str(tmp_path))
 
     gen.start_generate(state)
-    state.compiler_task.result()
+    _run_next(state)
 
     cs = state.compiler_state
     assert cs["phase"] == "done"
@@ -736,15 +787,16 @@ def test_generate_removed_but_still_listed_keeps_waiting(monkeypatch, tmp_path, 
     assert artifacts.download_calls[0]["artifact_id"] == "art-123"
 
 
-def test_generate_removed_and_gone_fails(monkeypatch, tmp_path, no_router):
+def test_generate_removed_and_gone_fails(monkeypatch, tmp_path, no_router, store):
     state = _compiled_state()
+    state.job_store = store
     artifacts = _patch_client(monkeypatch, state)
     artifacts.wait_results = [_REMOVED]
     artifacts.listed = []
     monkeypatch.setenv("NOTEBOOKLM_AUDIO_DIR", str(tmp_path))
 
     gen.start_generate(state)
-    state.compiler_task.result()
+    _run_next(state)
 
     cs = state.compiler_state
     assert cs["phase"] == "failed"
@@ -753,16 +805,17 @@ def test_generate_removed_and_gone_fails(monkeypatch, tmp_path, no_router):
     assert cs["artifact_id"] == "art-123"
 
 
-def test_retry_after_failure_resumes_existing_artifact(monkeypatch, tmp_path, no_router):
+def test_retry_after_failure_resumes_existing_artifact(monkeypatch, tmp_path, no_router, store):
     """Pressing g after a failure whose artifact still exists resumes that
     artifact (wait + download) instead of starting a new generation."""
     state = _compiled_state(phase="failed", artifact_id="art-9", error="removed")
+    state.job_store = store
     artifacts = _patch_client(monkeypatch, state)
     artifacts.listed = [SimpleNamespace(id="art-9", is_failed=False)]
     monkeypatch.setenv("NOTEBOOKLM_AUDIO_DIR", str(tmp_path))
 
     gen.start_generate(state)
-    state.compiler_task.result()
+    _run_next(state)
 
     cs = state.compiler_state
     assert artifacts.generate_calls == []
@@ -773,32 +826,35 @@ def test_retry_after_failure_resumes_existing_artifact(monkeypatch, tmp_path, no
     assert data["artifact_id"] == "art-9"
 
 
-def test_retry_after_failed_artifact_regenerates(monkeypatch, tmp_path, no_router):
+def test_retry_after_failed_artifact_regenerates(monkeypatch, tmp_path, no_router, store):
     """A server-FAILED or vanished artifact is not resumed; g generates anew."""
     state = _compiled_state(phase="failed", artifact_id="art-9", error="failed")
+    state.job_store = store
     artifacts = _patch_client(monkeypatch, state)
     artifacts.listed = [SimpleNamespace(id="art-9", is_failed=True)]
     monkeypatch.setenv("NOTEBOOKLM_AUDIO_DIR", str(tmp_path))
 
     gen.start_generate(state)
-    state.compiler_task.result()
+    _run_next(state)
 
     assert len(artifacts.generate_calls) == 1
     assert artifacts.wait_calls == ["art-123"]
     assert state.compiler_state["phase"] == "done"
 
 
-def test_start_generate_does_nothing_while_running(no_router):
+def test_start_generate_does_nothing_while_running(no_router, store):
     state = _compiled_state(phase="generating")
+    state.job_store = store
     gen.start_generate(state)
-    assert state.compiler_task is None
+    assert store.list_jobs() == []
 
 
-def test_start_generate_requires_prompt(no_router):
+def test_start_generate_requires_prompt(no_router, store):
     state = _compiled_state()
+    state.job_store = store
     del state.compiler_state["prompt"]
     gen.start_generate(state)
-    assert state.compiler_task is None
+    assert store.list_jobs() == []
 
 
 # ---------------------------------------------------------------------------
@@ -827,7 +883,7 @@ def test_confirm_keys_send_and_cancel(monkeypatch, no_router):
     assert state.compiler_state["confirm"] is False
 
 
-def test_confirm_cancel_makes_no_request(monkeypatch, no_router):
+def test_confirm_cancel_makes_no_request(monkeypatch, no_router, store):
     """`n` and Escape cancel without any client call (fact 7)."""
     calls: list = []
     monkeypatch.setattr(gen, "start_generate", lambda state: calls.append(state))
@@ -839,7 +895,7 @@ def test_confirm_cancel_makes_no_request(monkeypatch, no_router):
         handle_key(cancel_key, state)
         assert state.compiler_state.get("confirm") is False
         assert calls == []
-        assert state.compiler_task is None
+        assert store.list_jobs() == []
 
 
 def test_g_and_e_require_a_compiled_prompt(no_router):
@@ -941,3 +997,47 @@ def test_audio_output_base_pattern(tmp_path):
         audio_dir=str(tmp_path),
     )
     assert base == tmp_path / "sfl-engine-pipeline-mechanics" / "20260929-1405_sfl-notebook"
+
+
+# ---------------------------------------------------------------------------
+# Job queue enqueue (plan step 11)
+# ---------------------------------------------------------------------------
+
+
+def test_start_compile_enqueues_compile_job(no_router, store):
+    state = _compiled_state()
+    state.compiler_state = {}
+    state.job_store = store
+    gen.start_compile(state, "/x/proj.yaml")
+
+    [job] = store.list_jobs()
+    assert job.kind == "compile"
+    assert job.notebook_id == "nb-1"
+    assert job.payload == {"project_file": "/x/proj.yaml"}
+    assert state.compiler_state["phase"] == "compiling"
+    assert state.compiler_task is None
+
+
+def test_start_compile_without_job_queue_reports_error(no_router):
+    state = _compiled_state()
+    state.compiler_state = {}
+    gen.start_compile(state, "proj.yaml")
+    assert state.compiler_state["error"] == "job queue unavailable"
+    assert state.compiler_state.get("phase") is None
+
+
+def test_start_generate_enqueues_generate_job(monkeypatch, tmp_path, no_router, store):
+    state = _compiled_state()
+    state.job_store = store
+    monkeypatch.setenv("NOTEBOOKLM_AUDIO_DIR", str(tmp_path))
+    gen.start_generate(state)
+
+    [job] = store.list_jobs()
+    assert job.kind == "generate"
+    assert job.notebook_id == "nb-1"
+    assert job.payload["prompt"] == "COMPILED PROMPT"
+    assert job.payload["output_base"] == state.compiler_state["output_base"]
+    assert job.payload["resume_artifact_id"] is None
+    assert job.payload["evidence"] == {"agreement": [["c-1", "checkpoint clause text"]]}
+    assert state.compiler_state["phase"] == "submitted"
+    assert state.compiler_task is None
