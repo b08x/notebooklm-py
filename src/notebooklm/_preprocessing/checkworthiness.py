@@ -56,7 +56,10 @@ def assess(sfl: dict[str, Any] | None, tokens: list[dict[str, Any]] | None) -> t
     if sfl is None:
         return False, "no sfl"
 
-    token_list = tokens if isinstance(tokens, list) else []
+    # Fail closed: without tokens the hedge/interrogative checks cannot run.
+    if not isinstance(tokens, list) or not tokens:
+        return False, "no tokens"
+    token_list = tokens
     for token in token_list:
         text = _token_field(token, "text")
         if _token_field(token, "lemma") in HEDGE_CUES or text in HEDGE_CUES:

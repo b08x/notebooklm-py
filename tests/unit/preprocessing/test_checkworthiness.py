@@ -68,5 +68,8 @@ def test_non_declarative_mood_rejects() -> None:
     assert "declarative" in reason
 
 
-def test_missing_tokens_still_gates_on_sfl() -> None:
-    assert assess(DECLARATIVE_HIGH, None)[0] is True
+def test_missing_or_non_list_tokens_fail_closed() -> None:
+    """Without tokens the hedge/interrogative checks cannot run, so reject."""
+    assert assess(DECLARATIVE_HIGH, None) == (False, "no tokens")
+    assert assess(DECLARATIVE_HIGH, []) == (False, "no tokens")
+    assert assess(DECLARATIVE_HIGH, {"tokens": []}) == (False, "no tokens")  # type: ignore[arg-type]
