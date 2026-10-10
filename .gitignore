@@ -52,3 +52,6 @@ src/notebooklm/_commit.py
 notebooklm.apk/
 frida-scripts/
 error.log
+
+# Local Redis snapshots (TUI job queue)
+dump.rdb
