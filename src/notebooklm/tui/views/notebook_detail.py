@@ -1,7 +1,6 @@
 import asyncio
 import concurrent.futures
 import logging
-from pathlib import Path
 from typing import Any
 
 from notebooklm.client import NotebookLMClient
@@ -110,223 +109,19 @@ def fetch_stats_if_needed(state: TUIState) -> None:
     state.stats_task = executor.submit(_run_stats, state, state.selected_notebook)
 
 
-async def _download_assets_async(state: TUIState, notebook_id: str) -> str:
-    from sqlalchemy import select
-
-    from notebooklm.db.models import LocalAsset
-    from notebooklm.db.session import async_session_maker
-
-    async def _upsert_asset(session, asset_id: str, asset_type: str, local_path: str):
-        result = await session.execute(select(LocalAsset).where(LocalAsset.asset_id == asset_id))
-        asset = result.scalar_one_or_none()
-        if asset:
-            asset.local_path = local_path
-        else:
-            asset = LocalAsset(
-                notebook_id=notebook_id,
-                asset_id=asset_id,
-                asset_type=asset_type,
-                local_path=local_path,
-            )
-            session.add(asset)
-        await session.commit()
-
-    try:
-        async with NotebookLMClient.from_storage() as client:
-            nb = await client.notebooks.get(notebook_id)
-            title = getattr(nb, "title", "Unknown Notebook") or "Unknown Notebook"
-            title_safe = "".join(c for c in title if c.isalnum() or c in (" ", "-", "_")).strip()
-
-            if state.download_dir:
-                out_dir = Path(state.download_dir) / f"{title_safe}_assets"
-            else:
-                out_dir = Path.cwd() / f"{title_safe}_assets"
-            out_dir.mkdir(parents=True, exist_ok=True)
-
-            state.download_progress = {"phase": "Listing sources...", "percent": 0.0, "done": False}
-
-            # 1. Download Sources
-            sources_dir = out_dir / "sources"
-            sources_dir.mkdir(exist_ok=True)
-            sources = await client.sources.list(notebook_id)
-
-            async with async_session_maker() as session:
-
-                async def _is_asset_downloaded(session, asset_id: str) -> bool:
-                    import os
-
-                    result = await session.execute(
-                        select(LocalAsset).where(LocalAsset.asset_id == asset_id)
-                    )
-                    asset = result.scalar_one_or_none()
-                    return bool(asset and os.path.exists(asset.local_path))
-
-                for i, src in enumerate(sources):
-                    state.download_progress = {
-                        "phase": f"Downloading source {i + 1}/{len(sources)}",
-                        "percent": (i / len(sources)) * 0.33,
-                        "done": False,
-                    }
-                    try:
-                        if await _is_asset_downloaded(session, src.id):
-                            continue
-
-                        await asyncio.sleep(0.5)  # conscious rate limiting
-                        ft = await client.sources.get_fulltext(
-                            notebook_id, src.id, output_format="markdown"
-                        )
-                        if ft.content:
-                            src_title_str = (
-                                getattr(src, "title", "Unknown Source") or "Unknown Source"
-                            )
-                            src_title = "".join(
-                                c for c in src_title_str if c.isalnum() or c in (" ", "-", "_")
-                            ).strip()
-                            source_file_path = sources_dir / f"{src_title}.md"
-                            source_file_path.write_text(ft.content)
-                            await _upsert_asset(
-                                session, src.id, "source", str(source_file_path.absolute())
-                            )
-                    except Exception:
-                        pass
-
-                # 2. Download Chat History
-                state.download_progress = {
-                    "phase": "Downloading chat history...",
-                    "percent": 0.33,
-                    "done": False,
-                }
-                try:
-                    await asyncio.sleep(0.5)
-                    history = await client.chat.get_history(notebook_id)
-                    chat_text = ""
-                    for turn in history:
-                        user_turn, ai_turn, *_ = turn
-                        chat_text += f"**User**: {user_turn}\n\n**AI**: {ai_turn}\n\n"
-                    if chat_text:
-                        (out_dir / "chat_history.md").write_text(chat_text)
-                except Exception:
-                    pass
-
-                # 3. Download Artifacts
-                artifacts_dir = out_dir / "artifacts"
-                artifacts_dir.mkdir(exist_ok=True)
-
-                state.download_progress = {
-                    "phase": "Listing artifacts...",
-                    "percent": 0.66,
-                    "done": False,
-                }
-                try:
-                    all_artifacts = await client.artifacts.list(notebook_id)
-                    for i, artifact in enumerate(all_artifacts):
-                        state.download_progress = {
-                            "phase": f"Downloading artifact {i + 1}/{len(all_artifacts)}",
-                            "percent": 0.66 + ((i / len(all_artifacts)) * 0.33),
-                            "done": False,
-                        }
-
-                        try:
-                            if await _is_asset_downloaded(session, artifact.id):
-                                continue
-
-                            await asyncio.sleep(0.5)  # conscious rate limiting
-                            safe_title = "".join(
-                                c for c in artifact.title if c.isalnum() or c in (" ", "-", "_")
-                            ).strip()
-                            if not safe_title:
-                                safe_title = artifact.id
-
-                            raw_kind = (
-                                artifact.kind.value
-                                if hasattr(artifact.kind, "value")
-                                else str(artifact.kind)
-                            )
-                            kind = str(raw_kind).lower()
-                            file_path: Path | None = None
-
-                            if kind == "audio":
-                                file_path = artifacts_dir / f"{safe_title}.wav"
-                                await client.artifacts.download_audio(
-                                    notebook_id, str(file_path), artifact.id
-                                )
-                            elif kind == "video":
-                                file_path = artifacts_dir / f"{safe_title}.mp4"
-                                await client.artifacts.download_video(
-                                    notebook_id, str(file_path), artifact.id
-                                )
-                            elif kind == "report":
-                                file_path = artifacts_dir / f"{safe_title}.md"
-                                await client.artifacts.download_report(
-                                    notebook_id, str(file_path), artifact.id
-                                )
-                            elif kind == "quiz":
-                                file_path = artifacts_dir / f"{safe_title}.md"
-                                await client.artifacts.download_quiz(
-                                    notebook_id, str(file_path), artifact.id
-                                )
-                            elif kind == "flashcards":
-                                file_path = artifacts_dir / f"{safe_title}.md"
-                                await client.artifacts.download_flashcards(
-                                    notebook_id, str(file_path), artifact.id
-                                )
-                            elif kind == "infographic":
-                                file_path = artifacts_dir / f"{safe_title}.png"
-                                await client.artifacts.download_infographic(
-                                    notebook_id, str(file_path), artifact.id
-                                )
-                            elif kind == "slide_deck":
-                                file_path = artifacts_dir / f"{safe_title}.pdf"
-                                await client.artifacts.download_slide_deck(
-                                    notebook_id, str(file_path), artifact.id
-                                )
-                            elif kind == "data_table":
-                                file_path = artifacts_dir / f"{safe_title}.csv"
-                                await client.artifacts.download_data_table(
-                                    notebook_id, str(file_path), artifact.id
-                                )
-                            elif kind == "mind_map":
-                                file_path = artifacts_dir / f"{safe_title}.md"
-                                await client.artifacts.download_mind_map(
-                                    notebook_id, str(file_path), artifact.id
-                                )
-
-                            if file_path and file_path.exists():
-                                await _upsert_asset(
-                                    session, artifact.id, "artifact", str(file_path.absolute())
-                                )
-                        except Exception as e:
-                            logger.warning(f"Failed to download artifact {artifact.id}: {e}")
-                except Exception as e:
-                    logger.warning(f"Failed to list artifacts for {notebook_id}: {e}")
-
-            state.download_progress = {
-                "phase": f"Assets downloaded to {out_dir}",
-                "percent": 1.0,
-                "done": True,
-            }
-            return f"Assets downloaded to {out_dir}"
-    except Exception as e:
-        state.download_progress = {"phase": f"Download failed: {e}", "percent": 0.0, "done": True}
-        return f"Download failed: {e}"
-
-
-def _run_download(state: TUIState, notebook_id: str) -> None:
-    try:
-        result = asyncio.run(_download_assets_async(state, notebook_id))
-        state.error_message = result
-    except Exception as e:
-        logger.exception("Download task crashed")
-        state.error_message = f"Download crashed: {e}"
-
-
 def start_download(state: TUIState) -> None:
     if not state.selected_notebook:
         return
-    state.error_message = f"Starting download for {state.selected_notebook}..."
-    state.download_progress = {"phase": "Starting download...", "percent": 0.0, "done": False}
-    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    state.background_task = executor.submit(_run_download, state, state.selected_notebook)
+    if state.job_store is None:
+        state.error_message = "Job queue unavailable"
+        return
+    nb_id = state.selected_notebook
+    state.job_store.enqueue("download", nb_id, {"download_dir": state.download_dir})
+    title = next(
+        (getattr(nb, "title", None) for nb in state.notebooks if getattr(nb, "id", None) == nb_id),
+        None,
+    )
+    state.error_message = f"Queued download for {title or nb_id}"
 
 
 async def _fetch_sources_async(notebook_id: str) -> tuple[list[Any], set[str]]:
