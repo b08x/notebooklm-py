@@ -5,7 +5,18 @@ import sys
 import termios
 import tty
 
-from .state import TUIState, View
+from .state import VIEW_MODE, Mode, TUIState, View
+
+#: Views a number key lands on; ``None`` keeps the current view (Ingest, Jobs)
+#: and Notebooks resolves to the list or the detail view (see ``_switch_mode``).
+_MODE_KEY_VIEW: dict[Mode, View | None] = {
+    Mode.NOTEBOOKS: None,
+    Mode.INGEST: None,
+    Mode.FACT_CHECK: View.ASSESSMENT,
+    Mode.COMPILER: View.COMPILER,
+    Mode.JOBS: None,
+    Mode.LOGS: View.LOGS,
+}
 
 
 @contextlib.contextmanager
@@ -204,6 +215,11 @@ def handle_key(key: str, state: TUIState) -> bool:
     if state.curation:
         return _handle_curation_key(key, state)
 
+    # Jobs mode owns these keys even when the kept view is a pane with its own
+    # j/k/f bindings (Assessment, Compiler).
+    if state.mode == Mode.JOBS and key in ("j", "k", "x", "R", "C", "f", "\r", "\n"):
+        return _handle_jobs_key(key, state)
+
     if state.current_view == View.CHAT:
         if key == "\x1b" or key == "\t":  # Escape or Tab
             if state.previous_view:
@@ -330,10 +346,13 @@ def handle_key(key: str, state: TUIState) -> bool:
 
     if key == "q":
         return False
+    elif key in ("1", "2", "3", "4", "5", "6"):
+        _switch_mode(state, Mode(int(key)))
     elif key == "c" or key == "\t":
-        if state.current_view != View.CHAT:
+        if state.mode == Mode.NOTEBOOKS and state.current_view != View.CHAT:
             state.previous_view = state.current_view
             state.current_view = View.CHAT
+            state.mode = VIEW_MODE[View.CHAT]
     elif key == "\r" or key == "\n":
         if state.current_view == View.NOTEBOOK_LIST:
             state.previous_view = state.current_view
@@ -368,14 +387,17 @@ def handle_key(key: str, state: TUIState) -> bool:
         if state.current_view != View.COMPILER:
             state.previous_view = state.current_view
             state.current_view = View.COMPILER
+            state.mode = VIEW_MODE[View.COMPILER]
     elif key == "A":
         if state.current_view != View.ASSESSMENT:
             state.previous_view = state.current_view
             state.current_view = View.ASSESSMENT
+            state.mode = VIEW_MODE[View.ASSESSMENT]
     elif key == "L":
         if state.current_view != View.LOGS:
             state.previous_view = state.current_view
             state.current_view = View.LOGS
+            state.mode = VIEW_MODE[View.LOGS]
     elif key == "n":
         # Jump back to the selected notebook from anywhere — c/p/A/L all jump
         # TO a view, but nothing jumped back to the notebook itself; Esc alone
@@ -385,6 +407,7 @@ def handle_key(key: str, state: TUIState) -> bool:
         if state.current_view != target:
             state.previous_view = state.current_view
             state.current_view = target
+            state.mode = VIEW_MODE[target]
     elif key == "\x1b":  # Escape
         if state.search_query or state.filter_has_audio or state.filter_min_sources:
             state.search_query = ""
@@ -394,6 +417,7 @@ def handle_key(key: str, state: TUIState) -> bool:
         if state.previous_view:
             state.current_view = state.previous_view
             state.previous_view = None
+            state.mode = VIEW_MODE[state.current_view]
     elif key == "/" and state.current_view == View.NOTEBOOK_LIST:
         state.searching = True
         return True
@@ -472,6 +496,57 @@ def handle_key(key: str, state: TUIState) -> bool:
                 state.scroll_offset = new_idx
 
         state.selected_notebook = notebooks[new_idx].id
+    return True
+
+
+def _switch_mode(state: TUIState, mode: Mode) -> None:
+    """Number-key mode switch; moves to the mode's view when it names one."""
+    state.set_mode(mode)
+    target: View | None
+    if mode == Mode.NOTEBOOKS:
+        target = View.NOTEBOOK_DETAIL if state.selected_notebook else View.NOTEBOOK_LIST
+    else:
+        target = _MODE_KEY_VIEW[mode]
+    if target is not None and target != state.current_view:
+        state.previous_view = state.current_view
+        state.current_view = target
+
+
+def _handle_jobs_key(key: str, state: TUIState) -> bool:
+    """Jobs-mode keys: j/k cursor, x cancel, R retry, C clear finished, f filter."""
+    from .jobs.store import JobStatus
+    from .renderers.jobs import cursor_index, selected_job, visible_jobs
+
+    state.refresh_jobs_snapshot(max_age=0)
+    view = state.jobs_view
+    if key in ("\r", "\n"):
+        return True  # No detail pane to open; keep the Jobs layout.
+    if key in ("j", "k"):
+        count = len(visible_jobs(state))
+        cursor = cursor_index(state, count)
+        if key == "j":
+            view["cursor"] = min(cursor + 1, max(count - 1, 0))
+        else:
+            view["cursor"] = max(cursor - 1, 0)
+        return True
+    if key == "f":
+        cycle: list[JobStatus | None] = [None, JobStatus.RUNNING, JobStatus.FAILED, JobStatus.DONE]
+        current = view.get("status")
+        idx = cycle.index(current) if current in cycle else -1
+        view["status"] = cycle[(idx + 1) % len(cycle)]
+        view["cursor"] = 0
+        return True
+    if state.job_store is None:
+        return True
+    if key == "C":
+        state.job_store.clear_finished()
+    else:
+        job = selected_job(state)
+        if job is not None and key == "x":
+            state.job_store.request_cancel(job.id)
+        elif job is not None and key == "R":
+            state.job_store.retry(job.id)
+    state.jobs_snapshot_at = 0.0
     return True
 
 
