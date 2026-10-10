@@ -1,0 +1,195 @@
+{
+  "stage": "interview",
+  "title": "Audio Segment Extractor (Textual) \u2014 v1, ~2h",
+  "goalSlug": "audio-segment-extractor",
+  "questions": [
+    {
+      "id": "granularity",
+      "prompt": "What unit should be selectable?",
+      "description": "The script is named 'extract_sentences' but actually lists speaker turns (utterances). Deepgram/Speechmatics word timestamps allow splitting turns into sentences.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Speaker turns (current behavior) for v1; sentence splitting deferred.",
+      "recommendedOptionIds": [
+        "utterance"
+      ],
+      "options": [
+        {
+          "id": "sentence-grouped",
+          "label": "Sentences, grouped under speaker turns (turn-level select available)"
+        },
+        {
+          "id": "utterance",
+          "label": "Speaker turns only (current behavior)"
+        },
+        {
+          "id": "toggle",
+          "label": "Switchable view: turns or sentences"
+        }
+      ],
+      "required": true
+    },
+    {
+      "id": "features",
+      "prompt": "Which features are in scope for v1?",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "Transcript table, speaker filter, text search, preview playback, keyboard multi-select, range select, padding, combined/separate export. Defer sidecar, nudge, reorder, saved sets, waveform, speaker rename.",
+      "recommendedOptionIds": [
+        "table",
+        "speaker-filter",
+        "search",
+        "preview",
+        "multiselect",
+        "range-select",
+        "padding",
+        "export"
+      ],
+      "options": [
+        {
+          "id": "table",
+          "label": "Scrollable transcript table (speaker, start, end, duration, text)"
+        },
+        {
+          "id": "speaker-filter",
+          "label": "Filter by speaker"
+        },
+        {
+          "id": "search",
+          "label": "Text search / filter"
+        },
+        {
+          "id": "preview",
+          "label": "Preview selected row audio (play/stop)"
+        },
+        {
+          "id": "multiselect",
+          "label": "Keyboard multi-select with selection count + total duration"
+        },
+        {
+          "id": "range-select",
+          "label": "Shift/range select of contiguous rows"
+        },
+        {
+          "id": "padding",
+          "label": "Configurable pre/post padding (ms) on each segment"
+        },
+        {
+          "id": "boundary-nudge",
+          "label": "Per-segment start/end nudge editing"
+        },
+        {
+          "id": "reorder",
+          "label": "Reorder selected segments before export"
+        },
+        {
+          "id": "export",
+          "label": "Export combined or separate files, format choice"
+        },
+        {
+          "id": "sidecar",
+          "label": "JSON/CSV sidecar with transcript + timings of exported clips"
+        },
+        {
+          "id": "save-selection",
+          "label": "Save/load named selection sets"
+        },
+        {
+          "id": "waveform",
+          "label": "Waveform/level visualization"
+        },
+        {
+          "id": "rename-speakers",
+          "label": "Rename speakers (A/B -> Host 1/Host 2)"
+        }
+      ],
+      "required": true,
+      "description": "Time budget ~2 hours. Recommended set is the minimum that removes the tedium; everything else is deferred."
+    },
+    {
+      "id": "playback",
+      "prompt": "How should preview playback work?",
+      "description": "mpv, ffplay, aplay and paplay are installed on this machine.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Spawn mpv as a subprocess with --start/--end (fallback ffplay), killed on stop or when a new preview starts.",
+      "recommendedOptionIds": [
+        "mpv"
+      ],
+      "options": [
+        {
+          "id": "mpv",
+          "label": "mpv subprocess (--start/--end), ffplay fallback"
+        },
+        {
+          "id": "inprocess",
+          "label": "In-process via sounddevice/simpleaudio (adds a dependency)"
+        },
+        {
+          "id": "none",
+          "label": "No playback in v1"
+        }
+      ],
+      "required": true
+    },
+    {
+      "id": "purpose",
+      "prompt": "What are the exported clips used for downstream?",
+      "description": "Determines sidecar contents, naming, and whether things like loudness normalization or sample-rate control matter (e.g. voice-cloning datasets need consistent format + transcript pairs).",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "Pulling quotable clips for reuse/remix, and building clip+transcript pairs.",
+      "recommendedOptionIds": [
+        "quotes",
+        "dataset"
+      ],
+      "options": [
+        {
+          "id": "quotes",
+          "label": "Quotable clips / highlights for reuse or remix"
+        },
+        {
+          "id": "dataset",
+          "label": "Clip + transcript pairs (dataset / voice work)"
+        },
+        {
+          "id": "factcheck",
+          "label": "Evidence clips for fact-checking / assessment"
+        },
+        {
+          "id": "notes",
+          "label": "Feed back into NotebookLM as sources/notes"
+        }
+      ],
+      "required": false
+    },
+    {
+      "id": "old-script",
+      "prompt": "What happens to scripts/extract_sentences.py?",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Leave it in place untouched; the new tool supersedes it without edits to notebooklm-py.",
+      "recommendedOptionIds": [
+        "leave"
+      ],
+      "options": [
+        {
+          "id": "leave",
+          "label": "Leave untouched"
+        },
+        {
+          "id": "delete",
+          "label": "Delete once the new tool works"
+        },
+        {
+          "id": "shim",
+          "label": "Replace with a shim that launches the new tool"
+        }
+      ],
+      "required": true
+    },
+    {
+      "id": "out-of-scope",
+      "prompt": "Anything explicitly out of scope, or constraints to respect?",
+      "description": "Recommended exclusions listed; add or remove.",
+      "answerMode": "text",
+      "recommendedAnswer": "Out of scope: running transcription/diarization, notebooklm DB/package imports, editing transcript text, multi-file timelines, NotebookLM network calls, migrating the existing Rich TUI to Textual. Optional small hook: one key in the existing TUI that launches the editor. Constraint: terminal-only, works over SSH.",
+      "required": false
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+# Facts — Audio Segment Extractor (v1)
+
+- The editor is a standalone uv package at ~/WorkspaceV3/audio-segment-extractor with a console script `audioseg`, built on Textual.
+- The package never imports notebooklm and makes no network calls.
+- `audioseg` with no arguments scans ~/NotebookLM (override with --root) for *_diarization.json files that have a same-named audio file beside them, and shows them as a pick list, newest first.
+- `audioseg AUDIO JSON` skips the pick list and opens that pair directly (covers UUID-named JSON files with no matching audio name).
+- Deepgram, AssemblyAI, and Speechmatics diarization JSON all load, matching the formats scripts/extract_sentences.py accepts.
+- Deepgram files use paragraphs.sentences timings when present; otherwise sentences are built from word timestamps split at . ? !
+- The transcript shows sentences grouped under speaker-turn header rows; each header shows speaker and time range.
+- Each sentence row shows: selected mark, speaker, start, end, duration, text.
+- Space toggles the highlighted sentence; `t` toggles every sentence in the highlighted turn.
+- A status line always shows the number of selected clips and their total duration.
+- A speaker filter hides rows from unchecked speakers; hidden rows keep their selection state.
+- `/` opens a search box that filters rows by case-insensitive text match; Esc clears the filter.
+- `p` plays the highlighted sentence in-process (sounddevice); pressing `p` again, or starting another preview, stops the current one. *(manual check)*
+- If no audio output device is available, preview shows an error notice and the app keeps running.
+- A selection panel lists selected clips in export order (chronological by default); clips can be moved up or down.
+- Export offers combined (one file) or separate files, a format choice of wav/mp3/flac, and an editable output path.
+- Combined export concatenates clips in export order; separate export writes <stem>_<NNN>_<speaker>.<ext> with NNN = export position.
+- Every export writes a JSON sidecar beside the output listing source audio, source JSON, and per clip: position, speaker, start, end, text, output file.
+- Parsing, sentence building, export planning, and sidecar output are covered by pytest with fixture JSON for all three formats; a Textual Pilot test drives select -> reorder -> export end to end.
+- The app runs in a plain terminal (works over SSH); no GUI toolkit dependency. *(manual check)*
+- scripts/extract_sentences.py is deleted from notebooklm-py once the new tool passes its tests and a manual export.
+- Optional: a key in the existing notebooklm TUI launches `audioseg` via subprocess, the way $EDITOR is launched. *(manual check)*

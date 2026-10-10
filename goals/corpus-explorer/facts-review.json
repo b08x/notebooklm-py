@@ -1,0 +1,511 @@
+{
+  "stage": "facts",
+  "title": "Corpus Explorer \u2014 React web workbench over the chunk database",
+  "goalSlug": "corpus-explorer",
+  "facts": [
+    {
+      "id": "fact-1",
+      "text": "`notebooklm-server` serves the built React app at `/ui`; opening it in a browser loads the Corpus Explorer.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-2",
+      "text": "Every new corpus endpoint lives under `/v1/corpus/*` and returns 401 without the `NOTEBOOKLM_SERVER_TOKEN` bearer token.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-3",
+      "text": "The UI asks for the server token once and stays signed in across page reloads.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "fact-4",
+      "text": "When Postgres is unreachable, corpus routes return 503 and the UI shows a blocking 'database unreachable' screen \u2014 never an empty corpus.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-5",
+      "text": "Frontend source lives in `web/` (Vite + React + TypeScript + Tailwind + shadcn/ui + TanStack Query/Table); its build output is what `/ui` serves.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-6",
+      "text": "The layout is the Workbench mockup: header with Search \u00b7 Browse \u00b7 Map \u00b7 Runs \u00b7 Fact-check tabs, three panes (filters | results | detail), and a status footer.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "fact-7",
+      "text": "Dark theme is the default and uses the TUI theme colors (#18181B background, #A78BFA accent, #7DD3FC secondary); a light theme toggle exists and the choice persists.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "fact-8",
+      "text": "Switching theme flips instantly with no color cross-fade.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "fact-9",
+      "text": "The footer shows live status for Postgres, the Ollama embedder, and any running ingest or fact-check job.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-10",
+      "text": "Search runs hybrid RRF and every result shows its keyword rank, vector rank, and fused score.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-11",
+      "text": "A mode toggle switches search between Keyword, Vector, and Hybrid RRF.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-12",
+      "text": "Query terms are highlighted in result text.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-13",
+      "text": "If the embedder is down, hybrid search still returns keyword results and shows a 'vector leg unavailable' warning.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-14",
+      "text": "Concurrent searches from the server never call `dspy.configure()` / `setup_dspy_router()` inside a worker thread.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-15",
+      "text": "The Browse tab lists all clauses in a virtualized table that scrolls smoothly through the full corpus (5,991+ rows).",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "fact-16",
+      "text": "Browse filters cover notebook, document, run, strategy, fact-check status, length range, and quality flag, each value showing its count.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-17",
+      "text": "A quality detector flags noise chunks \u2014 base64/binary blobs and numeric-table rows \u2014 and the Quality filter shows their counts.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-18",
+      "text": "Selecting a chunk opens the detail pane with its parent chunk text and the clause highlighted inside it.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-19",
+      "text": "'More like this' lists nearest-neighbor chunks by embedding distance with the distance value, and marks near-duplicates (distance under a set threshold) with a 'near-duplicate' badge.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-20",
+      "text": "'More like this' lists nearest-neighbor chunks by embedding distance, showing the distance value.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-21",
+      "text": "Delete works at four levels: a clause, a parent chunk with its children, a whole document, or a whole run.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-22",
+      "text": "A committed delete removes the rows plus their embeddings and fact_checks, and writes one `removal_log` row per delete action.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-23",
+      "text": "Delete opens a confirmation dialog that names the level and counts (clauses, embeddings, fact-checks) to be removed; nothing is deleted until confirmed, and Cancel removes nothing.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-24",
+      "text": "Multi-select (checkbox, `x` key, shift-click range) opens a bulk bar with Delete, Export, and Re-fact-check.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-25",
+      "text": "Export downloads the selected chunks as Markdown or JSON.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-26",
+      "text": "Export can push the selected chunks as a note into their source NotebookLM notebook.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "fact-27",
+      "text": "'Ask' sends the question plus top retrieved chunks to NotebookLM `chat.ask`, scoped to those chunks' source IDs, with chunks labeled [C1]\u2026[Cn] in the prompt.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-28",
+      "text": "Answers show inline [Cn] citations; clicking one opens that chunk in the detail pane.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-29",
+      "text": "A model picker accepts any litellm model string; answers from a picked model stream token by token over SSE.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-30",
+      "text": "While NotebookLM is answering (non-streaming), the UI shows a progress state.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "fact-31",
+      "text": "The Map tab shows a 2D projection of chunk embeddings, colored by document (by topic once topics exist); clicking a point opens that chunk.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-32",
+      "text": "The Runs tab lists chunk_runs with strategy, parent/child counts, mean and p95 length, and active flag.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-33",
+      "text": "While ingestion runs, counts refresh every 5 seconds and a 'N new chunks' pill appears; clicking it refreshes the results.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-34",
+      "text": "The Fact-check tab starts a run for a notebook, or for selected chunks via Re-fact-check.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-35",
+      "text": "The run queue lists every chunk with its status (pending, active, verified, refuted, skipped, waiting) plus progress counts and elapsed time.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-36",
+      "text": "When the satire/meta-dialogue classifier flags a chunk, the run pauses and the UI shows the gate with the classifier probability and Skip (Y), Fact-check (N), Auto-skip toggle (S).",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-37",
+      "text": "The active chunk is shown with the 2 transcript lines before and after it.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-38",
+      "text": "The evidence log shows verdict, confidence, rationale, and a Langfuse trace link per chunk; the active chunk shows SIFT step status.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-39",
+      "text": "Run events reach the browser over SSE; closing the tab does not stop the run, and reopening shows its current state.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-40",
+      "text": "The fact-check gate logic lives in `_app/`; the TUI Fact-check mode uses the same code and keeps its y/n/s behavior.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-41",
+      "text": "Cmd/Ctrl-K opens a command palette that can switch tabs, focus search, delete the selection, start a fact-check run, and toggle theme.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-42",
+      "text": "Keyboard shortcuts: `/` focus search, `j`/`k` move, `x` select, `Enter` open, `Backspace` delete, `?` shortcut sheet.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-43",
+      "text": "The TUI SFL panel shows Tenor, Mood, and Modality values (not field names) when the SFL result is a nested dict; TUI and web use one shared SFL formatter.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-44",
+      "text": "Buttons scale to 0.96 on press, and no stylesheet uses `transition: all`.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-45",
+      "text": "pytest covers every `/v1/corpus` route against the real Postgres, and those tests fail (not skip) when Postgres is unreachable.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-46",
+      "text": "Vitest component tests pass for search results, detail pane, undo toast, fact-check gate, and command palette.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-47",
+      "text": "A Playwright smoke test passes: search \u2192 open chunk \u2192 delete \u2192 Cancel (row still present) \u2192 delete \u2192 Confirm (row gone).",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-48",
+      "text": "ruff, mypy, and the existing pytest suite (90% coverage gate) still pass.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-49",
+      "text": "SFL tagging can be started for any corpus document, run, or chunk selection (from Browse, Runs, or Fact-check), not only for a whole notebook.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-50",
+      "text": "A fact-check run, gate included, can target any document, run, or chunk selection: sources, notes, and ingested artifacts alike.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-51",
+      "text": "An 'Ingest artifact' action lists a notebook's NotebookLM artifacts and adds the chosen one to the corpus as its own document, keyed by artifact ID.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-52",
+      "text": "Audio and video artifacts are converted to a temporary FLAC (mono, original sample rate, 16-bit or 24-bit for 24-bit sources, 80 Hz high-pass, \u221219 LUFS with peaks capped at \u22121 dBFS), sent to the chosen provider, and the temp file is deleted afterward; speaker labels stay in the chunk text and the original audio is never modified.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-53",
+      "text": "Report, quiz, flashcard, mind map, and data table artifacts are converted to text (Markdown, outline, or rows) and ingested without transcription.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-54",
+      "text": "Infographic and slide-deck artifacts appear in the list but are disabled ('image-only, not ingestible yet'); artifact conversion goes through a per-kind converter registry so image/audio/video embedding (e.g. a multimodal Gemma embedder) can be added later without changing callers.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-55",
+      "text": "Every corpus document shows its kind (source, note, audio, video, report, quiz, flashcards, mind map, data table), and Browse can filter by kind.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-56",
+      "text": "Ingesting an artifact whose content checksum matches an existing run's `source_hash` is skipped ('already ingested, unchanged'); it is re-ingested only when the checksum differs or the user picks 'Force re-ingest', and then the new run replaces the old one as active.",
+      "accepted": true,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-57",
+      "text": "The audio/video ingest dialog matches the audio-segment-extractor panel: provider choice (Speechmatics, AssemblyAI, Deepgram, local transcribe_cpp), a 'key found / key missing' line for the chosen provider, a Diarize toggle, a Language selector defaulting to Auto-detect, and a Transcribe button.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-58",
+      "text": "Clause fact-check runs can use the Jev decision model as the check-worthiness gate (choices: checkworthy, meta-dialogue/satire, filler); the gate card shows Jev's probability for the chosen label.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-59",
+      "text": "The rule-based `checkworthiness.assess` gate stays selectable, and a comparison script reports agreement between the Jev gate and the rule gate on a sample of stored chunks.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-60",
+      "text": "When retrieved chunks span more than one notebook, Ask runs a DSPy corpus pipeline: a `dspy.ReAct` agent with tools (corpus search, chunk detail, neighbors, NotebookLM ask for one notebook), and `dspy.MultiChainComparison` merges the per-notebook answers into one answer with [Cn] citations.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-61",
+      "text": "An experimental 'Deep' Ask mode uses `dspy.RLM` to explore contexts too large for one prompt; it is labeled experimental in the UI and shows a clear error if its sandbox is unavailable.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-62",
+      "text": "Browse can filter to chunks that have at least one near-duplicate.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-63",
+      "text": "DSPy work in the server binds the LM with `dspy.context(lm=...)` in workers; `dspy.configure()` is only called once, on the main thread at server startup.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    }
+  ]
+}

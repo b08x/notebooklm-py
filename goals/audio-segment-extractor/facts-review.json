@@ -1,0 +1,183 @@
+{
+  "stage": "facts",
+  "title": "Audio Segment Extractor (Textual) \u2014 v1",
+  "goalSlug": "audio-segment-extractor",
+  "facts": [
+    {
+      "id": "fact-1",
+      "text": "The editor is a standalone uv package at ~/WorkspaceV3/audio-segment-extractor with a console script `audioseg`, built on Textual.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-2",
+      "text": "The package never imports notebooklm and makes no network calls.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-3",
+      "text": "`audioseg` with no arguments scans ~/NotebookLM (override with --root) for *_diarization.json files that have a same-named audio file beside them, and shows them as a pick list, newest first.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-4",
+      "text": "`audioseg AUDIO JSON` skips the pick list and opens that pair directly (covers UUID-named JSON files with no matching audio name).",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-5",
+      "text": "Deepgram, AssemblyAI, and Speechmatics diarization JSON all load, matching the formats scripts/extract_sentences.py accepts.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-6",
+      "text": "Deepgram files use paragraphs.sentences timings when present; otherwise sentences are built from word timestamps split at . ? !",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-7",
+      "text": "The transcript shows sentences grouped under speaker-turn header rows; each header shows speaker and time range.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-8",
+      "text": "Each sentence row shows: selected mark, speaker, start, end, duration, text.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-9",
+      "text": "Space toggles the highlighted sentence; `t` toggles every sentence in the highlighted turn.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-10",
+      "text": "A status line always shows the number of selected clips and their total duration.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-11",
+      "text": "A speaker filter hides rows from unchecked speakers; hidden rows keep their selection state.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-12",
+      "text": "`/` opens a search box that filters rows by case-insensitive text match; Esc clears the filter.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-13",
+      "text": "`p` plays the highlighted sentence in-process (sounddevice); pressing `p` again, or starting another preview, stops the current one.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "fact-14",
+      "text": "If no audio output device is available, preview shows an error notice and the app keeps running.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-15",
+      "text": "A selection panel lists selected clips in export order (chronological by default); clips can be moved up or down.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-16",
+      "text": "Export offers combined (one file) or separate files, a format choice of wav/mp3/flac, and an editable output path.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-17",
+      "text": "Combined export concatenates clips in export order; separate export writes <stem>_<NNN>_<speaker>.<ext> with NNN = export position.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-18",
+      "text": "Every export writes a JSON sidecar beside the output listing source audio, source JSON, and per clip: position, speaker, start, end, text, output file.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-19",
+      "text": "Parsing, sentence building, export planning, and sidecar output are covered by pytest with fixture JSON for all three formats; a Textual Pilot test drives select -> reorder -> export end to end.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-20",
+      "text": "The app runs in a plain terminal (works over SSH); no GUI toolkit dependency.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    },
+    {
+      "id": "fact-21",
+      "text": "scripts/extract_sentences.py is deleted from notebooklm-py once the new tool passes its tests and a manual export.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-22",
+      "text": "Optional: a key in the existing notebooklm TUI launches `audioseg` via subprocess, the way $EDITOR is launched.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": false,
+      "automatedVerification": false
+    }
+  ]
+}

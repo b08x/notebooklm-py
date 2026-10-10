@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Corpus Explorer Mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<style>
+  :root { --page: #0e0e10; --ink: #e4e4e7; --mute: #8b8b94; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.5 Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  .switcher { position: sticky; top: 0; z-index: 10; display: flex; gap: 8px; align-items: center; padding: 12px 16px; background: #0e0e10ee; backdrop-filter: blur(8px); border-bottom: 1px solid #27272a; flex-wrap: wrap; }
+  .switcher h1 { font-size: 13px; font-weight: 600; margin: 0 12px 0 0; color: var(--mute); letter-spacing: .02em; }
+  .switcher button { font: 500 13px Inter, sans-serif; color: var(--ink); background: #1c1c20; border: 0; border-radius: 8px; padding: 7px 12px; cursor: pointer; box-shadow: 0 0 0 1px #2e2e33 inset; transition-property: background-color, box-shadow, scale; transition-duration: 150ms; }
+  .switcher button:active { scale: .96; }
+  .switcher button[aria-pressed="true"] { background: #2b2546; box-shadow: 0 0 0 1px #a78bfa inset; }
+  .note { color: var(--mute); font-size: 12px; margin-left: auto; }
+  .frame { padding: 16px; }
+  .direction { display: none; }
+  .direction.on { display: block; }
+  .caption { max-width: 1440px; margin: 0 auto 12px; color: var(--mute); font-size: 13px; }
+  .caption b { color: var(--ink); font-weight: 600; }
+
+  /* ========== A · WORKBENCH ========== */
+  .wb { --bg:#18181b; --surf:#1f1f24; --surf2:#26262c; --line:#2f2f36; --fg:#e4e4e7; --mut:#8b8b94; --sub:#52525b; --pri:#a78bfa; --sec:#7dd3fc; --ok:#4ade80; --warn:#fbbf24; --bad:#f87171;
+        max-width: 1440px; margin: 0 auto; height: 820px; display: grid; grid-template-rows: 48px 1fr 28px; background: var(--bg); color: var(--fg); border-radius: 14px; overflow: hidden;
+        box-shadow: 0 0 0 1px #ffffff12, 0 24px 60px -12px #000000cc; }
+  .wb-top { display:flex; align-items:center; gap:12px; padding:0 12px; border-bottom:1px solid var(--line); }
+  .wb-logo { width:22px; height:22px; border-radius:6px; background: linear-gradient(135deg,#a78bfa,#7dd3fc); }
+  .wb-nav { display:flex; gap:2px; }
+  .wb-nav span { padding:5px 10px; border-radius:6px; color:var(--mut); font-size:13px; }
+  .wb-nav span.on { color:var(--fg); background:var(--surf2); }
+  .wb-search { flex:1; max-width:560px; margin-left:12px; display:flex; align-items:center; gap:8px; height:32px; padding:0 10px; background:var(--surf); border-radius:8px; box-shadow:0 0 0 1px var(--line) inset; color:var(--fg); font-size:13px; }
+  .wb-search kbd, .wb kbd { font: 500 11px "JetBrains Mono", monospace; color:var(--mut); background:var(--surf2); border-radius:4px; padding:1px 5px; box-shadow:0 0 0 1px var(--line) inset; }
+  .wb-mode { display:flex; background:var(--surf); border-radius:8px; padding:2px; box-shadow:0 0 0 1px var(--line) inset; font-size:12px; }
+  .wb-mode span { padding:4px 9px; border-radius:6px; color:var(--mut); }
+  .wb-mode span.on { background:var(--surf2); color:var(--fg); box-shadow:0 1px 2px #0006; }
+  .wb-body { display:grid; grid-template-columns: 232px minmax(0,1fr) 400px; min-height:0; }
+  .wb-filters { border-right:1px solid var(--line); padding:14px 12px; overflow:auto; }
+  .wb h4 { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--sub); margin:14px 0 8px; }
+  .wb h4:first-child { margin-top:0; }
+  .wb-stat { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  .wb-stat div { background:var(--surf); border-radius:8px; padding:8px; box-shadow:0 0 0 1px var(--line) inset; }
+  .wb-stat b { display:block; font: 600 16px Inter; font-variant-numeric: tabular-nums; }
+  .wb-stat small { color:var(--mut); font-size:11px; }
+  .wb-chk { display:flex; align-items:center; gap:8px; padding:4px 6px; border-radius:6px; color:var(--fg); font-size:13px; }
+  .wb-chk i { width:14px; height:14px; border-radius:4px; box-shadow:0 0 0 1px var(--sub) inset; flex:none; }
+  .wb-chk i.on { background:var(--pri); box-shadow:none; }
+  .wb-chk em { margin-left:auto; font-style:normal; color:var(--mut); font-size:12px; font-variant-numeric: tabular-nums; }
+  .wb-slider { height:4px; border-radius:2px; background:var(--surf2); position:relative; margin:10px 4px 4px; }
+  .wb-slider::before { content:""; position:absolute; left:12%; right:30%; top:0; bottom:0; background:var(--pri); border-radius:2px; }
+  .wb-results { display:flex; flex-direction:column; min-width:0; }
+  .wb-rhead { display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--line); font-size:12px; color:var(--mut); }
+  .wb-pill { margin-left:auto; background:#2b2546; color:#d6c9ff; border-radius:999px; padding:3px 10px; font-weight:500; }
+  .wb-row { display:grid; grid-template-columns: 18px 1fr 132px; gap:12px; padding:12px 14px; border-bottom:1px solid #26262b; }
+  .wb-row.sel { background:#221f30; box-shadow: inset 2px 0 0 var(--pri); }
+  .wb-row.junk { opacity:.72; }
+  .wb-row p { margin:0 0 6px; font-size:13.5px; line-height:1.5; text-wrap:pretty; }
+  .wb-row mark { background:#a78bfa33; color:#ede9fe; border-radius:3px; padding:0 2px; }
+  .wb-meta { display:flex; gap:8px; flex-wrap:wrap; font: 11.5px "JetBrains Mono", monospace; color:var(--mut); }
+  .wb-tag { border-radius:4px; padding:0 6px; background:var(--surf2); }
+  .wb-tag.bad { background:#f8717122; color:#fca5a5; }
+  .wb-score { font: 11px "JetBrains Mono", monospace; color:var(--mut); display:grid; gap:4px; }
+  .wb-bar { display:grid; grid-template-columns: 22px 1fr 34px; align-items:center; gap:6px; }
+  .wb-bar span { height:4px; border-radius:2px; background:var(--surf2); position:relative; overflow:hidden; }
+  .wb-bar span i { position:absolute; inset:0 auto 0 0; border-radius:2px; }
+  .wb-detail { border-left:1px solid var(--line); display:flex; flex-direction:column; min-height:0; }
+  .wb-tabs { display:flex; gap:2px; padding:8px 10px; border-bottom:1px solid var(--line); font-size:12.5px; }
+  .wb-tabs span { padding:4px 9px; border-radius:6px; color:var(--mut); }
+  .wb-tabs span.on { background:var(--surf2); color:var(--fg); }
+  .wb-dbody { padding:14px; overflow:auto; display:grid; gap:14px; }
+  .wb-ctx { background:var(--surf); border-radius:10px; padding:12px; font-size:13px; line-height:1.6; color:var(--mut); box-shadow:0 0 0 1px var(--line) inset; }
+  .wb-ctx b { color:var(--fg); font-weight:500; background:#a78bfa1f; box-shadow: inset 2px 0 0 var(--pri); padding:1px 4px; border-radius:2px; }
+  .wb-ents { display:flex; flex-wrap:wrap; gap:6px; }
+  .wb-ent { font-size:12px; border-radius:6px; padding:2px 8px; background:var(--surf2); }
+  .wb-ent small { color:var(--mut); margin-left:4px; font: 10.5px "JetBrains Mono", monospace; }
+  .wb-sim { display:grid; gap:6px; }
+  .wb-sim div { display:grid; grid-template-columns:44px 1fr; gap:8px; font-size:12.5px; color:var(--mut); }
+  .wb-sim code { font: 11px "JetBrains Mono", monospace; color:var(--sec); }
+  .wb-actions { display:flex; gap:6px; padding:10px 14px; border-top:1px solid var(--line); }
+  .wb-btn { font: 500 12.5px Inter; border:0; border-radius:8px; padding:6px 10px; background:var(--surf2); color:var(--fg); box-shadow:0 0 0 1px var(--line) inset; }
+  .wb-btn.pri { background:var(--pri); color:#1b1530; box-shadow:none; }
+  .wb-btn.bad { color:#fca5a5; }
+  .wb-foot { display:flex; align-items:center; gap:14px; padding:0 12px; border-top:1px solid var(--line); font: 11px "JetBrains Mono", monospace; color:var(--mut); }
+  .dot { width:7px; height:7px; border-radius:50%; display:inline-block; margin-right:6px; vertical-align:1px; }
+
+  /* ========== B · EDITORIAL ========== */
+  .ed { --bg:#fbfaf7; --surf:#ffffff; --line:#ebe8e1; --fg:#1f1d1a; --mut:#6b665c; --pri:#6d4fd8; --bad:#c2410c;
+        max-width:1440px; margin:0 auto; min-height:820px; background:var(--bg); color:var(--fg); border-radius:14px; overflow:hidden; box-shadow:0 0 0 1px #00000014, 0 24px 60px -12px #000000aa; }
+  .ed-top { display:flex; align-items:center; gap:20px; padding:20px 40px; }
+  .ed-top b { font: 600 15px Inter; letter-spacing:-.01em; }
+  .ed-top nav { display:flex; gap:20px; color:var(--mut); font-size:14px; }
+  .ed-top nav span.on { color:var(--fg); }
+  .ed-hero { padding:24px 40px 8px; max-width:880px; }
+  .ed-q { font: 400 34px/1.2 "Source Serif 4", Georgia, serif; letter-spacing:-.01em; margin:0 0 10px; }
+  .ed-sub { color:var(--mut); font-size:14px; }
+  .ed-grid { display:grid; grid-template-columns:minmax(0,1fr) 360px; gap:40px; padding:24px 40px 40px; }
+  .ed-answer { background:var(--surf); border-radius:16px; padding:22px 24px; box-shadow:0 0 0 1px var(--line), 0 1px 2px #0000000a; margin-bottom:24px; }
+  .ed-answer h3 { margin:0 0 8px; font: 600 12px Inter; text-transform:uppercase; letter-spacing:.08em; color:var(--pri); }
+  .ed-answer p { font: 400 18px/1.6 "Source Serif 4", Georgia, serif; margin:0; text-wrap:pretty; }
+  .ed-cite { font: 600 11px Inter; color:var(--pri); background:#6d4fd814; border-radius:4px; padding:1px 5px; vertical-align:2px; }
+  .ed-card { padding:18px 0; border-top:1px solid var(--line); }
+  .ed-card p { font: 400 17px/1.65 "Source Serif 4", Georgia, serif; margin:0 0 8px; text-wrap:pretty; }
+  .ed-card mark { background:#fde68a99; color:inherit; padding:0 2px; border-radius:2px; }
+  .ed-meta { font-size:12.5px; color:var(--mut); display:flex; gap:12px; }
+  .ed-side { display:grid; gap:20px; align-content:start; }
+  .ed-panel { background:var(--surf); border-radius:16px; padding:18px; box-shadow:0 0 0 1px var(--line); }
+  .ed-panel h4 { margin:0 0 10px; font: 600 13px Inter; }
+  .ed-chip { display:inline-block; font-size:13px; border-radius:999px; padding:4px 10px; margin:0 4px 6px 0; box-shadow:0 0 0 1px var(--line); }
+  .ed-chip.on { background:var(--fg); color:var(--bg); box-shadow:none; }
+  .ed-big { font: 400 40px/1 "Source Serif 4", serif; font-variant-numeric: tabular-nums; }
+
+  /* ========== C · TERMINAL ========== */
+  .tm { --bg:#0b0b0d; --fg:#d4d4d8; --mut:#71717a; --pri:#a78bfa; --sec:#7dd3fc; --ok:#4ade80; --warn:#fbbf24; --bad:#f87171; --line:#3f3f46;
+        max-width:1440px; margin:0 auto; height:820px; background:var(--bg); color:var(--fg); font: 13px/1.55 "JetBrains Mono", monospace; border-radius:10px; overflow:hidden; padding:10px; display:grid; grid-template-rows:auto 1fr auto; gap:8px;
+        box-shadow:0 0 0 1px #ffffff14, 0 24px 60px -12px #000000cc; }
+  .tm-box { border:1px solid var(--line); border-radius:4px; position:relative; padding:12px 12px 10px; min-height:0; overflow:hidden; }
+  .tm-box > label { position:absolute; top:-9px; left:10px; background:var(--bg); padding:0 6px; color:var(--pri); font-weight:700; }
+  .tm-box.focus { border-color:var(--pri); }
+  .tm-tabs span { margin-right:16px; color:var(--mut); }
+  .tm-tabs span.on { color:var(--bg); background:var(--pri); padding:0 6px; }
+  .tm-grid { display:grid; grid-template-columns: 220px minmax(0,1fr) 380px; gap:8px; min-height:0; }
+  .tm-row { padding:4px 6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tm-row.sel { background:#3b3363; color:#fff; }
+  .tm-row .s { color:var(--sec); }
+  .tm-row .j { color:var(--bad); }
+  .tm mark { background:transparent; color:var(--warn); font-weight:700; }
+  .tm-k { color:var(--mut); }
+  .tm-foot { color:var(--mut); }
+  .tm-foot b { color:var(--pri); }
+  .tm-spark { color:var(--ok); letter-spacing:-1px; }
+
+  /* ========== A · FACT-CHECK ========== */
+  .fc-body { display:grid; grid-template-columns: 280px minmax(0,1fr) 420px; min-height:0; }
+  .fc-run { border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0; }
+  .fc-runhead { padding:14px 12px; border-bottom:1px solid var(--line); display:grid; gap:10px; }
+  .fc-prog { height:6px; border-radius:3px; background:var(--surf2); overflow:hidden; }
+  .fc-prog i { display:block; height:100%; width:1%; background:var(--pri); }
+  .fc-counts { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; font-size:11px; color:var(--mut); text-align:center; }
+  .fc-counts b { display:block; font:600 15px Inter; color:var(--fg); font-variant-numeric:tabular-nums; }
+  .fc-q { overflow:auto; padding:6px; }
+  .fc-qi { display:grid; grid-template-columns:18px 44px 1fr; gap:6px; align-items:baseline; padding:6px; border-radius:6px; font-size:12.5px; color:var(--mut); }
+  .fc-qi code { font:11px "JetBrains Mono",monospace; color:var(--sub); }
+  .fc-qi span:last-child { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .fc-qi.on { background:#221f30; color:var(--fg); box-shadow: inset 2px 0 0 var(--warn); }
+  .fc-main { display:flex; flex-direction:column; gap:14px; padding:16px; overflow:auto; min-width:0; }
+  .fc-gate { border-radius:12px; padding:14px 16px; background:#fbbf2412; box-shadow:0 0 0 1px #fbbf2440 inset; display:grid; gap:10px; }
+  .fc-gate-h { display:flex; align-items:center; gap:10px; font-weight:600; color:#fcd34d; }
+  .fc-gate-h small { margin-left:auto; font:500 11.5px "JetBrains Mono",monospace; color:var(--mut); }
+  .fc-gate-a { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .fc-switch { margin-left:auto; display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--mut); }
+  .fc-switch i { width:28px; height:16px; border-radius:8px; background:var(--surf2); box-shadow:0 0 0 1px var(--line) inset; position:relative; }
+  .fc-switch i::after { content:""; position:absolute; left:2px; top:2px; width:12px; height:12px; border-radius:50%; background:var(--mut); }
+  .fc-tx { background:var(--surf); border-radius:12px; box-shadow:0 0 0 1px var(--line) inset; padding:6px 0; font-size:13.5px; }
+  .fc-line { display:grid; grid-template-columns:86px 1fr; gap:10px; padding:6px 14px; color:var(--mut); }
+  .fc-line code { font:11.5px "JetBrains Mono",monospace; color:var(--sub); }
+  .fc-line.on { color:var(--fg); background:#fbbf240d; box-shadow: inset 2px 0 0 var(--warn); }
+  .fc-line.on code { color:#fcd34d; }
+  .fc-sift { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
+  .fc-sift div { background:var(--surf); border-radius:8px; padding:8px 10px; box-shadow:0 0 0 1px var(--line) inset; font-size:12px; color:var(--mut); }
+  .fc-sift b { display:block; color:var(--fg); font-weight:500; font-size:12.5px; }
+  .fc-ev { display:grid; gap:10px; }
+  .fc-evi { background:var(--surf); border-radius:10px; padding:10px 12px; box-shadow:0 0 0 1px var(--line) inset; display:grid; gap:6px; font-size:12.5px; color:var(--mut); }
+  .fc-evi header { display:flex; align-items:center; gap:8px; }
+  .fc-v { font:600 11px Inter; text-transform:uppercase; letter-spacing:.05em; border-radius:4px; padding:1px 6px; }
+  .fc-v.skip { background:#8b8b9422; color:#a1a1aa; }
+  .fc-v.ok { background:#4ade8022; color:#86efac; }
+  .fc-v.bad { background:#f8717122; color:#fca5a5; }
+  .fc-conf { margin-left:auto; font:11px "JetBrains Mono",monospace; }
+  .fc-sfl { display:grid; grid-template-columns:96px 1fr; gap:6px 10px; font-size:12.5px; }
+  .fc-sfl dt { color:var(--sub); font-size:11.5px; }
+  .fc-sfl dd { margin:0; }
+  .fc-tok { display:inline-block; border-radius:4px; padding:0 5px; margin:0 3px 3px 0; font-size:12px; }
+
+  @media (max-width: 1100px) {
+    .fc-body { grid-template-columns:1fr; }
+    .fc-sift { grid-template-columns:1fr 1fr; }
+    .wb, .tm { height:auto; }
+    .wb-body, .tm-grid { grid-template-columns: 1fr; }
+    .wb-filters, .wb-detail { border:0; border-top:1px solid var(--line); }
+    .ed-grid { grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="switcher" role="toolbar" aria-label="Visual direction">
+  <h1>CORPUS EXPLORER · 3 DIRECTIONS · same scene</h1>
+  <button data-d="a" aria-pressed="true">A · Workbench</button>
+  <button data-d="b" aria-pressed="false">B · Editorial</button>
+  <button data-d="c" aria-pressed="false">C · Terminal</button>
+  <button data-d="f" aria-pressed="false">A · Fact-check ★</button>
+  <span class="note">Real data: 5,991 clauses · 703 parents · 88 docs — topics table is empty</span>
+</div>
+
+<div class="frame">
+
+<!-- ================= A ================= -->
+<section class="direction on" id="d-a">
+  <p class="caption"><b>A · Workbench.</b> Dark-first, dense, three panes: filters, results, detail. Accent colors come from the TUI theme (<code>#A78BFA</code> violet, <code>#7DD3FC</code> sky). Each result shows its keyword rank, vector rank, and fused RRF score. Junk chunks are flagged and can be bulk-deleted. Light theme available.</p>
+  <div class="wb">
+    <header class="wb-top">
+      <div class="wb-logo"></div>
+      <nav class="wb-nav"><span class="on">Search</span><span>Browse</span><span>Map</span><span>Runs</span></nav>
+      <div class="wb-search">⌕ <span>spaCy named entity recognition</span><span style="margin-left:auto"><kbd>/</kbd></span></div>
+      <div class="wb-mode"><span>Keyword</span><span>Vector</span><span class="on">Hybrid · RRF</span></div>
+      <span style="margin-left:auto"><kbd>⌘K</kbd></span>
+    </header>
+    <div class="wb-body">
+      <aside class="wb-filters">
+        <h4>Corpus</h4>
+        <div class="wb-stat">
+          <div><b>5,991</b><small>clauses</small></div>
+          <div><b>703</b><small>parents</small></div>
+          <div><b>88</b><small>documents</small></div>
+          <div><b>88</b><small>runs</small></div>
+        </div>
+        <h4>Notebook</h4>
+        <div class="wb-chk"><i class="on"></i>de3cfcef…<em>5,991</em></div>
+        <h4>Quality</h4>
+        <div class="wb-chk"><i class="on"></i>Clean<em>5,702</em></div>
+        <div class="wb-chk"><i class="on"></i>Base64 / binary<em>214</em></div>
+        <div class="wb-chk"><i></i>Numeric tables<em>75</em></div>
+        <h4>Fact-check</h4>
+        <div class="wb-chk"><i class="on"></i>Unchecked<em>5,991</em></div>
+        <div class="wb-chk"><i></i>Passed<em>0</em></div>
+        <div class="wb-chk"><i></i>Failed<em>0</em></div>
+        <h4>Length · 80–300 chars</h4>
+        <div class="wb-slider"></div>
+        <h4>Strategy</h4>
+        <div class="wb-chk"><i class="on"></i>recursive<em>88 runs</em></div>
+      </aside>
+
+      <main class="wb-results">
+        <div class="wb-rhead"><span>24 results · 41 ms</span><span>sorted by fused score</span><span class="wb-pill">↑ 37 new chunks</span></div>
+
+        <div class="wb-row sel">
+          <span>☑</span>
+          <div>
+            <p>* <b>ruby-spacy</b> + <b>rwordnet</b>: These linguistic tools provide a robust foundation for <mark>Named Entity Recognition</mark> (NER) and enhancing entities with WordNet…</p>
+            <div class="wb-meta"><span>#48728</span><span>doc 03132208</span><span>parent 4/9</span><span class="wb-tag">recursive</span></div>
+          </div>
+          <div class="wb-score">
+            <div class="wb-bar">kw<span><i style="width:92%;background:#a78bfa"></i></span>#1</div>
+            <div class="wb-bar">vec<span><i style="width:88%;background:#7dd3fc"></i></span>#2</div>
+            <div class="wb-bar">rrf<span><i style="width:100%;background:#e4e4e7"></i></span>.0325</div>
+          </div>
+        </div>
+
+        <div class="wb-row">
+          <span>☐</span>
+          <div>
+            <p>• Contested framing as fact: "Pure probabilistic text generator, no understanding" is one position in an open scientific debate, not settled truth.</p>
+            <div class="wb-meta"><span>#48196</span><span>doc fed30a78</span><span>parent 2/6</span></div>
+          </div>
+          <div class="wb-score">
+            <div class="wb-bar">kw<span><i style="width:0%"></i></span>—</div>
+            <div class="wb-bar">vec<span><i style="width:74%;background:#7dd3fc"></i></span>#4</div>
+            <div class="wb-bar">rrf<span><i style="width:48%;background:#e4e4e7"></i></span>.0156</div>
+          </div>
+        </div>
+
+        <div class="wb-row">
+          <span>☐</span>
+          <div>
+            <p>[19] Jinhao Jiang, Kun Zhou, Zican Dong, Keming Ye, Wayne Xin Zhao, and Ji-Rong Wen. 2023. StructGPT: A General Framework for Large Language Model to Reason over…</p>
+            <div class="wb-meta"><span>#50427</span><span>doc 43344c23</span><span class="wb-tag">reference</span></div>
+          </div>
+          <div class="wb-score">
+            <div class="wb-bar">kw<span><i style="width:40%;background:#a78bfa"></i></span>#7</div>
+            <div class="wb-bar">vec<span><i style="width:52%;background:#7dd3fc"></i></span>#9</div>
+            <div class="wb-bar">rrf<span><i style="width:38%;background:#e4e4e7"></i></span>.0124</div>
+          </div>
+        </div>
+
+        <div class="wb-row junk">
+          <span>☑</span>
+          <div>
+            <p style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8b8b94">NsMvbzsVTlHfstpSeMH70+Qn0nTeo4OkzXKd/43HBfE1ksw//KH7RVvrc1xYsVF/4iken9nTH+Nwu…</p>
+            <div class="wb-meta"><span>#49213</span><span>doc 43344c23</span><span class="wb-tag bad">base64 · 214 like this</span></div>
+          </div>
+          <div class="wb-score">
+            <div class="wb-bar">kw<span><i style="width:0%"></i></span>—</div>
+            <div class="wb-bar">vec<span><i style="width:30%;background:#7dd3fc"></i></span>#14</div>
+            <div class="wb-bar">rrf<span><i style="width:20%;background:#e4e4e7"></i></span>.0094</div>
+          </div>
+        </div>
+
+        <div class="wb-row junk">
+          <span>☐</span>
+          <div>
+            <p style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8b8b94">0.273 0.327 0.307 0.404 0.337 0.410 0.373 0.428 Recite 0.215 0.318 0.209…</p>
+            <div class="wb-meta"><span>#49944</span><span>doc 43344c23</span><span class="wb-tag bad">numeric table</span></div>
+          </div>
+          <div class="wb-score">
+            <div class="wb-bar">kw<span><i style="width:0%"></i></span>—</div>
+            <div class="wb-bar">vec<span><i style="width:22%;background:#7dd3fc"></i></span>#18</div>
+            <div class="wb-bar">rrf<span><i style="width:16%;background:#e4e4e7"></i></span>.0081</div>
+          </div>
+        </div>
+
+        <div style="margin-top:auto;padding:10px 14px;border-top:1px solid #2f2f36;display:flex;gap:8px;align-items:center;font-size:12.5px;background:#1f1f24">
+          <span>2 selected</span>
+          <button class="wb-btn">Export</button><button class="wb-btn">Re-fact-check</button><button class="wb-btn bad">Delete</button>
+          <span style="margin-left:auto;color:#8b8b94">Ask over results</span><button class="wb-btn pri">Ask NotebookLM ↵</button>
+        </div>
+      </main>
+
+      <aside class="wb-detail">
+        <div class="wb-tabs"><span class="on">Context</span><span>Linguistics</span><span>Similar</span><span>Raw</span></div>
+        <div class="wb-dbody">
+          <div>
+            <h4>Parent chunk · #48728 highlighted</h4>
+            <div class="wb-ctx">The architecture leans on mature Ruby libraries rather than Python services. <b>ruby-spacy + rwordnet: These linguistic tools provide a robust foundation for Named Entity Recognition (NER) and enhancing entities with WordNet synsets.</b> Retrieval then fuses keyword and vector rankings before the generator sees any context.</div>
+          </div>
+          <div>
+            <h4>Entities</h4>
+            <div class="wb-ents">
+              <span class="wb-ent" style="color:#93c5fd">ruby-spacy<small>PRODUCT</small></span>
+              <span class="wb-ent" style="color:#f0abfc">WordNet<small>ORG</small></span>
+              <span class="wb-ent" style="color:#fcd34d">NER<small>ORG</small></span>
+              <span class="wb-ent" style="color:#86efac">Ruby<small>LANG</small></span>
+            </div>
+          </div>
+          <div>
+            <h4>Similar items · L2 distance</h4>
+            <div class="wb-sim">
+              <div><code>0.412</code>rwordnet lookups attach synonyms and hypernyms to each extracted entity…</div>
+              <div><code>0.487</code>spaCy's dependency parse supplies the root index used by the SFL engine…</div>
+              <div><code>0.531</code>Named entities are vetoed from clause splits so spans stay intact…</div>
+            </div>
+          </div>
+          <div>
+            <h4>Provenance</h4>
+            <div class="wb-meta" style="display:grid;gap:4px">
+              <span>external_id 03132208…:188:31</span><span>run #188 · recursive · active</span><span>chars 1204–1391 · sentence 31</span>
+            </div>
+          </div>
+        </div>
+        <div class="wb-actions"><button class="wb-btn">Open in notebook</button><button class="wb-btn">Copy</button><button class="wb-btn bad" style="margin-left:auto">Delete ⌫</button></div>
+      </aside>
+    </div>
+    <footer class="wb-foot">
+      <span><i class="dot" style="background:#4ade80"></i>postgres :5435</span>
+      <span><i class="dot" style="background:#4ade80"></i>ollama embed</span>
+      <span><i class="dot" style="background:#fbbf24"></i>ingest run #190 · 812/1,400</span>
+      <span style="margin-left:auto">j/k move · x select · enter open · ⌫ delete · ? keys</span>
+    </footer>
+  </div>
+</section>
+
+<!-- ================= B ================= -->
+<section class="direction" id="d-b">
+  <p class="caption"><b>B · Editorial.</b> Light-first and spacious, built around reading. The answer goes at the top and chunks appear as readable passages. Scores and metadata take a smaller visual role. Better for reading the corpus, worse for triaging thousands of chunks.</p>
+  <div class="ed">
+    <header class="ed-top"><b>Corpus</b><nav><span class="on">Ask</span><span>Browse</span><span>Map</span><span>Runs</span></nav><span style="margin-left:auto;color:#6b665c;font-size:13px">⌘K</span></header>
+    <div class="ed-hero">
+      <h2 class="ed-q">How does the pipeline handle named entity recognition?</h2>
+      <div class="ed-sub">24 passages from 6 documents · hybrid retrieval · answered by NotebookLM</div>
+    </div>
+    <div class="ed-grid">
+      <div>
+        <div class="ed-answer">
+          <h3>Answer</h3>
+          <p>Entity recognition runs through <b>ruby-spacy</b>, and each entity is then enriched with WordNet synsets via <b>rwordnet</b> <span class="ed-cite">1</span>. Entities are protected from clause splitting, so a name never straddles two chunks <span class="ed-cite">3</span>.</p>
+        </div>
+        <article class="ed-card">
+          <p>ruby-spacy + rwordnet: These linguistic tools provide a robust foundation for <mark>Named Entity Recognition</mark> (NER) and enhancing entities with WordNet synsets.</p>
+          <div class="ed-meta"><span>1</span><span>Document 03132208</span><span>Passage 31</span><span>Strong match</span></div>
+        </article>
+        <article class="ed-card">
+          <p>Contested framing as fact: "Pure probabilistic text generator, no understanding" is one position in an open scientific debate, not settled truth.</p>
+          <div class="ed-meta"><span>2</span><span>Document fed30a78</span><span>Related by meaning</span></div>
+        </article>
+        <article class="ed-card">
+          <p>Named entities are vetoed from clause splits so that multi-token spans stay intact through chunking.</p>
+          <div class="ed-meta"><span>3</span><span>Document 03132208</span><span>Passage 44</span></div>
+        </article>
+      </div>
+      <aside class="ed-side">
+        <div class="ed-panel"><h4>Your corpus</h4><div class="ed-big">5,991</div><div class="ed-sub">passages across 88 documents</div></div>
+        <div class="ed-panel"><h4>Filter</h4>
+          <span class="ed-chip on">All documents</span><span class="ed-chip">Hide noise</span><span class="ed-chip">Unchecked</span><span class="ed-chip">Long passages</span>
+        </div>
+        <div class="ed-panel"><h4>Possible noise</h4><div class="ed-sub">289 passages look like encoded data or number tables.</div><div style="margin-top:10px"><span class="ed-chip" style="color:#c2410c">Review and remove →</span></div></div>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<!-- ================= C ================= -->
+<section class="direction" id="d-c">
+  <p class="caption"><b>C · Terminal.</b> Uses flerp's and the TUI's visual style in the browser: monospace text, labeled box borders, and a status line, all keyboard-driven. Matches the TUI exactly, but has less room for dense data such as score bars, the scatter map, and tables.</p>
+  <div class="tm">
+    <div class="tm-box"><label>corpus-explorer</label>
+      <div class="tm-tabs"><span class="on">1 search</span><span>2 browse</span><span>3 map</span><span>4 runs</span><span style="float:right;margin:0" class="tm-k">query › <span style="color:#fff">spaCy named entity recognition</span>▌ [hybrid]</span></div>
+    </div>
+    <div class="tm-grid">
+      <div class="tm-box"><label>filters</label>
+        <div class="tm-k">clauses  </div><div>5,991</div>
+        <div class="tm-k" style="margin-top:6px">parents  </div><div>703</div>
+        <div class="tm-k" style="margin-top:6px">docs/runs</div><div>88 / 88</div>
+        <div style="margin-top:12px">[x] clean       5702</div>
+        <div>[x] <span style="color:#f87171">base64</span>       214</div>
+        <div>[ ] <span style="color:#f87171">numeric</span>       75</div>
+        <div style="margin-top:12px" class="tm-k">ingest #190</div>
+        <div class="tm-spark">▁▂▃▅▆▇▇█▆▅</div>
+        <div>812/1400 58%</div>
+      </div>
+      <div class="tm-box focus"><label>results · 24 · 41ms</label>
+        <div class="tm-row sel"><span class="s">.0325</span> ruby-spacy + rwordnet … <mark>Named Entity Recognition</mark> (NER)…</div>
+        <div class="tm-row"><span class="s">.0156</span> Contested framing as fact: "Pure probabilistic text generator…</div>
+        <div class="tm-row"><span class="s">.0124</span> [19] Jinhao Jiang, Kun Zhou … StructGPT: A General Framework…</div>
+        <div class="tm-row"><span class="s">.0094</span> <span class="j">▓ base64</span> NsMvbzsVTlHfstpSeMH70+Qn0nTeo4Ok…</div>
+        <div class="tm-row"><span class="s">.0081</span> <span class="j">▓ numeric</span> 0.273 0.327 0.307 0.404 0.337…</div>
+      </div>
+      <div class="tm-box"><label>#48728 · context</label>
+        <div class="tm-k">The architecture leans on mature Ruby libraries rather than Python services.</div>
+        <div style="color:#fff;border-left:2px solid #a78bfa;padding-left:8px;margin:6px 0">ruby-spacy + rwordnet: These linguistic tools provide a robust foundation for Named Entity Recognition (NER)…</div>
+        <div class="tm-k">Retrieval then fuses keyword and vector rankings…</div>
+        <div style="margin-top:12px"><span class="tm-k">kw </span>#1 ████████▉ <span class="tm-k">vec </span>#2 ████████▍</div>
+        <div style="margin-top:12px"><span style="color:#93c5fd">ruby-spacy</span>:PRODUCT <span style="color:#f0abfc">WordNet</span>:ORG</div>
+      </div>
+    </div>
+    <div class="tm-foot"><b>j/k</b> move  <b>x</b> select  <b>enter</b> open  <b>a</b> ask  <b>d</b> delete  <b>/</b> query  <b>?</b> help        <span style="float:right">pg ● ollama ● ingest ◐</span></div>
+  </div>
+</section>
+
+<!-- ================= A · FACT-CHECK ================= -->
+<section class="direction" id="d-f">
+  <p class="caption"><b>A · Fact-check (Workbench direction).</b> The TUI's Fact-check mode as a web screen. The left column is the run queue: all 296 chunks with their status. The center column is the active chunk, shown inside its <b>surrounding transcript lines</b> (two before, two after) so you can judge it in context. The satire/meta-dialogue gate sits above it with skip, check and auto-skip controls. The right column holds the evidence log (verdict, confidence, rationale, Langfuse trace) and the SFL metafunctions, grouped into ideational, interpersonal and textual and shown as token chips. Chunks 001–003 come from your screencast; 004–008 are invented to fill the layout.</p>
+  <div class="wb">
+    <header class="wb-top">
+      <div class="wb-logo"></div>
+      <nav class="wb-nav"><span>Search</span><span>Browse</span><span>Map</span><span>Runs</span><span class="on">Fact-check</span></nav>
+      <div class="wb-search" style="max-width:420px">Reflections on Consciousness, Longevity, and Solitude</div>
+      <div class="wb-mode"><span class="on">Interactive</span><span>Auto-skip meta</span><span>Batch</span></div>
+      <span style="margin-left:auto"><button class="wb-btn">Pause</button></span>
+    </header>
+    <div class="fc-body">
+      <aside class="fc-run">
+        <div class="fc-runhead">
+          <div style="display:flex;justify-content:space-between;font-size:12.5px"><span>Run job·7f3a · 3 / 296</span><span style="color:#8b8b94;font-variant-numeric:tabular-nums">07:56</span></div>
+          <div class="fc-prog"><i></i></div>
+          <div class="fc-counts">
+            <div><b style="color:#86efac">0</b>verified</div>
+            <div><b style="color:#fca5a5">0</b>refuted</div>
+            <div><b>3</b>skipped</div>
+            <div><b style="color:#fcd34d">1</b>waiting</div>
+          </div>
+        </div>
+        <div class="fc-q">
+          <div class="fc-qi"><span style="color:#a1a1aa">⊘</span><code>001</code><span>[Speaker 0] I swear to the great root user…</span></div>
+          <div class="fc-qi"><span style="color:#a1a1aa">⊘</span><code>002</code><span>[Speaker 1] Oh, yeah.</span></div>
+          <div class="fc-qi"><span style="color:#a1a1aa">⊘</span><code>003</code><span>[Speaker 0] I am right there with you, mister language model…</span></div>
+          <div class="fc-qi on"><span style="color:#fcd34d">●</span><code>004</code><span>[Speaker 1] Kernel panics at that layer usually mean the cgroup…</span></div>
+          <div class="fc-qi"><span>◌</span><code>005</code><span>[Speaker 0] Right, and the OOM killer picks the largest RSS…</span></div>
+          <div class="fc-qi"><span>◌</span><code>006</code><span>[Speaker 1] Which is why the container just vanishes…</span></div>
+          <div class="fc-qi"><span>◌</span><code>007</code><span>[Speaker 0] Longevity research has the same problem with…</span></div>
+          <div class="fc-qi"><span>◌</span><code>008</code><span>[Speaker 1] Solitude, though, is a different variable…</span></div>
+        </div>
+      </aside>
+
+      <main class="fc-main">
+        <div class="fc-gate">
+          <div class="fc-gate-h">⚠ Meta-dialogue or satire detected <small>sfl-satire-classifier · p=0.62</small></div>
+          <div class="fc-gate-a">
+            <button class="wb-btn">Skip <kbd>Y</kbd></button>
+            <button class="wb-btn pri">Fact-check <kbd style="background:#0002;color:#1b1530">N</kbd></button>
+            <span class="fc-switch"><i></i>Auto-skip meta-dialogue <kbd>S</kbd></span>
+          </div>
+        </div>
+
+        <div>
+          <h4>Transcript context · chunk 004 of 296</h4>
+          <div class="fc-tx">
+            <div class="fc-line"><code>002 · S1</code>Oh, yeah.</div>
+            <div class="fc-line"><code>003 · S0</code>I am right there with you, mister language model….</div>
+            <div class="fc-line on"><code>004 · S1</code>Kernel panics at that layer usually mean the cgroup memory limit was hit before the process could be reaped.</div>
+            <div class="fc-line"><code>005 · S0</code>Right, and the OOM killer picks the largest RSS first, so it's never the one you expect.</div>
+            <div class="fc-line"><code>006 · S1</code>Which is why the container just vanishes without a log line.</div>
+          </div>
+        </div>
+
+        <div>
+          <h4>SIFT steps</h4>
+          <div class="fc-sift">
+            <div><b>Stop</b>✓ claim isolated</div>
+            <div><b>Investigate</b>◐ running</div>
+            <div><b>Find coverage</b>◌ pending</div>
+            <div><b>Trace</b>◌ pending</div>
+          </div>
+        </div>
+      </main>
+
+      <aside class="wb-detail">
+        <div class="wb-tabs"><span class="on">Evidence</span><span>SFL</span><span>Trace</span></div>
+        <div class="wb-dbody">
+          <div class="fc-ev">
+            <div class="fc-evi" style="box-shadow:0 0 0 1px #fbbf2440 inset">
+              <header><span class="fc-v" style="background:#fbbf2422;color:#fcd34d">evaluating</span><code style="font:11px 'JetBrains Mono';color:#52525b">004</code><span class="fc-conf">—</span></header>
+              Searching sources for cgroup memory-limit behavior…
+            </div>
+            <div class="fc-evi">
+              <header><span class="fc-v skip">skipped</span><code style="font:11px 'JetBrains Mono';color:#52525b">003</code><span class="fc-conf">p .91</span></header>
+              Classified as subjective/meta-dialogue with no verifiable factual claims.
+            </div>
+            <div class="fc-evi">
+              <header><span class="fc-v skip">skipped</span><code style="font:11px 'JetBrains Mono';color:#52525b">002</code><span class="fc-conf">p .97</span></header>
+              Classified as subjective/meta-dialogue with no verifiable factual claims.
+            </div>
+            <div class="fc-evi">
+              <header><span class="fc-v skip">skipped</span><code style="font:11px 'JetBrains Mono';color:#52525b">001</code><span class="fc-conf">p .88</span></header>
+              Only satirical/metaphorical dialogue and an expression of subjective intent; nothing empirical to verify.
+            </div>
+          </div>
+          <div>
+            <h4>SFL metafunctions · 004</h4>
+            <dl class="fc-sfl">
+              <dt>Participants</dt><dd><span class="fc-tok" style="background:#93c5fd1f;color:#93c5fd">kernel panics</span><span class="fc-tok" style="background:#93c5fd1f;color:#93c5fd">the cgroup memory limit</span><span class="fc-tok" style="background:#93c5fd1f;color:#93c5fd">the process</span></dd>
+              <dt>Processes</dt><dd><span class="fc-tok" style="background:#86efac1f;color:#86efac">mean</span><span class="fc-tok" style="background:#86efac1f;color:#86efac">was hit</span><span class="fc-tok" style="background:#86efac1f;color:#86efac">be reaped</span></dd>
+              <dt>Circumstances</dt><dd><span class="fc-tok" style="background:#fcd34d1f;color:#fcd34d">at that layer</span><span class="fc-tok" style="background:#fcd34d1f;color:#fcd34d">usually</span></dd>
+              <dt>Tenor</dt><dd style="color:#8b8b94">informal, expert-to-peer; explanatory stance</dd>
+              <dt>Mood</dt><dd style="color:#8b8b94">declarative</dd>
+              <dt>Modality</dt><dd style="color:#8b8b94">usuality: “usually” — medium; hedged generalization</dd>
+            </dl>
+          </div>
+        </div>
+        <div class="wb-actions"><button class="wb-btn">Open chunk</button><button class="wb-btn">Langfuse ↗</button><button class="wb-btn bad" style="margin-left:auto">Delete chunk</button></div>
+      </aside>
+    </div>
+    <footer class="wb-foot">
+      <span><i class="dot" style="background:#4ade80"></i>API 10/10</span>
+      <span><i class="dot" style="background:#fbbf24"></i>waiting on you · chunk 004</span>
+      <span style="margin-left:auto">y skip · n check · s auto-skip · j/k queue · enter open</span>
+    </footer>
+  </div>
+</section>
+
+</div>
+<script>
+  const btns = document.querySelectorAll('.switcher button');
+  btns.forEach(b => b.addEventListener('click', () => {
+    btns.forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    document.querySelectorAll('.direction').forEach(s => s.classList.toggle('on', s.id === 'd-' + b.dataset.d));
+  }));
+</script>
+</body>
+</html>

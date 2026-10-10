@@ -1,0 +1,67 @@
+# Corpus Explorer — Facts
+
+Accepted shared understanding. `[auto]` = needs an automated check; `[manual]` = verified by hand.
+
+- **fact-1** [auto] `notebooklm-server` serves the built React app at `/ui`; opening it in a browser loads the Corpus Explorer.
+- **fact-2** [auto] Every new corpus endpoint lives under `/v1/corpus/*` and returns 401 without the `NOTEBOOKLM_SERVER_TOKEN` bearer token.
+- **fact-3** [manual] The UI asks for the server token once and stays signed in across page reloads.
+- **fact-4** [auto] When Postgres is unreachable, corpus routes return 503 and the UI shows a blocking 'database unreachable' screen — never an empty corpus.
+- **fact-5** [auto] Frontend source lives in `web/` (Vite + React + TypeScript + Tailwind + shadcn/ui + TanStack Query/Table); its build output is what `/ui` serves.
+- **fact-6** [manual] The layout is the Workbench mockup: header with Search · Browse · Map · Runs · Fact-check tabs, three panes (filters | results | detail), and a status footer.
+- **fact-7** [manual] Dark theme is the default and uses the TUI theme colors (#18181B background, #A78BFA accent, #7DD3FC secondary); a light theme toggle exists and the choice persists.
+- **fact-8** [manual] Switching theme flips instantly with no color cross-fade.
+- **fact-9** [auto] The footer shows live status for Postgres, the Ollama embedder, and any running ingest or fact-check job.
+- **fact-10** [auto] Search runs hybrid RRF and every result shows its keyword rank, vector rank, and fused score.
+- **fact-11** [auto] A mode toggle switches search between Keyword, Vector, and Hybrid RRF.
+- **fact-12** [auto] Query terms are highlighted in result text.
+- **fact-13** [auto] If the embedder is down, hybrid search still returns keyword results and shows a 'vector leg unavailable' warning.
+- **fact-14** [auto] Concurrent searches from the server never call `dspy.configure()` / `setup_dspy_router()` inside a worker thread.
+- **fact-15** [manual] The Browse tab lists all clauses in a virtualized table that scrolls smoothly through the full corpus (5,991+ rows).
+- **fact-16** [auto] Browse filters cover notebook, document, run, strategy, fact-check status, length range, and quality flag, each value showing its count.
+- **fact-17** [auto] A quality detector flags noise chunks — base64/binary blobs and numeric-table rows — and the Quality filter shows their counts.
+- **fact-18** [auto] Selecting a chunk opens the detail pane with its parent chunk text and the clause highlighted inside it.
+- **fact-19** [auto] 'Similar items' lists nearest-neighbor chunks by embedding distance with the distance value, and marks near-duplicates (distance under a set threshold) with a 'near-duplicate' badge.
+- **fact-20** [auto] 'More like this' lists nearest-neighbor chunks by embedding distance, showing the distance value.
+- **fact-21** [auto] Delete works at four levels: a clause, a parent chunk with its children, a whole document, or a whole run.
+- **fact-22** [auto] A committed delete removes the rows plus their embeddings and fact_checks, and writes one `removal_log` row per delete action.
+- **fact-23** [auto] Delete opens a confirmation dialog that names the level and counts (clauses, embeddings, fact-checks) to be removed; nothing is deleted until confirmed, and Cancel removes nothing.
+- **fact-24** [auto] Multi-select (checkbox, `x` key, shift-click range) opens a bulk bar with Delete, Export, and Re-fact-check.
+- **fact-25** [auto] Export downloads the selected chunks as Markdown or JSON.
+- **fact-26** [manual] Export can push the selected chunks as a note into their source NotebookLM notebook.
+- **fact-27** [auto] 'Ask' sends the question plus top retrieved chunks to NotebookLM `chat.ask`, scoped to those chunks' source IDs, with chunks labeled [C1]…[Cn] in the prompt.
+- **fact-28** [auto] Answers show inline [Cn] citations; clicking one opens that chunk in the detail pane.
+- **fact-29** [auto] A model picker accepts any litellm model string; answers from a picked model stream token by token over SSE.
+- **fact-30** [manual] While NotebookLM is answering (non-streaming), the UI shows a progress state.
+- **fact-31** [auto] The Map tab shows a 2D projection of chunk embeddings, colored by document (by topic once topics exist); clicking a point opens that chunk.
+- **fact-32** [auto] The Runs tab lists chunk_runs with strategy, parent/child counts, mean and p95 length, and active flag.
+- **fact-33** [auto] While ingestion runs, counts refresh every 5 seconds and a 'N new chunks' pill appears; clicking it refreshes the results.
+- **fact-34** [auto] The Fact-check tab starts a run for a notebook, or for selected chunks via Re-fact-check.
+- **fact-35** [auto] The run queue lists every chunk with its status (pending, active, verified, refuted, skipped, waiting) plus progress counts and elapsed time.
+- **fact-36** [auto] When the satire/meta-dialogue classifier flags a chunk, the run pauses and the UI shows the gate with the classifier probability and Skip (Y), Fact-check (N), Auto-skip toggle (S).
+- **fact-37** [auto] The active chunk is shown with the 2 transcript lines before and after it.
+- **fact-38** [auto] The evidence log shows verdict, confidence, rationale, and a Langfuse trace link per chunk; the active chunk shows SIFT step status.
+- **fact-39** [auto] Run events reach the browser over SSE; closing the tab does not stop the run, and reopening shows its current state.
+- **fact-40** [auto] The fact-check gate logic lives in `_app/`; the TUI Fact-check mode uses the same code and keeps its y/n/s behavior.
+- **fact-41** [auto] Cmd/Ctrl-K opens a command palette that can switch tabs, focus search, delete the selection, start a fact-check run, and toggle theme.
+- **fact-42** [auto] Keyboard shortcuts: `/` focus search, `j`/`k` move, `x` select, `Enter` open, `Backspace` delete, `?` shortcut sheet.
+- **fact-43** [auto] The TUI SFL panel shows Tenor, Mood, and Modality values (not field names) when the SFL result is a nested dict; TUI and web use one shared SFL formatter.
+- **fact-44** [auto] Buttons scale to 0.96 on press, and no stylesheet uses `transition: all`.
+- **fact-45** [auto] pytest covers every `/v1/corpus` route against the real Postgres, and those tests fail (not skip) when Postgres is unreachable.
+- **fact-46** [auto] Vitest component tests pass for search results, detail pane, undo toast, fact-check gate, and command palette.
+- **fact-47** [auto] A Playwright smoke test passes: search → open chunk → delete → Cancel (row still present) → delete → Confirm (row gone).
+- **fact-48** [auto] ruff, mypy, and the existing pytest suite (90% coverage gate) still pass.
+- **fact-49** [auto] SFL tagging can be started for any corpus document, run, or chunk selection (from Browse, Runs, or Fact-check), not only for a whole notebook.
+- **fact-50** [auto] A fact-check run, gate included, can target any document, run, or chunk selection: sources, notes, and ingested artifacts alike.
+- **fact-51** [auto] An 'Ingest artifact' action lists a notebook's NotebookLM artifacts and adds the chosen one to the corpus as its own document, keyed by artifact ID.
+- **fact-52** [auto] Audio and video artifacts are converted to a temporary FLAC (mono, original sample rate, 16-bit or 24-bit for 24-bit sources, 80 Hz high-pass, −19 LUFS with peaks capped at −1 dBFS), sent to the chosen provider, and the temp file is deleted afterward; speaker labels stay in the chunk text and the original audio is never modified.
+- **fact-53** [auto] Report, quiz, flashcard, mind map, and data table artifacts are converted to text (Markdown, outline, or rows) and ingested without transcription.
+- **fact-54** [auto] Infographic and slide-deck artifacts appear in the list but are disabled ('image-only, not ingestible yet'); artifact conversion goes through a per-kind converter registry so image/audio/video embedding (e.g. a multimodal Gemma embedder) can be added later without changing callers.
+- **fact-55** [auto] Every corpus document shows its kind (source, note, audio, video, report, quiz, flashcards, mind map, data table), and Browse can filter by kind.
+- **fact-56** [auto] Ingesting an artifact whose content checksum matches an existing run's `source_hash` is skipped ('already ingested, unchanged'); it is re-ingested only when the checksum differs or the user picks 'Force re-ingest', and then the new run replaces the old one as active.
+- **fact-57** [auto] The audio/video ingest dialog matches the audio-segment-extractor panel: provider choice (Speechmatics, AssemblyAI, Deepgram, local transcribe_cpp), a 'key found / key missing' line for the chosen provider, a Diarize toggle, a Language selector, and a Transcribe button. The dialog's defaults come from `.env`/config keys: `NOTEBOOKLM_TRANSCRIBE_PROVIDER`, `NOTEBOOKLM_TRANSCRIBE_DIARIZE`, and `NOTEBOOKLM_TRANSCRIBE_LANGUAGE` (default `auto`).
+- **fact-58** [auto] Clause fact-check runs can use the Jev decision model as the check-worthiness gate (choices: checkworthy, meta-dialogue/satire, filler); the gate card shows Jev's probability for the chosen label.
+- **fact-59** [auto] The rule-based `checkworthiness.assess` gate stays selectable, and a comparison script reports agreement between the Jev gate and the rule gate on a sample of stored chunks.
+- **fact-60** [auto] When retrieved chunks span more than one notebook, Ask runs a DSPy corpus pipeline: a `dspy.ReAct` agent with tools (corpus search, chunk detail, neighbors, NotebookLM ask for one notebook), and `dspy.MultiChainComparison` merges the per-notebook answers into one answer with [Cn] citations.
+- **fact-61** [auto] An experimental 'Deep' Ask mode uses `dspy.RLM` to explore contexts too large for one prompt; it is labeled experimental in the UI and shows a clear error if its sandbox is unavailable.
+- **fact-62** [auto] Browse can filter to chunks that have at least one near-duplicate.
+- **fact-63** [auto] DSPy work in the server binds the LM with `dspy.context(lm=...)` in workers; `dspy.configure()` is only called once, on the main thread at server startup.
