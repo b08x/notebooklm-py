@@ -1,5 +1,6 @@
 import concurrent.futures
 import logging
+import sys
 
 from rich.console import Console
 from rich.live import Live
@@ -55,10 +56,50 @@ def _run_editor_handoff(state: TUIState, live: Live) -> None:
     apply_editor_result(state, result)
 
 
+def _start_job_queue(state: TUIState) -> None:
+    """Connect to Redis, recover interrupted jobs, start the worker pool.
+
+    Raises ``RedisUnavailable`` when Redis is down; ``run_tui`` turns that into
+    a non-zero exit before the full-screen display opens (fact 39).
+    """
+    from .jobs import JobRunner, JobStore, connect, resolve_handler
+
+    store = JobStore(connect())
+    interrupted = store.mark_interrupted_on_startup()
+    if interrupted:
+        logger.warning("Marked %d job(s) interrupted from a previous session", interrupted)
+
+    # dspy.configure is main-thread only; capture the LM here and let each
+    # worker bind it with dspy.context (CLAUDE.md hard rule).
+    lm = None
+    try:
+        from notebooklm._app.assessment import setup_dspy_router
+
+        lm, _ = setup_dspy_router()
+    except Exception as e:  # assessment extra missing or no API key
+        logger.warning("DSPy LM unavailable for jobs: %s", e)
+
+    runner = JobRunner(
+        store, resolve_handler, consume_token=state.consume_token, state=state, lm=lm
+    )
+    runner.start()
+    state.job_store = store
+    state.job_runner = runner
+    state.refresh_jobs_snapshot(max_age=0)
+
+
 def run_tui(download_dir: str | None = None) -> None:
     state = TUIState()
     if download_dir:
         state.download_dir = download_dir
+
+    from .jobs import RedisUnavailable
+
+    try:
+        _start_job_queue(state)
+    except RedisUnavailable as e:
+        print(str(e), file=sys.stderr)
+        raise SystemExit(2) from e
 
     # Route logging into the Logs view (`L`) instead of stdout/stderr, which
     # would corrupt the full-screen Live render below.
@@ -160,6 +201,15 @@ def run_tui(download_dir: str | None = None) -> None:
                 ):
                     state_changed = True
 
+                # Job workers write progress to Redis with no keypress to
+                # trigger a redraw; re-read the job list while any is active.
+                if state.job_store is not None:
+                    before = [(j.id, j.status, j.percent, j.phase) for j in state.jobs_snapshot]
+                    state.refresh_jobs_snapshot()
+                    after = [(j.id, j.status, j.percent, j.phase) for j in state.jobs_snapshot]
+                    if before != after or state.running_jobs():
+                        state_changed = True
+
                 # Auto-refresh if tokens replenish enough to unpause, or meter changes
                 state.update_tokens()
                 if not hasattr(state, "_last_rendered_tokens"):
@@ -186,3 +236,5 @@ def run_tui(download_dir: str | None = None) -> None:
             except Exception:
                 pass
             executor.shutdown(wait=False)
+            if state.job_runner is not None:
+                state.job_runner.stop()

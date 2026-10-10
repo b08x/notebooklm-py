@@ -1,4 +1,5 @@
 import concurrent.futures
+import threading
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -18,6 +19,45 @@ class View(Enum):
     LOGS = auto()
 
 
+class Mode(Enum):
+    """Top-level modes shown in the mode bar; number keys 1-6 select them.
+
+    Each mode renders its own pane layout. A mode may contain several ``View``
+    values (Notebooks covers the list, detail, and chat views).
+    """
+
+    NOTEBOOKS = 1
+    INGEST = 2
+    FACT_CHECK = 3
+    COMPILER = 4
+    JOBS = 5
+    LOGS = 6
+
+
+MODE_LABELS: dict[Mode, str] = {
+    Mode.NOTEBOOKS: "Notebooks",
+    Mode.INGEST: "Ingest",
+    Mode.FACT_CHECK: "Fact-check",
+    Mode.COMPILER: "Compiler",
+    Mode.JOBS: "Jobs",
+    Mode.LOGS: "Logs",
+}
+
+#: The mode each legacy ``View`` belongs to (used when a letter key sets a view).
+VIEW_MODE: dict[View, Mode] = {
+    View.NOTEBOOK_LIST: Mode.NOTEBOOKS,
+    View.NOTEBOOK_DETAIL: Mode.NOTEBOOKS,
+    View.SOURCE_LIST: Mode.NOTEBOOKS,
+    View.ARTIFACT_LIST: Mode.NOTEBOOKS,
+    View.CHAT: Mode.NOTEBOOKS,
+    View.GENERATE: Mode.COMPILER,
+    View.COMPILER: Mode.COMPILER,
+    View.ASSESSMENT: Mode.FACT_CHECK,
+    View.VISUAL_ASSESSMENT: Mode.FACT_CHECK,
+    View.LOGS: Mode.LOGS,
+}
+
+
 SORT_MODES = ["name", "modified", "recent-artifacts"]
 SORT_LABELS = {
     "name": "Alphabetical (A-Z)",
@@ -28,6 +68,8 @@ SORT_LABELS = {
 
 @dataclass
 class TUIState:
+    #: Top-level mode (mode bar). ``current_view`` is the view within it.
+    mode: Mode = Mode.NOTEBOOKS
     current_view: View = View.NOTEBOOK_LIST
     previous_view: View | None = None
     selected_notebook: str | None = None
@@ -77,12 +119,27 @@ class TUIState:
     #: Compile/generate worker future for the Compiler view (see
     #: ``tui/views/compiler_gen.py``); polled each tick like ``curation_task``.
     compiler_task: concurrent.futures.Future | None = None
+    #: Job queue (``tui/jobs``). Set by ``app.run_tui`` after Redis is reachable.
+    job_store: Any | None = None
+    job_runner: Any | None = None
+    #: Cached ``job_store.list_jobs()`` result and when it was taken; renderers read
+    #: this instead of hitting Redis every frame (refreshed at most every 250 ms).
+    jobs_snapshot: list[Any] = field(default_factory=list)
+    jobs_snapshot_at: float = 0.0
+    #: Jobs mode UI state: cursor, ``kind``/``status`` filters.
+    jobs_view: dict[str, Any] = field(default_factory=dict)
+    #: Ingest mode UI state (document/parent/child cursors, detail toggle).
+    ingest_view: dict[str, Any] = field(default_factory=dict)
+    #: Fact-check mode UI state (claims cursor, verdict filter).
+    factcheck_view: dict[str, Any] = field(default_factory=dict)
 
     api_tokens: float = 10.0
     api_max_tokens: int = 10
     api_last_update: float = 0.0
     download_dir: str | None = None
     _last_rendered_tokens: int = -1
+    #: Job workers call ``consume_token`` from their own threads.
+    _token_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
     def update_tokens(self) -> None:
         import time
@@ -97,11 +154,32 @@ class TUIState:
         self.api_last_update = now
 
     def consume_token(self) -> bool:
-        self.update_tokens()
-        if self.api_tokens >= 1.0:
-            self.api_tokens -= 1.0
-            return True
-        return False
+        with self._token_lock:
+            self.update_tokens()
+            if self.api_tokens >= 1.0:
+                self.api_tokens -= 1.0
+                return True
+            return False
+
+    def refresh_jobs_snapshot(self, max_age: float = 0.25) -> list[Any]:
+        """Return the cached job list, re-reading Redis when older than ``max_age``."""
+        import time
+
+        if self.job_store is None:
+            return self.jobs_snapshot
+        now = time.monotonic()
+        if now - self.jobs_snapshot_at >= max_age:
+            self.jobs_snapshot = self.job_store.list_jobs()
+            self.jobs_snapshot_at = now
+        return self.jobs_snapshot
+
+    def running_jobs(self) -> int:
+        from .jobs.store import JobStatus
+
+        return sum(1 for j in self.jobs_snapshot if j.status == JobStatus.RUNNING)
+
+    def set_mode(self, mode: Mode) -> None:
+        self.mode = mode
 
     def cycle_sort(self) -> str:
         current = "modified" if self.sort_key == "recent-activity" else self.sort_key

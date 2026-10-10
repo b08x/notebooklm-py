@@ -1,0 +1,43 @@
+# Facts: TUI job queue, Ingest/Fact-check workbench, parent/child chunking
+
+- Choosing 'download assets' on a notebook queues a download job and returns control immediately. Doing it for three notebooks shows three jobs in the Jobs tab.
+- Each job is a Redis hash at nblm:job:<id> with kind, notebook_id, status, phase, percent, error, created/started/finished timestamps and trace_id.
+- No code in this goal writes, deletes or scans Redis keys outside the nblm: prefix.
+- At most NOTEBOOKLM_TUI_JOB_WORKERS jobs run at once (default 2), and all of them draw from the existing API token bucket.
+- When the TUI starts, any job still marked running is set to interrupted.
+- Retrying an interrupted download job skips assets already recorded in LocalAsset.
+- Each job keeps a per-item list at nblm:job:<id>:items. An artifact that fails to download appears there as a failed item with its error text.
+- In the Jobs tab, cancel removes a queued job and stops a running job before its next item. Retry re-queues a failed or interrupted job. Clear removes finished jobs. Jobs can be filtered by kind and status.
+- Finished job records expire from Redis after 7 days.
+- Job kinds are download, ingest, sfl_tag, fact_check, compile, generate and topic_model. The single-slot fields background_task and compiler_task are no longer used for these.
+- A mode bar under the header shows 1 Notebooks, 2 Ingest, 3 Fact-check, 4 Compiler, 5 Jobs, 6 Logs. The active mode is highlighted, and number keys 1-6 switch between them.
+- The Jobs label in the mode bar shows the number of running jobs.
+- The existing letter keys (p, A, L, n) still switch views.
+- Chat is opened from Notebooks mode. It is not a top-level mode.
+- Each mode renders its own pane layout. The Jobs mode uses the full width with no notebook sidebar: a job list on the left, and phase, items and trace link on the right.
+- The recursive splitter splits on \n\n, then \n, then . ? !, then the spaCy sentence segmenter, then spaces. Each step applies only to pieces still over the size limit.
+- No split falls inside a spaCy named-entity span, unless the entity alone exceeds the size limit.
+- Ingest writes parent_chunks rows plus child clause rows. Each child row carries a parent_id foreign key.
+- Embeddings are computed and stored for child chunks only.
+- Every ingest run writes a chunk_runs row with strategy, parameters, chunker version, source-text hash, trace_id, and parent/child/length/entity-veto counts.
+- ClusterSemanticChunker groups adjacent sentences. A break goes where the cosine distance between neighbors exceeds the document's 90th-percentile distance, within min/max child-size bounds.
+- DynamicWindowChunker uses a DSPy Predict/ChainOfThought signature to propose chunk bounds. In worker threads it binds the LM with dspy.context and never calls dspy.configure.
+- Ingest stores, for every child: text, lemma, POS, tag, dep, head index and morphology for each token, plus noun-chunk/clause groups.
+- Audio-overview transcripts are ingested into the same parent/child tables as sources and notes.
+- The pre-existing flat clauses and their embeddings are deleted, and the archive is re-ingested through the new pipeline.
+- Ingest mode lists documents, each expandable to its parents with child counts and a bar. The right side shows the selected parent's children and a detail pane that toggles between [t]okens, [d]eps, [g]roups and [s]fl.
+- The [d]eps view is a flat table with these columns: token, POS, dep, -> head, morphology.
+- In Ingest mode, r re-ingests the notebook with a chosen strategy (recursive, cluster-semantic or dynamic-window). x compares two runs side by side using their chunk_runs counts.
+- The sfl_tag job runs the existing SFLEngine on every child of a notebook and stores mood, modality and tenor per child.
+- Each fact_check job appends rows to fact_checks: clause, run, verdict (supported/contradicted/unverifiable/skipped_no_framework), SIFT steps JSON, citations, trace_id, model, latency_ms.
+- When the SIFT framework is missing, the verdict is skipped_no_framework and fact_check_passed stays NULL; it is never recorded as a pass.
+- Fact-checking runs only after SFL tagging. A fact_check job whose scope contains untagged children fails before any LLM call, with the message 'run sfl_tag first'. The gate marks children not_checkworthy from their stored SFL mood/modality and spaCy hedge cues, without calling an LLM.
+- Fact-check mode shows a claims list with verdict glyphs, latency and SFL mood/modality columns, plus filters for all/contradicted/unverifiable. It also shows a SIFT steps pane and an evidence pane with the citations, the parent text and the trace link.
+- Every job opens one root OpenTelemetry span named job.<kind>. DSPy calls nest under it, and the trace id is stored on the job, chunk_runs and fact_checks rows.
+- The Jobs and Fact-check detail panes show a Langfuse trace URL at http://tinybot:3000.
+- A topic_model job runs BERTopic over all stored children in the corpus, using their stored embeddings (no re-embedding). It saves a topic id per child plus a topics table with labels and keywords.
+- Ingest mode shows each child's topic label once a topic_model run exists.
+- Compile and generate in the Compiler view run as queued jobs and appear in the Jobs tab.
+- Redis-backed tests use a unique nblm:test:<uuid> prefix and delete only that prefix. If Redis is unreachable they FAIL (never skip), with an error naming the Redis URL. The TUI also refuses to start, exiting non-zero with the same message, when Redis is unreachable.
+- mypy and the full pytest suite pass after the change.
+- Every job is started manually from the TUI (or the one-off re-ingest script). No job handler enqueues another job; ordering is enforced by checking prerequisites when a job starts.

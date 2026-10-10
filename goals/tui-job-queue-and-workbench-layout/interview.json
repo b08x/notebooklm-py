@@ -1,0 +1,123 @@
+{
+  "stage": "interview",
+  "title": "TUI job queue, Ingest/Fact-check workbench, parent/child chunking",
+  "goalSlug": "tui-job-queue-and-workbench-layout",
+  "questions": [
+    {
+      "id": "legacy-clauses",
+      "prompt": "What happens to the 45,729 existing flat clauses (193 documents), which have no parent?",
+      "description": "New ingest runs will write parent_chunks and children that carry a parent_id. The existing rows came from the old StructuralCoherenceChunker.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Keep them and tag them as a 'legacy' chunk_run (parent_id NULL). The Ingest mode lists legacy runs under their own label. Re-ingesting a notebook creates a new run; it never deletes legacy rows automatically.",
+      "recommendedOptionIds": ["legacy-run"],
+      "options": [
+        { "id": "legacy-run", "label": "Keep them as a 'legacy' run; re-ingest per notebook when needed" },
+        { "id": "backfill", "label": "Backfill: group legacy clauses into synthetic parents by document order" },
+        { "id": "purge", "label": "Delete them and re-ingest the whole archive" }
+      ],
+      "required": true
+    },
+    {
+      "id": "job-controls",
+      "prompt": "Which controls does the Jobs tab need?",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "Cancel a running or queued job, retry a failed or interrupted job, clear finished jobs, and filter the list by kind/status.",
+      "recommendedOptionIds": ["cancel", "retry", "clear", "filter"],
+      "options": [
+        { "id": "cancel", "label": "Cancel (queued: removed; running: cooperative stop at the next item)" },
+        { "id": "retry", "label": "Retry failed/interrupted jobs (failed items only, or the whole job)" },
+        { "id": "clear", "label": "Clear finished jobs from the list" },
+        { "id": "filter", "label": "Filter by kind / status" },
+        { "id": "reorder", "label": "Reorder or prioritize queued jobs" },
+        { "id": "pause", "label": "Pause/resume the whole queue" }
+      ],
+      "required": true
+    },
+    {
+      "id": "retention",
+      "prompt": "How long do finished job records stay in Redis?",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "7 days, using an EXPIRE set on each nblm:job:* key when the job finishes. Durable results (assets, chunks, verdicts) are already in Postgres or on disk.",
+      "recommendedOptionIds": ["7d"],
+      "options": [
+        { "id": "1d", "label": "1 day" },
+        { "id": "7d", "label": "7 days" },
+        { "id": "30d", "label": "30 days" },
+        { "id": "forever", "label": "Until cleared manually" }
+      ],
+      "required": true
+    },
+    {
+      "id": "tracing",
+      "prompt": "How should jobs appear in Langfuse?",
+      "description": "Tracing currently goes through OpenTelemetry using the openinference DSPy instrumentor to Langfuse at tinybot:3000.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "Each job opens one root OTel span named job.<kind> carrying the attributes job_id, notebook_id and chunk_run_id. DSPy calls nest under it. The trace id is stored on the job record, on chunk_runs and on fact_checks, and the TUI shows a link to it. Download jobs are traced too, so failures can be found in Langfuse.",
+      "recommendedOptionIds": ["root-span", "store-id", "show-link", "trace-downloads"],
+      "options": [
+        { "id": "root-span", "label": "One root span per job; LLM/DSPy calls nested under it" },
+        { "id": "store-id", "label": "Persist the trace id on job, chunk_runs and fact_checks rows" },
+        { "id": "show-link", "label": "Show the trace URL in the Jobs and Fact-check detail panes" },
+        { "id": "trace-downloads", "label": "Trace non-LLM jobs (download, ingest) as well" },
+        { "id": "per-chunk-spans", "label": "One child span per chunk/item (more detail, more volume)" }
+      ],
+      "required": true
+    },
+    {
+      "id": "semantic-params",
+      "prompt": "How should ClusterSemanticChunker set its breakpoint threshold?",
+      "description": "It embeds each atomic sentence produced by the recursive splitter with embeddinggemma (768-dimensional) and groups adjacent sentences while their similarity stays above a threshold.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "A percentile of adjacent cosine distances within the document (default 90th percentile = break), with min/max child size bounds. It reuses the sentence embeddings for the stored children, so it needs no second embedding pass.",
+      "recommendedOptionIds": ["percentile"],
+      "options": [
+        { "id": "percentile", "label": "Per-document percentile of adjacent distances (dynamic)" },
+        { "id": "stddev", "label": "Mean + k·stddev of adjacent distances" },
+        { "id": "fixed", "label": "Fixed similarity threshold (e.g. 0.75)" }
+      ],
+      "required": true
+    },
+    {
+      "id": "sfl-display",
+      "prompt": "What does the sfl_tag job store per child, and where does it show?",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "It reuses the existing SFLEngine (spaCy pass 1 plus a DSPy pass 2 for mood, modality and tenor), stores the result per child, and shows it on an [s]fl toggle in the Ingest detail pane. The check-worthiness gate uses SFL mood/modality when available and falls back to spaCy features otherwise.",
+      "recommendedOptionIds": ["reuse-engine", "ingest-toggle", "gate-uses-sfl"],
+      "options": [
+        { "id": "reuse-engine", "label": "Reuse the existing SFLEngine; persist output per child" },
+        { "id": "ingest-toggle", "label": "Show it as an [s]fl toggle in the Ingest detail pane" },
+        { "id": "gate-uses-sfl", "label": "Fact-check gate prefers SFL mood/modality when present" },
+        { "id": "factcheck-col", "label": "Also show SFL mood/modality as a column in the Fact-check claims list" }
+      ],
+      "required": true
+    },
+    {
+      "id": "test-redis",
+      "prompt": "How should tests cover the Redis job store?",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Add the redis client to an extra (tui/server) and fakeredis to dev. Unit tests run against fakeredis; one opt-in integration test runs against the real local Redis under a unique nblm:test:<uuid> prefix and cleans up only that prefix.",
+      "recommendedOptionIds": ["fakeredis-plus-live"],
+      "options": [
+        { "id": "fakeredis-plus-live", "label": "fakeredis for unit tests + opt-in live-Redis test under a test prefix" },
+        { "id": "fakeredis-only", "label": "fakeredis only" },
+        { "id": "live-only", "label": "Live Redis only" }
+      ],
+      "required": true
+    },
+    {
+      "id": "out-of-scope",
+      "prompt": "Confirm what stays out of scope for this goal.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "The Substack channel/persona audio/articles, the other chunking strategies, moving the Compiler/Assessment views onto the job queue beyond what fits naturally, and a web UI.",
+      "recommendedOptionIds": ["substack", "other-strategies", "web-ui", "visual-assessment"],
+      "options": [
+        { "id": "substack", "label": "Mr. and Mrs. Language Model channel, persona audio, article generation" },
+        { "id": "other-strategies", "label": "Dynamic-window, topic, dependency, summary-as-child, schema chunking" },
+        { "id": "web-ui", "label": "Any web/React inspector" },
+        { "id": "visual-assessment", "label": "Moving VLM visual assessment onto the queue" },
+        { "id": "compiler-jobs", "label": "Moving Compiler compile/generate onto the queue" }
+      ],
+      "required": true
+    }
+  ]
+}
