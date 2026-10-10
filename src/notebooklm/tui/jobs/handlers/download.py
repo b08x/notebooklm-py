@@ -1,13 +1,12 @@
 """``download`` job handler: write a notebook's sources, chat history and artifacts to disk.
 
 Each source and artifact is one job item. Items already recorded in ``LocalAsset``
-(with the file still present) are skipped, so a retried job resumes where it stopped.
+are skipped, so a retried job resumes where it stopped.
 """
 
 from __future__ import annotations
 
 import logging
-import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -46,8 +45,7 @@ def _error_text(exc: BaseException) -> str:
 
 async def _is_downloaded(session: Any, asset_id: str) -> bool:
     result = await session.execute(select(LocalAsset).where(LocalAsset.asset_id == asset_id))
-    asset = result.scalar_one_or_none()
-    return bool(asset and os.path.exists(asset.local_path))
+    return result.scalar_one_or_none() is not None
 
 
 async def _upsert_asset(

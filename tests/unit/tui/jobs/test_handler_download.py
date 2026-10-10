@@ -226,3 +226,21 @@ def test_rows_point_at_written_files(store: JobStore, tmp_path: Path) -> None:
     assert session.rows["art-1"].asset_type == "artifact"
     assert session.rows["src-1"].notebook_id == "nb-1"
     assert (out_dir / "chat_history.md").read_text().startswith("**User**: hi")
+
+
+def test_recorded_row_skips_even_when_file_is_missing(store: JobStore, tmp_path: Path) -> None:
+    row = LocalAsset(
+        notebook_id="nb-1",
+        asset_id="src-1",
+        asset_type="source",
+        local_path=str(tmp_path / "gone.md"),
+    )
+    session = FakeSession({"src-1": row})
+    client = FakeClient(_sources(), [])
+
+    job_id = _run_download(store, "nb-1", tmp_path, client, session)
+
+    items = {i.name: i for i in store.items(job_id)}
+    assert items["Paper A"].status == ItemStatus.SKIPPED
+    assert items["Paper A"].error == "already downloaded"
+    assert client.sources.fulltext_calls == ["src-2"]
