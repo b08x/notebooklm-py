@@ -95,6 +95,8 @@ class TUIState:
     #: Notebook rows the sidebar fit on its last render; drives j/k paging.
     sidebar_rows: int = 15
     assessment_state: dict[str, Any] = field(default_factory=dict)
+    #: ``HumanGate`` of the running audio assessment (``y``/``n``/``s`` keys).
+    assessment_gate: Any = None
     editing_context: bool = False
     context_edit_buffer: str = ""
     context_overrides: dict[str, str] = field(default_factory=dict)

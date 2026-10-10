@@ -3,6 +3,7 @@ import concurrent.futures
 import logging
 from typing import Any
 
+from notebooklm._app.factcheck_runs import HumanGate
 from notebooklm.client import NotebookLMClient
 
 from ..state import TUIState, View
@@ -235,6 +236,21 @@ def start_ingestion(
     state.error_message = f"Queued ingest ({strategy}) for {state.selected_notebook}"
 
 
+def _bind_assessment_gate(state: Any) -> HumanGate:
+    """A ``HumanGate`` bound to the running assessment loop, published on ``state``.
+
+    The TUI's ``y`` / ``n`` / ``s`` keys drive it from the UI thread
+    (``HumanGate.decide`` / ``set_auto_skip`` are thread-safe).
+    """
+    gate = HumanGate()
+    gate.bind()
+    if state is not None:
+        if state.assessment_state.get("auto_skip_meta", False):
+            gate.set_auto_skip(True)
+        state.assessment_gate = gate
+    return gate
+
+
 async def _assess_audio_overview_async(
     notebook_id: str,
     context_override: str | None = None,
@@ -254,12 +270,18 @@ async def _assess_audio_overview_async(
             if progress_cb:
                 progress_cb({"type": "state_update", "key": key, "value": value})
 
+        gate = _bind_assessment_gate(state)
+        prompt_count = 0
+
         def hitl_cb(chunk_text: str, sfl_context: str) -> bool:
-            import time
+            """Runs in a worker thread; blocks on the shared ``HumanGate`` (no spin-wait).
 
-            if state and getattr(state, "assessment_state", {}).get("auto_skip_meta", False):
+            Returns ``True`` to skip the chunk (``y``), ``False`` to fact-check it (``n``).
+            """
+            nonlocal prompt_count
+            if gate.auto_skip:
                 return True
-
+            prompt_count += 1
             if progress_cb:
                 progress_cb(
                     {
@@ -268,21 +290,14 @@ async def _assess_audio_overview_async(
                         "value": {"chunk": chunk_text, "sfl": sfl_context, "decision": None},
                     }
                 )
-
-            # Spin wait for UI to set decision or auto_skip
-            while state:
-                if state.assessment_state.get("auto_skip_meta", False):
+            try:
+                check = gate.sync_gate(
+                    f"audio-{prompt_count}", {"text": chunk_text, "sfl": sfl_context}
+                )
+            finally:
+                if state is not None:
                     state.assessment_state["hitl_prompt"] = None
-                    return True
-
-                prompt_state = state.assessment_state.get("hitl_prompt")
-                if prompt_state and prompt_state.get("decision") is None:
-                    time.sleep(0.1)
-                else:
-                    decision = prompt_state.get("decision") if prompt_state else False
-                    state.assessment_state["hitl_prompt"] = None
-                    return decision
-            return False
+            return not check
 
         if not artifact_id:
             if progress_cb:

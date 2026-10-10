@@ -29,6 +29,9 @@ VERDICTS = ("supported", "contradicted", "unverifiable")
 DEFAULT_FRAMEWORK_PATH = "~/.syncopated/skills/fact-check"
 
 EvidenceRunner = Callable[..., dict[str, Any]]
+#: ``on_step(step, status)`` — step in :data:`SIFT_STEPS`, status ``running`` | ``done``.
+StepCallback = Callable[[str, str], None]
+SIFT_STEPS = ("stop", "investigate_source", "find_coverage", "trace_claim")
 
 
 @dataclass
@@ -165,14 +168,30 @@ class SiftEvidenceModule(dspy.Module):
         self.trace_claim = dspy.Predict(TraceClaimSignature)
 
     def forward(
-        self, claim: str, parent_context: str = "", sfl: dict[str, Any] | None = None
+        self,
+        claim: str,
+        parent_context: str = "",
+        sfl: dict[str, Any] | None = None,
+        on_step: StepCallback | None = None,
     ) -> dict[str, Any]:
+        def step(name: str, status: str) -> None:
+            if on_step is not None:
+                on_step(name, status)
+
+        step("stop", "running")
         stop = self.stop(claim=claim, parent_context=parent_context, sfl=json.dumps(sfl or {}))
+        step("stop", "done")
+        step("investigate_source", "running")
         investigate = self.investigate_source(claim=claim, parent_context=parent_context)
+        step("investigate_source", "done")
+        step("find_coverage", "running")
         coverage = self.find_coverage(claim=claim)
+        step("find_coverage", "done")
+        step("trace_claim", "running")
         trace_pred = self.trace_claim(
             claim=claim, coverage_summary=str(getattr(coverage, "coverage_summary", ""))
         )
+        step("trace_claim", "done")
         return {
             "sift_steps": {
                 "stop": _fields(stop, ("checkable_assertion", "claim_type")),
@@ -218,8 +237,17 @@ class SiftChecker:
         return os.path.exists(os.path.join(self.framework_path, "sift.skill"))
 
     async def check(
-        self, claim: str, parent_context: str, sfl: dict[str, Any] | None
+        self,
+        claim: str,
+        parent_context: str,
+        sfl: dict[str, Any] | None,
+        on_step: StepCallback | None = None,
     ) -> SiftResult:
+        """Gather SIFT evidence, then let Jev pick the verdict.
+
+        ``on_step`` (called from a worker thread) reports each SIFT move's
+        progress; a custom ``evidence`` runner reports all four at once.
+        """
         if not self.framework_available:
             return SiftResult(verdict="skipped_no_framework")
 
@@ -230,7 +258,18 @@ class SiftChecker:
 
         def _run_evidence() -> dict[str, Any]:
             with dspy.context(lm=lm):
-                return evidence(claim=claim, parent_context=parent_context, sfl=sfl)
+                if isinstance(evidence, SiftEvidenceModule):
+                    return evidence(
+                        claim=claim, parent_context=parent_context, sfl=sfl, on_step=on_step
+                    )
+                for name in SIFT_STEPS:
+                    if on_step is not None:
+                        on_step(name, "running")
+                out = evidence(claim=claim, parent_context=parent_context, sfl=sfl)
+                for name in SIFT_STEPS:
+                    if on_step is not None:
+                        on_step(name, "done")
+                return out
 
         gathered = await asyncio.to_thread(_run_evidence)
         sift_steps = gathered["sift_steps"]

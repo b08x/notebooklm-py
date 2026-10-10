@@ -311,15 +311,19 @@ def handle_key(key: str, state: TUIState) -> bool:
     elif state.current_view == View.ASSESSMENT:
         hitl_prompt = state.assessment_state.get("hitl_prompt")
         if hitl_prompt:
-            if key.lower() == "y":
-                state.assessment_state["hitl_prompt"]["decision"] = True
-                return True
-            elif key.lower() == "n":
-                state.assessment_state["hitl_prompt"]["decision"] = False
+            gate = state.assessment_gate
+            if key.lower() in ("y", "n"):
+                skip = key.lower() == "y"
+                state.assessment_state["hitl_prompt"]["decision"] = skip
+                if gate is not None:
+                    for item_id in gate.waiting:
+                        gate.decide(item_id, check=not skip)
                 return True
             elif key.lower() == "s":
                 curr = state.assessment_state.get("auto_skip_meta", False)
                 state.assessment_state["auto_skip_meta"] = not curr
+                if gate is not None:
+                    gate.set_auto_skip(not curr)
                 return True
 
         if key == "\x1b":  # Escape
