@@ -169,7 +169,8 @@ def _length_bucket_expr() -> ColumnElement[str]:
             whens.append((length >= low, label))
         else:
             whens.append((and_(length >= low, length < high), label))
-    return case(*whens, else_=LENGTH_BUCKETS[-1][0])
+    last_label, _, _ = LENGTH_BUCKETS[-1]
+    return case(*whens, else_=last_label)
 
 
 def near_duplicate_exists(threshold: float = NEAR_DUP_L2) -> ColumnElement[bool]:

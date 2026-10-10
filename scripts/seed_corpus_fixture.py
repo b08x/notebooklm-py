@@ -127,7 +127,9 @@ def _features(texts: list[str]) -> list[ClauseFeatures]:
             }
             for i, w in enumerate(words)
         ]
-        groups = {"noun_chunks": [{"text": words[0], "start": 0, "end": 1, "root": 0}]} if words else {}
+        groups = (
+            {"noun_chunks": [{"text": words[0], "start": 0, "end": 1, "root": 0}]} if words else {}
+        )
         feats.append(ClauseFeatures(tokens, groups, 0))
     return feats
 

@@ -1,5 +1,6 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+from notebooklm._preprocessing import sfl_engine as sfl_engine_module
 from notebooklm._preprocessing.sfl_engine import analyze_transcript
 
 
@@ -15,7 +16,8 @@ def test_sfl_semantic_anomaly():
         ],
     }
 
-    with patch("notebooklm._preprocessing.sfl_engine.SFLEngine.__call__") as mock_engine:
+    mock_engine = MagicMock()
+    with patch.object(sfl_engine_module, "SFLEngine", return_value=mock_engine):
         # Mock responses from LLM
         def side_effect(utterance, **kwargs):
             if "commence" in utterance:

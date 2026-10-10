@@ -923,72 +923,31 @@ These validations run in `NotebookLMClient.__init__` /
 
 ---
 
-## Preprocessing & Assessment
+## Preprocessing & Assessment (internal)
 
-The library provides tools for chunking, transcription, annotation, and AI-driven assessment.
+Chunking, annotation, transcription, SFL tagging and fact-checking live in the
+private `notebooklm._preprocessing` and `notebooklm._app` modules. They power the
+TUI and the Corpus Explorer, but they are **not** a public API: names and
+signatures change without deprecation, so do not import them from your own code.
 
-### Chunkers
+To work with the local chunk corpus programmatically, use the REST server's
+`/v1/corpus/*` routes instead (search, browse, detail, neighbours, delete,
+export, grounded answers, artifact ingest, SFL tagging and fact-check runs);
+the Corpus Explorer UI at `/ui` is built on exactly those routes. See
+[installation.md](installation.md#corpus-explorer) for running it and
+[configuration.md](configuration.md#corpus-explorer) for its settings.
 
-Chunkers break text into smaller components for processing.
+What the internal modules provide, for orientation:
 
-- **`HybridChunker`**: Hierarchical chunker that respects token limits, splitting by paragraphs and respecting `max_chunk_size` (default: 1000).
-- **`StructuralCoherenceChunker`**: Splits text into sentences by relying on sentence boundaries (`.`, `!`, `?`).
-
-```python
-from notebooklm._preprocessing.chunkers import HybridChunker, StructuralCoherenceChunker
-
-chunker = HybridChunker(max_chunk_size=500)
-chunks = chunker.chunk(large_text)
-```
-
-### Annotators
-
-Annotators add metadata to text using NLP and topic modeling techniques.
-
-- **`SpacyAnnotator`**: Uses `spacy` to provide parts of speech (`pos`), `lemmas`, and `entities`.
-- **`BERTopicAnnotator`**: Uses `bertopic` to cluster documents into topics.
-- **`DoclingPIIFilter`**: Placeholder for future integration with `docling` to filter PII.
-
-```python
-from notebooklm._preprocessing.annotators import SpacyAnnotator
-
-annotator = SpacyAnnotator(model="en_core_web_sm")
-annotations = annotator.annotate("NotebookLM is great!")
-```
-
-### Transcription Adapters and Service
-
-Provides abstractions for transcribing audio files using external providers or local tools.
-
-- **`DeepgramAdapter`**: Uses Deepgram API for transcription and diarization.
-- **`AssemblyAIAdapter`**: Uses AssemblyAI API for transcription and diarization.
-- **`SpeechmaticsAdapter`**: Uses Speechmatics API for transcription and diarization.
-- **`TranscribeCppAdapter`**: Uses a local `transcribe.cpp` executable.
-
-```python
-from notebooklm._preprocessing.transcription import TranscriptionService, DeepgramAdapter
-
-adapter = DeepgramAdapter(api_key="your_api_key")
-service = TranscriptionService(adapter)
-result = service.transcribe_audio("audio.mp3")
-print(result["text"])
-```
-
-### Assessment API
-
-The assessment module (`notebooklm._app.assessment`) uses `dspy` to evaluate AI-generated outputs, such as audio overviews. It connects to language models and embedders (like `ollama`) to score generations based on the original system instructions and source chunks.
-
-```python
-from notebooklm._app.assessment import generate_assessment
-
-result = generate_assessment(
-    system_instructions="Create an exciting overview of space.",
-    audio_metadata="Duration: 2:00, Quality: High",
-    chunks=["Space is vast and expanding."],
-)
-print(f"Score: {result['score']}")
-print(f"Feedback: {result['feedback']}")
-```
+- **Chunkers** — recursive, cluster-semantic and dynamic-window strategies that
+  split documents into parent passages and child clauses.
+- **Annotators and features** — spaCy tokens, noun chunks and clause groups
+  stored with every clause; BERTopic topics.
+- **Transcription** — Deepgram, AssemblyAI, Speechmatics and a local
+  `transcribe.cpp` adapter, chosen per request; audio is first converted to a
+  temporary normalised FLAC.
+- **Assessment** — DSPy-based SFL tagging, a rule-based or Jev check-worthiness
+  gate, and the SIFT fact-check pipeline.
 
 ## Internal module map
 Kernel owns the `httpx.AsyncClient`; `NotebookLMClient` constructs the

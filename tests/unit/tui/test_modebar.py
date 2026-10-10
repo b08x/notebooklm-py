@@ -45,8 +45,10 @@ def test_jobs_layout_has_no_sidebar_slot() -> None:
 
 
 def test_other_layouts_keep_sidebar_and_content() -> None:
+    # Jobs, Ingest and Fact-check have dedicated layouts (Ingest/Fact-check are
+    # covered by test_ingest_factcheck_modes.py).
     for mode in Mode:
-        if mode == Mode.JOBS:
+        if mode in (Mode.JOBS, Mode.INGEST, Mode.FACT_CHECK):
             continue
         layout = build_layout(mode)
         assert layout.get("sidebar") is not None

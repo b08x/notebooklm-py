@@ -1,3 +1,4 @@
+import sys
 from unittest.mock import patch
 
 from notebooklm._preprocessing.annotators import (
@@ -22,13 +23,13 @@ def test_spacy_annotator_defaults_to_en_core_web_md():
     assert annotator.model == "en_core_web_md"
 
 
-@patch("notebooklm._preprocessing.annotators.BERTopicAnnotator._load_model")
-def test_bertopic_annotator(mock_load):
+def test_bertopic_annotator():
     annotator = BERTopicAnnotator()
-    # Force it to use the fallback logic by pretending the model didn't load
-    annotator.topic_model = None
-    res = annotator.annotate(["doc1", "doc2"])
-    assert len(res) == 2
+    # Force the fallback: bertopic "not installed" (a None module entry makes
+    # ``from bertopic import BERTopic`` raise ImportError).
+    with patch.dict(sys.modules, {"bertopic": None}):
+        res = annotator.annotate(["doc1", "doc2"])
+    assert res == [-1, -1]
 
 
 def test_docling_pii_filter():

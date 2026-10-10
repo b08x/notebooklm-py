@@ -11,7 +11,7 @@ def test_embed_empty_list_skips_request():
     assert adapter.embed([]) == []
 
 
-@patch("notebooklm._preprocessing.embeddings.httpx.post")
+@patch.object(httpx, "post")
 def test_embed_returns_vectors_in_order(mock_post):
     mock_post.return_value = MagicMock(
         status_code=200,
@@ -28,14 +28,14 @@ def test_embed_returns_vectors_in_order(mock_post):
     assert kwargs["json"] == {"model": adapter.model, "input": ["first", "second"]}
 
 
-@patch("notebooklm._preprocessing.embeddings.httpx.post", side_effect=httpx.ConnectError("down"))
+@patch.object(httpx, "post", side_effect=httpx.ConnectError("down"))
 def test_embed_wraps_connection_errors(mock_post):
     adapter = OllamaEmbeddingAdapter()
     with pytest.raises(RuntimeError, match="Ollama embedding request failed"):
         adapter.embed(["hello"])
 
 
-@patch("notebooklm._preprocessing.embeddings.httpx.post")
+@patch.object(httpx, "post")
 def test_embed_mismatched_count_raises(mock_post):
     mock_post.return_value = MagicMock(
         status_code=200,

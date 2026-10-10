@@ -1161,6 +1161,17 @@ src/notebooklm/
 │   ├── source_mutations.py      # Click-free source delete/delete-by-title/rename/refresh/add-drive core: resolvers + SourceMutationError + typed results (validate_id/resolve_source_id injected; confirmer injected)
 │   ├── source_research.py       # Click-free `source add-research` start/wait/import workflow + validate_add_research_flags (importer injected; SourceAddResearchPlan/Result)
 │   ├── source_wait.py           # Click-free `source wait` readiness-poll core: execute_source_wait + typed SourceWaitOutcome (wait_context injected) + wait_all_sources (single-snapshot loop via client.sources.wait_all_until_ready — one notebook poll per tick, order-preserving; #1870) shared by the MCP tool + REST route (#1871) + the MAX_WAIT_TIMEOUT / MAX_WAIT_SOURCE_IDS caps
+│   ├── artifact_ingest.py       # Corpus Explorer: NotebookLM artifact → corpus document via a per-kind CONVERTERS registry (audio/video → temp FLAC → chosen transcription provider → [Speaker N] turns; report/quiz/flashcards/mind map/data table → text); checksum gate skips unchanged content unless forced; infographic/slide deck listed as not ingestible
+│   ├── background.py            # In-process BackgroundJob/JobRegistry for long corpus work (artifact ingest, SFL tagging): seq-numbered progress events for SSE replay + busy-document set that blocks concurrent deletes
+│   ├── corpus_agent.py          # Cross-notebook DSPy answer pipeline: per-notebook dspy.ReAct (corpus search / chunk detail / neighbors / NotebookLM ask tools bridged to the caller loop) merged by dspy.MultiChainComparison, plus the experimental dspy.RLM Deep mode (typed DeepModeUnavailableError without Deno); runs under dspy.context, never dspy.configure
+│   ├── corpus_answer.py         # Grounded answers: [C1]…[Cn] prompt + citation map, NotebookLM chat.ask scoped to the hits' sources, streamed litellm answers
+│   ├── corpus_explorer.py       # Corpus Explorer read side: CorpusFilters, ranked hybrid search (kw/vec rank + RRF score + vector_leg_ok), keyset browse, facet counts, chunk detail (parent offsets, ±2 lines, entities, SFL), stored-embedding neighbors with near-duplicate flag, runs/stats/new-since, embedder health, PCA/UMAP map; LLM-free
+│   ├── corpus_mutations.py      # Corpus Explorer writes: delete preview (per-table counts) + confirmed hard delete at clause/parent/document/run level with one removal_log row per item; Markdown/JSON export and push-as-note
+│   ├── factcheck_runs.py        # Transport-neutral fact-check run controller: rule or Jev check-worthiness gate (JevError → rule fallback), thread-safe HumanGate (Y/N/S + sync_gate for worker threads), seq'd replayable events with SIFT step progress, RunRegistry; also backs the TUI fact_check job and audio HITL gate; gate-agreement report for scripts/compare_gates.py
+│   ├── noise.py                 # Noise detector (base64/binary blobs, numeric-table rows): SQL CASE expression for facets + identical Python twin
+│   ├── scope.py                 # Assessment Scope (notebook | documents | runs | chunk selection | parent) applied to Clause+ChunkRun queries
+│   ├── sfl_format.py            # Shared SFL formatter for TUI and web: either SFL shape → {ideational, interpersonal} lists of display strings (nested dicts flattened to "key: value")
+│   ├── sfl_tagging.py           # SFLEngine tagging over any Scope, committed per parent (shared by the TUI sfl_tag job and POST /v1/corpus/sfl/runs)
 │   └── views.py                 # Transport-neutral output-projection views: share_status_view (access/permission/view_level enum→label), source_view (kind/status_label/drive_status_label + is_drive_degraded added), notebook_view (role_label added), notebook_viewed_keys (last_viewed_at + its deprecated modified_at alias, for hand-built CLI JSON envelopes), ask_result_view (raw_response debug blob stripped); shared by the MCP tools + REST routes so both emit the identical enriched shape (Option B)
 ├── _runtime/                    # Client-runtime subpackage (promoted from flat _runtime_*.py, #1328)
 │   ├── __init__.py              # Re-exports the cluster's public names
@@ -1429,9 +1440,14 @@ src/notebooklm/
     ├── _errors.py               # ErrorCategory -> HTTP status table + _redact + the classify-once exception handler emitting {error:{category,message}}
     ├── _pagination.py           # Opt-in, non-breaking list-route envelope: paginate_envelope(items, key=…, limit, offset, **extra) — default (no limit) returns the full list under its existing key unchanged; ?limit= slices via _app.pagination.paginate + adds a meta:{total,has_more,limit,offset} block (Option B-lite)
     ├── _pending.py              # In-process pending-id registry (per-notebook provenance for poll -> 200-pending vs 404)
+    ├── _corpus.py               # CorpusServices injection seam (Postgres session maker, embedder, checker, Jev, ingestion, transcriber, SFL engine, run/job registries) + corpus_session (503 database_unreachable on connect failure) + typed error handlers + SSE response with keep-alives + main-thread-only DSPy LM setup
+    ├── _static.py               # Serves the built Corpus Explorer SPA (web/ → static/ui) at /ui with an index.html fallback for client routes; / redirects to /ui/
+    ├── static/ui/               # Built Corpus Explorer (generated by `pnpm -C web build`; committed)
     └── routes/                  # Per-resource FastAPI routers; handlers call _app.serialize.to_jsonable directly
         ├── __init__.py          # Aggregates the resource routers for the app factory
         ├── _passthrough.py      # Pass-through resolvers handed to the _app cores (REST works in full ids)
+        ├── corpus.py            # /v1/corpus/* Corpus Explorer: stats/facets/chunks/detail/neighbors/search/runs/map/notebooks/health, delete preview + confirm, export + push-as-note, answer (notebooklm/agent/deep/streamed model), artifacts + ingest jobs, transcription providers, SFL runs, job SSE
+        ├── factcheck.py         # /v1/corpus/factcheck/runs: start (409 sfl_required), snapshot, SSE events with ?after replay, decision, auto-skip, pause/resume/cancel
         ├── notebooks.py         # /v1/notebooks list/get/create/rename(PATCH)/delete + GET /{id}/suggested-prompts (client.notebooks.suggest_prompts; surface→mode map pinned to MCP)
         ├── sources.py           # /v1/notebooks/{id}/sources list/get/add(url·text·file·drive·batch)/rename(PATCH)/wait/delete + poll-the-resource status
         ├── notes.py             # /v1/notebooks/{id}/notes list/get/create/update(PUT)/delete — thin adapter over client.notes
@@ -1445,6 +1461,41 @@ src/notebooklm/
 ### Repository Structure Intentional Omissions
 
 - `src/notebooklm/_app/assessment.py` - Audio and source assessment business logic.
+- `src/notebooklm/_app/archive.py` - Notebook archive (export before remote delete) for curation.
+- `src/notebooklm/_app/corpus.py` - Read queries for the TUI Ingest and Fact-check modes.
+- `src/notebooklm/_app/curation.py` - Curation: remove items, add sources, delete notebooks, removal log.
+- `src/notebooklm/_app/fact_checks.py` - Fact-check persistence: scoped child loading and verdict rows.
+- `src/notebooklm/_app/topics.py` - BERTopic fitting over active-run children.
+- `src/notebooklm/_app/tracing.py` - Job root spans and Langfuse trace URLs.
+- `src/notebooklm/_preprocessing/audio_prep.py` - Temporary FLAC preparation (mono, 80 Hz high-pass, -19 LUFS, -1 dBFS ceiling) before transcription.
+- `src/notebooklm/_preprocessing/checkworthiness.py` - Rule-based pre-LLM check-worthiness gate.
+- `src/notebooklm/_preprocessing/chunking` - Chunking strategy package.
+- `src/notebooklm/_preprocessing/chunking/base.py` - Chunk strategy protocol and result types.
+- `src/notebooklm/_preprocessing/chunking/dynamic.py` - Dynamic-window chunking strategy.
+- `src/notebooklm/_preprocessing/chunking/recursive.py` - Recursive splitter strategy.
+- `src/notebooklm/_preprocessing/chunking/semantic.py` - Cluster-semantic chunking strategy.
+- `src/notebooklm/_preprocessing/features.py` - Deterministic spaCy features stored per clause.
+- `src/notebooklm/_preprocessing/jev.py` - Jev decision-model client (OpenRouter Decisions API).
+- `src/notebooklm/_preprocessing/sift.py` - SIFT evidence module and Jev verdict checker.
+- `src/notebooklm/tui/jobs` - TUI background job queue package.
+- `src/notebooklm/tui/jobs/handlers` - Job kind handlers.
+- `src/notebooklm/tui/jobs/handlers/compile.py` - Compile job handler.
+- `src/notebooklm/tui/jobs/handlers/download.py` - Download job handler.
+- `src/notebooklm/tui/jobs/handlers/fact_check.py` - Fact-check job handler (adapter over _app.factcheck_runs).
+- `src/notebooklm/tui/jobs/handlers/generate.py` - Generate job handler.
+- `src/notebooklm/tui/jobs/handlers/ingest.py` - Ingest job handler.
+- `src/notebooklm/tui/jobs/handlers/sfl_tag.py` - SFL tag job handler (adapter over _app.sfl_tagging).
+- `src/notebooklm/tui/jobs/handlers/topic_model.py` - Topic model job handler.
+- `src/notebooklm/tui/jobs/kinds.py` - Job kind registry.
+- `src/notebooklm/tui/jobs/runner.py` - In-process job worker pool.
+- `src/notebooklm/tui/jobs/store.py` - Redis-backed job store.
+- `src/notebooklm/tui/renderers/factcheck.py` - Fact-check mode renderer.
+- `src/notebooklm/tui/renderers/ingest.py` - Ingest mode renderer.
+- `src/notebooklm/tui/renderers/jobs.py` - Jobs mode renderer.
+- `src/notebooklm/tui/renderers/modebar.py` - Mode bar renderer.
+- `src/notebooklm/tui/views/compiler_gen.py` - Compiler generation view logic.
+- `src/notebooklm/tui/views/corpus_view.py` - Corpus data loading for Ingest/Fact-check modes.
+- `src/notebooklm/tui/views/curation_view.py` - Curation view.
 - `src/notebooklm/_app/assessment_formatter.py` - Assessment markdown formatting.
 - `src/notebooklm/_app/clause_search.py` - Clause search and retrieval.
 - `src/notebooklm/_preprocessing` - Preprocessing package (SFL, ingestion, chunkers, annotators).

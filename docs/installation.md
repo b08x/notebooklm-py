@@ -479,6 +479,54 @@ curl -H "Authorization: Bearer $TOKEN" -F 'file=@./notes.pdf' \
 
 ---
 
+## Corpus Explorer
+
+The Corpus Explorer is a web workbench for the local chunk corpus in Postgres:
+hybrid (keyword + vector, RRF) search with a per-leg score breakdown, a
+virtualized Browse table with facets, chunk detail with parent context,
+linguistics and similar items, confirmed deletes, Markdown/JSON export, grounded
+answers (NotebookLM, a cross-notebook DSPy pipeline, or any litellm model),
+NotebookLM artifact ingest, and interactive fact-check runs. `notebooklm-server`
+serves it at `/ui`; it talks to the guarded `/v1/corpus/*` routes.
+
+It needs the `server` extra (and `assessment` for ingest, SFL tagging and
+fact-checking), plus Postgres with pgvector:
+
+<!-- not mirrored: Corpus Explorer runtime setup, not a contributor install step -->
+```bash
+docker compose -f deploy/docker-compose.db.yml up -d   # Postgres + pgvector on :5435
+uv run alembic upgrade head
+export NOTEBOOKLM_SERVER_TOKEN=$(openssl rand -hex 24)
+uv run notebooklm-server            # http://127.0.0.1:8000/ui/
+```
+
+Open `http://127.0.0.1:8000/ui/` and paste the token once; the browser keeps it.
+A NotebookLM login is optional: search, browse, delete and export work on the
+local corpus alone, while Ask (NotebookLM mode), push-as-note and artifact ingest
+need `notebooklm login`. Vector search needs the Ollama embedder
+(`ollama pull embeddinggemma`); without it hybrid search falls back to keyword
+results and says so. If Postgres is down the UI shows a blocking
+"database unreachable" screen rather than an empty corpus.
+
+To try it without data, seed a small fixture corpus:
+
+<!-- not mirrored: optional demo data for the Corpus Explorer -->
+```bash
+uv run python scripts/seed_corpus_fixture.py --notebook nb-demo        # add
+uv run python scripts/seed_corpus_fixture.py --notebook nb-demo --remove
+```
+
+Frontend development (`web/`, Vite + React + TypeScript):
+
+<!-- not mirrored: web/ frontend workflow, documented here next to the feature -->
+```bash
+pnpm -C web install
+pnpm -C web dev            # Vite dev server; /v1 is proxied to 127.0.0.1:8000
+pnpm -C web test           # Vitest component tests
+pnpm -C web build          # writes src/notebooklm/server/static/ui (served at /ui)
+pnpm -C web exec playwright test   # smoke test: starts the server on :8799 with a seeded fixture
+```
+
 ## Post-install steps
 
 ### System prerequisites (`assessment` extra)

@@ -1,6 +1,8 @@
 import os
 from unittest.mock import MagicMock, patch
 
+import dspy
+
 from notebooklm._preprocessing.fact_check import FactCheckAdapter
 
 
@@ -12,7 +14,7 @@ def test_fact_check_routing():
 
     with (
         patch("os.path.exists", return_value=True),
-        patch("notebooklm._preprocessing.fact_check.dspy.ReAct") as mock_react,
+        patch.object(dspy, "ReAct") as mock_react,
         patch.dict(os.environ, {"EXA_API_KEY": "test_key"}),
     ):
         # Create a mock agent that returns a mock result

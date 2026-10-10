@@ -111,6 +111,13 @@ SRC_ROOT = PROJECT_ROOT / "src" / "notebooklm"
 # positional RPC payloads: the RPC protocol layer and the typed row adapters.
 SANCTIONED_PACKAGES = frozenset({"rpc", "_row_adapters"})
 
+# Packages that never receive ``batchexecute`` payloads, so neither gate scans
+# them: ``_preprocessing`` is a self-contained domain library (chunking, audio
+# arrays, transcription-provider JSON such as Deepgram ``channels[0]`` — see the
+# app-boundary guardrail's note on it), and ``tui`` renders the typed facade
+# objects and local Postgres rows it is handed (status tuples, table rows).
+NON_RPC_PACKAGES = frozenset({"_preprocessing", "tui"})
+
 # Baseline of feature files that open-code chained positional descent into RPC
 # payloads (issue #1377). The burndown (#1389) migrated every baselined file
 # behind ``_row_adapters/`` + ``safe_index`` (or bound the already-guarded inner
@@ -276,7 +283,7 @@ def _feature_files() -> tuple[Path, ...]:
         sorted(
             p
             for p in SRC_ROOT.rglob("*.py")
-            if p.relative_to(SRC_ROOT).parts[0] not in SANCTIONED_PACKAGES
+            if p.relative_to(SRC_ROOT).parts[0] not in SANCTIONED_PACKAGES | NON_RPC_PACKAGES
         )
     )
 

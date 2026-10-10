@@ -24,7 +24,9 @@ def upgrade() -> None:
     op.create_table(
         "removal_log",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.Column("notebook_id", sa.String(), nullable=False),
         sa.Column("notebook_title", sa.String(), nullable=False),
         sa.Column("item_id", sa.String(), nullable=False),
@@ -40,7 +42,9 @@ def upgrade() -> None:
     op.create_table(
         "archived_notebooks",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.Column("notebook_id", sa.String(), nullable=False),
         sa.Column("title", sa.String(), nullable=False),
         sa.Column("archive_path", sa.String(), nullable=False),

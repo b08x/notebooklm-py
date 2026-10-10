@@ -549,6 +549,35 @@ batchexecute response contains RPC IDs but not the one the call requested
 > Background and rationale for the flip: see
 > [`docs/adr/0011-schema-validation-policy.md`](adr/0011-schema-validation-policy.md).
 
+## Corpus Explorer
+
+Settings read by `notebooklm-server`'s `/v1/corpus/*` routes and the `/ui`
+workbench (see [installation.md](installation.md#corpus-explorer)). All are
+environment variables; a `.env` loaded by your shell or process manager works.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `NOTEBOOKLM_SERVER_TOKEN` | — (required) | Bearer token the UI asks for once |
+| `DATABASE_URL` | `postgresql+asyncpg://postgres:postgres@localhost:5435/notebooklm` | Corpus Postgres (pgvector) |
+| `OLLAMA_URL` / `EMBEDDING_MODEL` | `http://127.0.0.1:11434` / `embeddinggemma:latest` | Query embedder for the vector leg |
+| `NOTEBOOKLM_TRANSCRIBE_PROVIDER` | falls back to `NOTEBOOKLM_ASSESSMENT_TRANSCRIBE_PROVIDER`, then `deepgram` | Default provider in the ingest dialog: `speechmatics`, `assemblyai`, `deepgram`, `transcribe_cpp` |
+| `NOTEBOOKLM_TRANSCRIBE_DIARIZE` | `true` | Default of the Diarize toggle |
+| `NOTEBOOKLM_TRANSCRIBE_LANGUAGE` | `auto` | Default language (`auto` = detect) |
+| `SPEECHMATICS_API_KEY`, `ASSEMBLYAI_API_KEY`, `DEEPGRAM_API_KEY` | — | Provider keys; the dialog shows "key found / key missing" per provider |
+| `NOTEBOOKLM_TRANSCRIBE_CPP_MODEL` / `NOTEBOOKLM_TRANSCRIBE_CPP_BIN` | — / `main` | Local transcribe.cpp model path and executable |
+| `NOTEBOOKLM_ARTIFACTS_DIR` | `~/NotebookLM/artifacts` | Transcript cache, so the same audio is never transcribed twice |
+| `OPENROUTER_API_KEY` | — | Jev decision model (check-worthiness gate and SIFT verdicts) |
+| `FACT_CHECK_FRAMEWORK_PATH` | `~/.syncopated/skills/fact-check` | Directory holding `sift.skill`; without it gated chunks are recorded as "no framework" |
+| `NOTEBOOKLM_ASSESSMENT_MODEL_PROVIDER` / `NOTEBOOKLM_ASSESSMENT_MODEL` | `openrouter` / project default | DSPy LM for SFL tagging, the corpus agent and SIFT; configured once at server start |
+| `LANGFUSE_HOST` (+ `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY`) | `https://cloud.langfuse.com` | Trace links in the fact-check evidence log |
+
+Audio and video artifacts are converted to a temporary FLAC before
+transcription (mono, original sample rate, 16-bit or 24-bit for 24-bit sources,
+80 Hz high-pass, −19 LUFS with peaks capped at −1 dBFS); decoding needs
+`ffmpeg`/`ffprobe` on `PATH`. The temp file is deleted afterwards and the
+downloaded original is never modified. Re-ingesting an artifact whose content
+checksum matches the active run is skipped unless you choose "Force re-ingest".
+
 ## CLI Options
 
 ### Global Options

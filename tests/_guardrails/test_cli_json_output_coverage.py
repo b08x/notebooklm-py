@@ -42,6 +42,7 @@ COMMANDS_WITHOUT_JSON: frozenset[str] = frozenset(
         "skill install",  # local file-install side-effect
         "skill uninstall",  # local file-removal side-effect
         "mcp install",  # wires the MCP server into an editor config
+        "tui",  # launches the interactive full-screen terminal UI
     }
 )
 
