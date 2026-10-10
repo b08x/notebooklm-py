@@ -63,7 +63,8 @@ def assess(sfl: dict[str, Any] | None, tokens: list[dict[str, Any]] | None) -> t
             return False, f"hedge cue: {text}"
 
     surface = [t for t in (_token_field(tok, "text") for tok in token_list) if t]
-    if surface and surface[-1].endswith("?"):
+    last = next(reversed(surface), "")
+    if last.endswith("?"):
         return False, "interrogative"
 
     mood = _sfl_field(sfl, "mood")
