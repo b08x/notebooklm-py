@@ -84,21 +84,22 @@ class _Parse:
     def entities(self) -> list[Span]:
         if not self._use_entities:
             return []
-        offset = self._span[0]
+        offset, _ = self._span
         return [(offset + ent.start_char, offset + ent.end_char) for ent in self._parse().ents]
 
     def sentence_starts(self) -> list[int]:
         if self._starts is None:
-            offset = self._span[0]
+            offset, _ = self._span
             self._starts = [offset + sent.start_char for sent in self._parse().sents]
         return self._starts
 
 
 def _regex_level(pattern: re.Pattern[str], text: str, guard: EntityGuard) -> Level:
     def level(span: Span) -> Cuts:
+        start, end = span
         return [
             (m.start(), m.end())
-            for m in pattern.finditer(text, span[0], span[1])
+            for m in pattern.finditer(text, start, end)
             if guard.keep(m.start(), m.end())
         ]
 
@@ -144,25 +145,30 @@ def _hard_cut(span: Span, limit: int, guard: EntityGuard) -> list[Span]:
 
 def _split(span: Span, levels: Sequence[Level], limit: int, guard: EntityGuard) -> list[Span]:
     """Split ``span`` into pieces of at most ``limit`` characters, one ladder level at a time."""
-    if span[1] - span[0] <= limit:
+    start, end = span
+    if end - start <= limit:
         return [span]
     if not levels:
         return _hard_cut(span, limit, guard)
-    head, rest = levels[0], levels[1:]
+    head, *rest = levels
     out: list[Span] = []
     current: Span | None = None
     for piece in _pieces(span, head(span)):
-        if piece[1] - piece[0] > limit:
+        piece_start, piece_end = piece
+        if piece_end - piece_start > limit:
             if current is not None:
                 out.append(current)
                 current = None
             out.extend(_split(piece, rest, limit, guard))
-        elif current is not None and piece[1] - current[0] <= limit:
-            current = (current[0], piece[1])
-        else:
-            if current is not None:
-                out.append(current)
-            current = piece
+            continue
+        if current is not None:
+            current_start, _ = current
+            if piece_end - current_start <= limit:
+                current = (current_start, piece_end)
+                continue
+        if current is not None:
+            out.append(current)
+        current = piece
     if current is not None:
         out.append(current)
     return out
@@ -253,7 +259,8 @@ class RecursiveSplitter:
         return _clean(text, _split((0, len(text)), levels, self.parent_max_chars, guard))
 
     def _child_spans(self, text: str, parent: Span, stats: ChunkStats) -> list[Span]:
-        if parent[1] - parent[0] <= self.child_max_chars:
+        parent_start, parent_end = parent
+        if parent_end - parent_start <= self.child_max_chars:
             return [parent]
         scope = _Parse(text, parent, self._model, self.use_entity_guard)
         guard = EntityGuard(scope.entities, self.child_max_chars, stats)
