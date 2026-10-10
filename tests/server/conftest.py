@@ -97,3 +97,16 @@ def authed_client(app: Any) -> Iterator[TestClient]:
         app, headers=headers, client=("127.0.0.1", 5555), raise_server_exceptions=False
     ) as client:
         yield client
+
+
+@pytest.fixture(autouse=True)
+def _no_dspy_setup(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Server tests never configure a real DSPy LM (no network, no thread ownership)."""
+    from notebooklm.server import app as app_module
+
+    monkeypatch.setattr(app_module, "configure_llm_on_main_thread", lambda services: False)
+
+
+# Corpus Explorer route fixtures (real Postgres seed + fakes), shared by
+# test_corpus_routes.py and test_factcheck_routes.py.
+from ._corpus_env import env, seeded  # noqa: E402,F401

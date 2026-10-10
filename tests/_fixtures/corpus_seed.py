@@ -60,13 +60,18 @@ class SplitStrategy:
 
 
 class MapEmbedder:
-    """Embeds by lookup in ``vectors`` (keyed by text), else a hash-derived vector."""
+    """Embeds by lookup in ``vectors`` (keyed by text), else a hash-derived vector.
 
-    def __init__(self, vectors: dict[str, list[float]] | None = None) -> None:
+    ``salt`` keeps identical texts seeded by different tests apart (committed
+    seeds of parallel tests must never look like near-duplicates).
+    """
+
+    def __init__(self, vectors: dict[str, list[float]] | None = None, salt: str = "") -> None:
         self.vectors = vectors or {}
+        self.salt = salt
 
     def embed(self, texts: list[str]) -> list[list[float]]:
-        return [self.vectors.get(t) or unit_vector(t) for t in texts]
+        return [self.vectors.get(t) or unit_vector(f"{self.salt}{t}") for t in texts]
 
 
 def _features(texts: list[str]) -> list[ClauseFeatures]:
@@ -90,10 +95,10 @@ def _features(texts: list[str]) -> list[ClauseFeatures]:
     return out
 
 
-def service(vectors: dict[str, list[float]] | None = None) -> IngestionService:
+def service(vectors: dict[str, list[float]] | None = None, salt: str = "") -> IngestionService:
     return IngestionService(
         None,
-        embedder=MapEmbedder(vectors),
+        embedder=MapEmbedder(vectors, salt),
         strategy=SplitStrategy(),
         features=_features,
         use_source_context=False,
@@ -124,7 +129,7 @@ class Seeder:
         params: dict[str, Any] | None = None,
     ) -> int:
         """Ingest ``text`` as document ``name``; returns the run id."""
-        svc = service(self.vectors)
+        svc = service(self.vectors, salt=f"{self.prefix}:")
         result = await svc.ingest_document(
             self.session, self.doc(name), text, notebook_id=notebook or self.notebook
         )

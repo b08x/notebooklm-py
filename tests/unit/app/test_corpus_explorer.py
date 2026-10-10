@@ -45,13 +45,13 @@ class DownEmbedder:
 
 @pytest.fixture
 async def seeded(pg_session: AsyncSession):  # noqa: F811
-    entity = unit_vector("entity")
-    s = Seeder(
-        pg_session,
-        vectors={
+    s = Seeder(pg_session)
+    entity = unit_vector(f"entity-{s.prefix}")
+    s.vectors.update(
+        {
             "Named entity recognition uses spaCy": entity,
             "Entity recognition with spaCy pipelines": nudged(entity, 0.02),
-        },
+        }
     )
     s.run_a1 = await s.ingest(
         "a",
@@ -88,7 +88,7 @@ async def test_hybrid_search_reports_leg_ranks(seeded: Seeder) -> None:
         seeded.session,
         "entity recognition spaCy",
         filters=_nb(seeded),
-        embedder=QueryEmbedder(unit_vector("entity")),
+        embedder=QueryEmbedder(unit_vector(f"entity-{seeded.prefix}")),
     )
     assert out["vector_leg_ok"] is True
     top = out["hits"][0]
@@ -111,7 +111,7 @@ async def test_search_modes(seeded: Seeder) -> None:
         "anything",
         mode="vector",
         filters=_nb(seeded),
-        embedder=QueryEmbedder(unit_vector("entity")),
+        embedder=QueryEmbedder(unit_vector(f"entity-{seeded.prefix}")),
         top_k=2,
     )
     assert {h["kw_rank"] for h in vec["hits"]} == {None}
@@ -183,7 +183,8 @@ async def test_filters_and_facets(seeded: Seeder) -> None:
         "other": 0,
         "failed": 0,
     }
-    assert f["notebook"] == [{"value": s.notebook, "count": 5}]
+    # The notebook facet clears its own filter, so other notebooks may appear too.
+    assert {"value": s.notebook, "count": 5} in f["notebook"]
     assert sum(i["count"] for i in f["length"]) == 5
     assert {i["value"] for i in f["document"]} == {s.doc("a"), s.doc("b")}
     assert f["strategy"] == [{"value": "split", "count": 5}]

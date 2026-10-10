@@ -125,6 +125,22 @@ ALLOWLIST: tuple[_AllowlistEntry, ...] = (
     # shared across loops — the provider is not reopened on a fresh loop the way
     # a reusable client is — so it is structurally loop-safe without the
     # open()/close() affinity protocol.
+    # Corpus Explorer run/job objects: each FactCheckRun / BackgroundJob is
+    # created, run and subscribed to on ONE loop (the REST server's, or the
+    # single ``asyncio.run`` of a TUI job) and discarded with it; nothing
+    # reopens one on a fresh loop, so the Events are structurally loop-safe.
+    _AllowlistEntry(
+        "src/notebooklm/_app/factcheck_runs.py",
+        "FactCheckRun",
+        "Lives for one run on one loop (server or a TUI job's asyncio.run); "
+        "never reopened on another loop, so its change/resume Events are loop-safe.",
+    ),
+    _AllowlistEntry(
+        "src/notebooklm/_app/background.py",
+        "BackgroundJob",
+        "Server-lifetime job created and awaited on the server loop only; its "
+        "change Event is never shared across loops.",
+    ),
     _AllowlistEntry(
         "src/notebooklm/mcp/_oauth.py",
         "SelfHostedOAuthProvider",

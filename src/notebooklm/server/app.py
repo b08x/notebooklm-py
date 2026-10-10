@@ -43,10 +43,23 @@ from ..exceptions import AuthError, NotebookLMError
 from ..paths import get_active_profile, resolve_profile, set_active_profile
 from ._auth import require_auth
 from ._context import AppState
+from ._corpus import CorpusServices, configure_llm_on_main_thread, install_corpus_handlers
 from ._errors import http_error_response, install_exception_handlers
 from ._limits import ServerLimiters
 from ._pending import PendingRegistry
-from .routes import artifacts, chat, meta, notebooks, notes, research, share, sources
+from ._static import mount_ui
+from .routes import (
+    artifacts,
+    chat,
+    corpus,
+    factcheck,
+    meta,
+    notebooks,
+    notes,
+    research,
+    share,
+    sources,
+)
 from .routes.sources import MAX_UPLOAD_BYTES
 
 __all__ = ["SERVER_NAME", "create_app"]
@@ -299,7 +312,10 @@ def _normalize_client_startup_error(exc: Exception) -> AuthError | None:
 
 
 def create_app(
-    *, profile: str | None = None, client_factory: ClientFactory | None = None
+    *,
+    profile: str | None = None,
+    client_factory: ClientFactory | None = None,
+    corpus_services: CorpusServices | None = None,
 ) -> FastAPI:
     """Build the FastAPI application.
 
@@ -310,6 +326,9 @@ def create_app(
         client_factory: Test seam — a zero-arg callable returning an async
             context manager that yields a client. Defaults to
             ``NotebookLMClient.from_storage(profile=profile, keepalive=600.0)``.
+        corpus_services: Test seam for the ``/v1/corpus`` routes (Postgres
+            session maker, embedder, checker, registries, ...). Defaults to
+            :class:`~notebooklm.server._corpus.CorpusServices`.
 
     Returns:
         A configured :class:`~fastapi.FastAPI` app whose lifespan binds exactly
@@ -317,12 +336,16 @@ def create_app(
         ``/healthz`` mounted.
     """
     factory = client_factory or (lambda: _default_factory(profile))
+    services = corpus_services or CorpusServices()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         previous_profile = get_active_profile()
         set_active_profile(resolve_profile(profile))
         pending = PendingRegistry()
+        # DSPy's LM is configured once here, on the main thread (CLAUDE.md DSPy
+        # rule); corpus workers bind it with dspy.context(lm=...).
+        configure_llm_on_main_thread(services)
         try:
             limiters = ServerLimiters.from_env()
             limiters.set_bound_loop(asyncio.get_running_loop())
@@ -402,6 +425,8 @@ def create_app(
                     yield
                 finally:
                     app.state.notebooklm = None
+                    await services.runs.shutdown()
+                    await services.jobs.shutdown()
         finally:
             set_active_profile(previous_profile)
 
@@ -416,7 +441,9 @@ def create_app(
         openapi_url=None,
     )
 
+    app.state.corpus = services
     install_exception_handlers(app)
+    install_corpus_handlers(app)
 
     @app.middleware("http")
     async def _limit_request_body(
@@ -484,6 +511,12 @@ def create_app(
     v1.include_router(research.router)
     v1.include_router(share.router)
     v1.include_router(meta.router)
+    v1.include_router(corpus.router)
+    v1.include_router(factcheck.router)
     app.include_router(v1)
+
+    # The Corpus Explorer SPA: public like /healthz (the shell holds no data;
+    # every /v1 call it makes still needs the bearer token).
+    mount_ui(app)
 
     return app

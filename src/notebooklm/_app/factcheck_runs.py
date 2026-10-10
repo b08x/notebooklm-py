@@ -53,7 +53,7 @@ from .fact_checks import (
     record_not_checkworthy,
 )
 from .sfl_format import format_sfl
-from .tracing import trace_url
+from .tracing import job_span, trace_url
 
 GATE_SOURCES = ("rule", "jev")
 GATE_MODES = ("interactive", "auto")
@@ -437,12 +437,12 @@ class FactCheckRun:
         self.started_at: float | None = None
         self.finished_at: float | None = None
         self.counts: Counter[str] = Counter()
-        self.gate = HumanGate(on_change=self._emit_raw)
-        if auto_skip:
-            self.gate.set_auto_skip(True)
         self._events: deque[dict[str, Any]] = deque(maxlen=EVENT_BUFFER)
         self._seq = 0
         self._changed = asyncio.Event()
+        self.gate = HumanGate(on_change=self._emit_raw)
+        if auto_skip:
+            self.gate.set_auto_skip(True)
         self._resume = asyncio.Event()
         self._resume.set()
         self._task: asyncio.Task[None] | None = None
@@ -515,9 +515,28 @@ class FactCheckRun:
 
     # -- control -----------------------------------------------------------
 
-    def start(self) -> asyncio.Task[None]:
-        """Run in the background on the current loop."""
-        self._task = asyncio.get_running_loop().create_task(self.run())
+    def start(self, *, traced: bool = False) -> asyncio.Task[None]:
+        """Run in the background on the current loop.
+
+        Failures are recorded on the run (``status``/``error``), not raised from
+        the task. ``traced`` opens a ``job.fact_check`` root span whose trace id
+        becomes the run's (Langfuse links).
+        """
+
+        async def body() -> None:
+            try:
+                if traced:
+                    with job_span("fact_check", run_id=self.id) as trace_id:
+                        self.trace_id = self.trace_id or trace_id
+                        await self.run()
+                else:
+                    await self.run()
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 - recorded on the run by run()
+                pass
+
+        self._task = asyncio.get_running_loop().create_task(body())
         return self._task
 
     def decide(self, item_id: str, check: bool) -> bool:
