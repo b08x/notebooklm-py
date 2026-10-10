@@ -65,6 +65,20 @@ describe("App shell", () => {
     expect(getToken()).toBeNull();
   });
 
+  it("a NotebookLM-auth 401 on another route keeps the user signed in", async () => {
+    localStorage.setItem("ce-token", "t");
+    mockFetch({
+      "GET /v1/corpus/health": HEALTHY,
+      "GET /v1/corpus/stats": { clauses: 1, filtered_max_clause_id: 1 },
+      "GET /v1/corpus/facets": new Status(401, { error: { category: "auth", message: "run notebooklm login" } }),
+    });
+    renderApp();
+    await screen.findByRole("navigation", { name: "Views" });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(getToken()).toBe("t");
+    expect(screen.queryByLabelText("Server token")).toBeNull();
+  });
+
   it("an unreachable database blocks the UI instead of showing an empty corpus (fact-4)", async () => {
     localStorage.setItem("ce-token", "t");
     mockFetch({

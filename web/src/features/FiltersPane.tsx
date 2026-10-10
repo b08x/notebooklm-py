@@ -78,7 +78,7 @@ function Facet({
         <button
           type="button"
           onClick={() => setExpanded((x) => !x)}
-          className="mt-0.5 px-1.5 text-[12px] text-muted transition-[color] duration-150 hover:text-fg"
+          className="mt-0.5 px-1.5 text-[12px] text-muted transition-[color,scale] duration-150 hover:text-fg active:scale-[0.96]"
         >
           {expanded ? "Show fewer" : `Show all ${rows.length}`}
         </button>
@@ -145,7 +145,7 @@ export function FiltersPane() {
           {active && (
             <button
               type="button"
-              className="ml-auto text-[12px] text-muted transition-[color] duration-150 hover:text-fg"
+              className="ml-auto text-[12px] text-muted transition-[color,scale] duration-150 hover:text-fg active:scale-[0.96]"
               onClick={() => actions.setFilters({
                 notebook_ids: undefined, document_ids: undefined, run_ids: undefined, strategies: undefined,
                 kinds: undefined, fact_check: undefined, quality: undefined, min_len: undefined, max_len: undefined,

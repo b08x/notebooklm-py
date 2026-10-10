@@ -19,6 +19,17 @@ import { useHealth } from "@/lib/queries";
 import { getToken, setToken } from "@/lib/token";
 import { useApp } from "@/state/store";
 
+async function tokenStillValid(): Promise<boolean> {
+  const token = getToken();
+  if (!token) return false;
+  try {
+    const resp = await fetch("/v1/corpus/health", { headers: { Authorization: `Bearer ${token}` } });
+    return resp.status !== 401 && resp.status !== 403;
+  } catch {
+    return true; // network trouble is not a rejected token
+  }
+}
+
 function Explorer() {
   const tab = useApp((s) => s.tab);
   const health = useHealth();
@@ -48,9 +59,14 @@ export function App() {
     () =>
       onApiError((e) => {
         if (e.status === 401) {
-          setToken(null);
-          setRejected(true);
-          setAuthed(false);
+          // A 401 can also mean "the server is not signed in to NotebookLM";
+          // only a token the server rejects on a corpus route signs us out.
+          void tokenStillValid().then((ok) => {
+            if (ok) return;
+            setToken(null);
+            setRejected(true);
+            setAuthed(false);
+          });
         } else if (e.status === 503 && e.category === "database_unreachable") {
           setDbDown(true);
         }

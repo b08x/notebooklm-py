@@ -46,7 +46,14 @@ function snapshot(over: Partial<FactCheckRunSnapshot> = {}): FactCheckRunSnapsho
     last_seq: 6,
     waiting: [{ item_id: "0002", ...GATE }],
     items: [
-      item(1, { status: "verified", confidence: 0.9, rationale: "Sources agree.", trace_url: "https://lf/trace/t" }),
+      item(1, {
+        status: "verified",
+        confidence: 0.9,
+        rationale: "Sources agree.",
+        trace_url: "https://lf/trace/t",
+        sift: { stop: "done", investigate_source: "done", find_coverage: "done", trace_claim: "done" },
+        sift_steps: { find_coverage: { coverage_summary: "Sources agree." } },
+      }),
       item(2, { status: "waiting", gate: GATE, probability: 0.62 }),
       item(3),
     ],
@@ -100,6 +107,10 @@ describe("Fact-check run screen (facts 35-39)", () => {
     expect(transcript).toHaveTextContent("[Speaker 0] line 2");
     expect(transcript).toHaveTextContent("next line");
     expect(screen.getByTestId("evidence")).toHaveTextContent("Sources agree.");
+    // The waiting chunk has not reached SIFT yet; step status reads pending.
+    expect(screen.getByTestId("sift")).toHaveTextContent("Stop◌ pendingInvestigate◌ pending");
+    fireEvent.click(screen.getAllByRole("listitem")[0]);
+    expect(screen.getByTestId("sift")).toHaveTextContent("Find coverage✓ done");
     expect(screen.getByRole("link", { name: /Langfuse trace/ })).toHaveAttribute("href", "https://lf/trace/t");
   });
 

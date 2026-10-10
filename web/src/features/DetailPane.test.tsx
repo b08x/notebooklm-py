@@ -91,4 +91,27 @@ describe("DetailPane", () => {
     renderWithClient(<DetailPane />);
     expect(screen.getByText(/Select a chunk/)).toBeInTheDocument();
   });
+
+  it("assesses a whole document or run: fact-check scope and SFL tagging (facts 49-50)", async () => {
+    const calls = mockFetch({ "GET /v1/corpus/chunks/doc:1:0": detail, "POST /v1/corpus/sfl/runs": { id: "j" } });
+    renderWithClient(<DetailPane />);
+    store.set({ detailId: "doc:1:0" });
+    await screen.findByTestId("child-highlight");
+    await userEvent.click(screen.getByRole("button", { name: "Assess" }));
+    const items = await screen.findAllByRole("menuitem");
+    expect(items.map((i) => i.textContent)).toEqual([
+      "This chunk",
+      "Whole document",
+      "Whole run #1",
+      "This chunk",
+      "Whole document",
+      "Whole run #1",
+    ]);
+    await userEvent.click(items[4]);
+    await waitFor(() => expect(calls.find((c) => c.path === "/v1/corpus/sfl/runs")?.body).toEqual({ scope: { document_ids: ["doc"] } }));
+    await userEvent.click(screen.getByRole("button", { name: "Assess" }));
+    await userEvent.click((await screen.findAllByRole("menuitem"))[2]);
+    expect(store.get().factcheckScope).toEqual({ run_ids: [1] });
+    expect(store.get().tab).toBe("factcheck");
+  });
 });

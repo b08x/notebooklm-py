@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { AnimatePresence, motion } from "motion/react";
 import { CircleCheck, CircleDashed, CircleDot, CircleSlash, CircleX, ExternalLink, Loader2, Pause, Play, ShieldCheck, Sparkles, Square, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -201,7 +202,7 @@ function StartPanel() {
                 type="button"
                 key={r.id}
                 onClick={() => store.set({ factcheckRunId: r.id })}
-                className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] transition-[background-color] duration-150 hover:bg-surface"
+                className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] transition-[background-color] duration-150 hover:bg-surface active:bg-surface-2"
               >
                 <code className="font-mono text-[11px] text-subtle">{r.id}</code>
                 <span className="flex-1 truncate">{r.label}</span>
@@ -258,7 +259,7 @@ function Queue({ snap, selected, onSelect, elapsed }: { snap: FactCheckRunSnapsh
             data-status={i.status}
             onClick={() => onSelect(i.item_id)}
             className={cn(
-              "grid w-full grid-cols-[18px_40px_1fr] items-baseline gap-1.5 rounded-md p-1.5 text-left text-[12.5px] text-muted transition-[background-color] duration-150 hover:bg-surface",
+              "grid w-full grid-cols-[18px_40px_1fr] items-baseline gap-1.5 rounded-md p-1.5 text-left text-[12.5px] text-muted transition-[background-color] duration-150 hover:bg-surface active:bg-surface-2",
               selected === i.item_id && "bg-selection text-fg shadow-[inset_2px_0_0_var(--warn)]",
             )}
           >
@@ -453,8 +454,26 @@ export function RunScreen({ runId }: { runId: string }) {
           {snap.error && <span className="text-[12px] text-bad">{snap.error}</span>}
           <span className="ml-auto flex gap-1.5">
             {!finished && (
-              <Button onClick={() => void post(`/v1/corpus/factcheck/runs/${runId}/${snap.status === "paused" ? "resume" : "pause"}`).then(() => setSnap((s) => (s ? { ...s, status: s.status === "paused" ? "running" : "paused" } : s)))}>
-                {snap.status === "paused" ? <Play /> : <Pause />} {snap.status === "paused" ? "Resume" : "Pause"}
+              <Button
+                onClick={() =>
+                  void post(`/v1/corpus/factcheck/runs/${runId}/${snap.status === "paused" ? "resume" : "pause"}`).then(() =>
+                    setSnap((s) => (s ? { ...s, status: s.status === "paused" ? "running" : "paused" } : s)),
+                  )
+                }
+              >
+                <AnimatePresence initial={false} mode="popLayout">
+                  <motion.span
+                    key={snap.status === "paused" ? "play" : "pause"}
+                    initial={{ scale: 0.25, opacity: 0, filter: "blur(4px)" }}
+                    animate={{ scale: 1, opacity: 1, filter: "blur(0px)" }}
+                    exit={{ scale: 0.25, opacity: 0, filter: "blur(4px)" }}
+                    transition={{ type: "spring", duration: 0.3, bounce: 0 }}
+                    className="grid place-items-center"
+                  >
+                    {snap.status === "paused" ? <Play /> : <Pause />}
+                  </motion.span>
+                </AnimatePresence>
+                {snap.status === "paused" ? "Resume" : "Pause"}
               </Button>
             )}
             {!finished && (

@@ -20,6 +20,16 @@ const ENTITY_COLORS: Record<string, string> = {
   NUM: "var(--cat-amber)",
 };
 
+/** Start SFL tagging for any scope (chunk, document, run or selection). */
+export async function tagSfl(scope: Record<string, unknown>, label: string): Promise<void> {
+  try {
+    await post("/v1/corpus/sfl/runs", { scope });
+    toast(`SFL tagging started for ${label}`);
+  } catch (e) {
+    toast.error((e as Error).message);
+  }
+}
+
 export function ParentContext({ detail }: { detail: ChunkDetail }) {
   const p = detail.parent;
   if (!p) return <p className="text-[13px] text-muted">{detail.text}</p>;
@@ -65,7 +75,7 @@ function ContextLines({ detail }: { detail: ChunkDetail }) {
           disabled={l.on}
           onClick={() => actions.open(l.external_id)}
           className={cn(
-            "grid w-full grid-cols-[44px_minmax(0,1fr)] gap-2.5 px-3 py-1 text-left text-muted transition-[background-color] duration-150 enabled:hover:bg-surface-2/60",
+            "grid w-full grid-cols-[44px_minmax(0,1fr)] gap-2.5 px-3 py-1 text-left text-muted transition-[background-color] duration-150 enabled:hover:bg-surface-2/60 enabled:active:bg-surface-2",
             l.on && "bg-primary-soft/40 text-fg shadow-[inset_2px_0_0_var(--primary)]",
           )}
         >
@@ -125,7 +135,7 @@ function Similar({ id }: { id: string }) {
           type="button"
           key={n.external_id}
           onClick={() => actions.open(n.external_id)}
-          className="grid grid-cols-[48px_minmax(0,1fr)] gap-2 rounded-md p-1 text-left text-[12.5px] text-muted transition-[background-color] duration-150 hover:bg-surface"
+          className="grid grid-cols-[48px_minmax(0,1fr)] gap-2 rounded-md p-1 text-left text-[12.5px] text-muted transition-[background-color] duration-150 hover:bg-surface active:bg-surface-2"
         >
           <code className="font-mono text-[11px] text-secondary tabular">{n.distance.toFixed(3)}</code>
           <span>
@@ -267,12 +277,7 @@ export function DetailPane() {
               ) : (
                 <div className="flex items-center gap-2 text-[12.5px] text-muted">
                   Not tagged yet.
-                  <Button
-                    onClick={async () => {
-                      await post("/v1/corpus/sfl/runs", { scope: { external_ids: [d.external_id] } });
-                      toast("SFL tagging started for this chunk");
-                    }}
-                  >
+                  <Button onClick={() => void tagSfl({ external_ids: [d.external_id] }, "this chunk")}>
                     <Sparkles /> Tag SFL
                   </Button>
                 </div>
@@ -298,9 +303,27 @@ export function DetailPane() {
         >
           <Copy /> Copy
         </Button>
-        <Button onClick={() => actions.startFactCheck({ external_ids: [d.external_id] })}>
-          <ShieldCheck /> Fact-check
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button aria-label="Assess">
+              <ShieldCheck /> Assess <ChevronDown />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuLabel>Fact-check…</DropdownMenuLabel>
+            <DropdownMenuItem onSelect={() => actions.startFactCheck({ external_ids: [d.external_id] })}>This chunk</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => actions.startFactCheck({ document_ids: [d.document_id] })}>Whole document</DropdownMenuItem>
+            {d.run_id !== null && (
+              <DropdownMenuItem onSelect={() => actions.startFactCheck({ run_ids: [d.run_id as number] })}>Whole run #{d.run_id}</DropdownMenuItem>
+            )}
+            <DropdownMenuLabel>Tag SFL…</DropdownMenuLabel>
+            <DropdownMenuItem onSelect={() => void tagSfl({ external_ids: [d.external_id] }, "this chunk")}>This chunk</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void tagSfl({ document_ids: [d.document_id] }, "this document")}>Whole document</DropdownMenuItem>
+            {d.run_id !== null && (
+              <DropdownMenuItem onSelect={() => void tagSfl({ run_ids: [d.run_id as number] }, `run #${d.run_id}`)}>Whole run #{d.run_id}</DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
         {d.notebook_id && (
           <Button asChild variant="ghost" size="icon" aria-label="Open notebook in NotebookLM" title="Open notebook in NotebookLM">
             <a href={`https://notebooklm.google.com/notebook/${d.notebook_id}`} target="_blank" rel="noreferrer">

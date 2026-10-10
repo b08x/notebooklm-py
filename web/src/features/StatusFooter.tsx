@@ -33,7 +33,7 @@ export function StatusFooter({ health }: { health: Health | undefined }) {
           type="button"
           key={r.id}
           data-testid="status-run"
-          className="transition-[color] duration-150 hover:text-fg"
+          className="transition-[color,scale] duration-150 hover:text-fg active:scale-[0.96]"
           onClick={() => {
             store.set({ factcheckRunId: r.id });
             store.set({ tab: "factcheck" });

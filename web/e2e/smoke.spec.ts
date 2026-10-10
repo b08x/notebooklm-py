@@ -66,3 +66,32 @@ test("the UI loads at /ui and the footer reports Postgres (facts 1, 9)", async (
   await expect(page.getByTestId("status-postgres")).toContainText(/postgres \d+ms/);
   await expect(page.getByTestId("status-embedder")).toContainText("ollama embed down");
 });
+
+test("map: clicking a projected point opens that chunk (fact-31)", async ({ page, request }) => {
+  const auth = { Authorization: `Bearer ${E2E_TOKEN}` };
+  const map = await (await request.get(`/v1/corpus/map?notebook_ids=${E2E_NOTEBOOK}`, { headers: auth })).json();
+  const points = map.points as { x: number; y: number; external_id: string; preview: string }[];
+  expect(points.length).toBeGreaterThan(5);
+  expect(map.color_by).toBe("document");
+
+  await page.goto("/ui/map");
+  await page.getByRole("checkbox", { name: E2E_NOTEBOOK, exact: true }).click();
+  const canvas = page.getByRole("img", { name: `Embedding map of ${points.length} chunks` });
+  await expect(canvas).toBeVisible();
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error("no canvas box");
+
+  // Same projection-to-pixel mapping as MapView (24px padding, y flipped).
+  const pad = 24;
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const target = points[Math.floor(points.length / 2)];
+  const px = pad + ((target.x - x0) * (box.width - 2 * pad)) / (x1 - x0 || 1);
+  const py = box.height - pad - ((target.y - y0) * (box.height - 2 * pad)) / (y1 - y0 || 1);
+  await page.mouse.move(box.x + px, box.y + py);
+  await page.mouse.click(box.x + px, box.y + py);
+  await expect(page.getByTestId("child-highlight")).toBeVisible();
+  const opened = await page.getByTestId("child-highlight").textContent();
+  expect(target.preview.startsWith((opened ?? "").slice(0, 20)) || (opened ?? "").startsWith(target.preview.slice(0, 20))).toBe(true);
+});

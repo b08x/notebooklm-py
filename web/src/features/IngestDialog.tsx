@@ -200,7 +200,7 @@ export function IngestDialog() {
                 onClick={() => setArtifactId(a.id)}
                 className={cn(
                   "flex w-full items-center gap-2 border-b border-line/60 px-3 py-2 text-left text-[13px] transition-[background-color] duration-150 last:border-0",
-                  a.ingestible ? "hover:bg-surface-2/60" : "cursor-not-allowed text-subtle",
+                  a.ingestible ? "hover:bg-surface-2/60 active:bg-surface-2" : "cursor-not-allowed text-subtle",
                   artifactId === a.id && "bg-selection shadow-[inset_2px_0_0_var(--primary)]",
                 )}
               >

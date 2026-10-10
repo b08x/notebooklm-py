@@ -153,7 +153,7 @@ export function AskDrawer() {
               <div className="flex items-center gap-2 text-[13px] text-muted" role="status">
                 <Loader2 className="size-4 animate-spin" />
                 {mode === "model" ? "Waiting for the first token…" : mode === "notebooklm" || mode === "auto" ? "NotebookLM is answering" : "The agent is working"}
-                <span className="font-mono tabular">{(((now - (state.started ?? now)) / 1000) | 0)}s</span>
+                <span className="font-mono text-subtle tabular">· {(((now - (state.started ?? now)) / 1000) | 0)}s</span>
               </div>
             )}
             {state.status === "error" && (
@@ -176,7 +176,7 @@ export function AskDrawer() {
                     type="button"
                     key={h.external_id}
                     onClick={() => store.set({ detailId: h.external_id })}
-                    className="grid grid-cols-[30px_1fr] gap-2 rounded-md p-1 text-left text-[12.5px] text-muted transition-[background-color] duration-150 hover:bg-surface-2"
+                    className="grid grid-cols-[30px_1fr] gap-2 rounded-md p-1 text-left text-[12.5px] text-muted transition-[background-color] duration-150 hover:bg-surface-2 active:bg-line"
                   >
                     <code className="font-mono text-[11px] text-primary">C{i + 1}</code>
                     <span className="line-clamp-2">{h.text}</span>
