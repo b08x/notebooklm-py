@@ -46,7 +46,9 @@ from .._preprocessing.transcription import (
     SpeechmaticsAdapter,
     TranscribeCppAdapter,
     TranscriptionAdapter,
+    TranscriptionOptions,
     TranscriptionService,
+    build_adapter,
 )
 from .artifacts import get_artifact, get_artifact_prompt
 
@@ -211,20 +213,22 @@ _TRANSCRIPTION_ADAPTERS: dict[str, type[TranscriptionAdapter]] = {
 }
 
 
-def _build_transcription_adapter() -> TranscriptionAdapter:
-    provider = os.environ.get(TRANSCRIBE_PROVIDER_ENV, "deepgram").lower()
+def _build_transcription_adapter(
+    options: TranscriptionOptions | None = None,
+) -> TranscriptionAdapter:
+    """Adapter for ``options`` (default: the ``.env`` / config defaults).
 
-    # Auto-fallback to local transcribe_cpp if Deepgram is requested but no key is provided
-    if provider == "deepgram" and not os.environ.get("DEEPGRAM_API_KEY"):
-        provider = "transcribe_cpp"
-
-    adapter_cls = _TRANSCRIPTION_ADAPTERS.get(provider)
-    if adapter_cls is None:
+    Deepgram without ``DEEPGRAM_API_KEY`` falls back to local transcribe_cpp.
+    """
+    opts = options or TranscriptionOptions.from_env()
+    if opts.provider == "deepgram" and not os.environ.get("DEEPGRAM_API_KEY"):
+        opts = TranscriptionOptions("transcribe_cpp", opts.diarize, opts.language)
+    if opts.provider not in _TRANSCRIPTION_ADAPTERS:
         raise ValueError(
-            f"Unknown {TRANSCRIBE_PROVIDER_ENV}={provider!r}; "
+            f"Unknown {TRANSCRIBE_PROVIDER_ENV}={opts.provider!r}; "
             f"expected one of {sorted(_TRANSCRIPTION_ADAPTERS)}"
         )
-    return adapter_cls()
+    return build_adapter(opts)
 
 
 @dataclass

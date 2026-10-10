@@ -7,13 +7,14 @@ later child fails.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Protocol
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.models import FACT_CHECK_VERDICTS, ChunkRun, Clause, FactCheck, ParentChunk
+from .scope import Scope
 
 #: Verdicts that set ``Clause.fact_check_passed``; every other verdict leaves it untouched.
 PASSED_BY_VERDICT: dict[str, bool] = {"supported": True, "contradicted": False}
@@ -47,19 +48,29 @@ async def load_children(
     session: AsyncSession,
     notebook_id: str | None = None,
     parent_id: int | None = None,
+    *,
+    scope: Scope | None = None,
 ) -> list[ChildClaim]:
-    """Child clauses of active chunk runs, optionally filtered by notebook and parent."""
+    """Child clauses in scope, in id order.
+
+    ``notebook_id`` / ``parent_id`` are the TUI's notebook scope; ``scope``
+    narrows by documents, runs or an explicit chunk selection instead (see
+    :class:`~notebooklm._app.scope.Scope`).
+    """
+    effective = scope or Scope(notebook_id=notebook_id, parent_id=parent_id)
+    if scope is not None and (notebook_id is not None or parent_id is not None):
+        effective = replace(
+            scope,
+            notebook_id=notebook_id or scope.notebook_id,
+            parent_id=parent_id if parent_id is not None else scope.parent_id,
+        )
     stmt = (
         select(Clause, ParentChunk.text, ChunkRun.notebook_id)
         .join(ChunkRun, Clause.run_id == ChunkRun.id)
         .outerjoin(ParentChunk, Clause.parent_id == ParentChunk.id)
-        .where(ChunkRun.is_active.is_(True))
         .order_by(Clause.id)
     )
-    if notebook_id is not None:
-        stmt = stmt.where(ChunkRun.notebook_id == notebook_id)
-    if parent_id is not None:
-        stmt = stmt.where(Clause.parent_id == parent_id)
+    stmt = effective.apply(stmt)
     result = await session.execute(stmt)
     return [
         ChildClaim(

@@ -227,8 +227,12 @@ class IngestionService:
         notebook_id: str | None = None,
         context: str | None = None,
         on_progress: Callable[[int, int], None] | None = None,
+        params: dict[str, Any] | None = None,
     ) -> IngestResult | None:
         """Persist caller-produced chunks 1:1 as parent+child pairs.
+
+        ``params`` is merged into the run's ``chunk_runs.params`` (e.g.
+        ``{"kind": "audio", "artifact_id": ..., "title": ...}``).
 
         Used for audio transcripts, whose turns are already the units the
         assessment pipeline keys its results to. Returns the run (with child
@@ -246,7 +250,7 @@ class IngestionService:
             chunked,
             strategy_name=PROVIDED_STRATEGY,
             strategy_version=PROVIDED_VERSION,
-            params={},
+            params=dict(params or {}),
             notebook_id=notebook_id,
             context=context,
             on_progress=on_progress,
@@ -262,8 +266,12 @@ class IngestionService:
         context: str | None = None,
         strategy: ChunkStrategy | None = None,
         on_progress: Callable[[int, int], None] | None = None,
+        params: dict[str, Any] | None = None,
     ) -> IngestResult | None:
-        """Run ``strategy`` (default recursive) over ``text`` and persist the run."""
+        """Run ``strategy`` (default recursive) over ``text`` and persist the run.
+
+        ``params`` is merged over the strategy's own params in ``chunk_runs.params``.
+        """
         strat = strategy or self.strategy or _default_strategy()
         # to_thread copies contextvars, so an LM bound by the job runner's
         # dspy.context reaches the strategy (dynamic-window needs it).
@@ -278,7 +286,7 @@ class IngestionService:
             chunked,
             strategy_name=strat.name,
             strategy_version=strat.version,
-            params=dict(strat.params),
+            params={**dict(strat.params), **(params or {})},
             notebook_id=notebook_id,
             context=context,
             on_progress=on_progress,
