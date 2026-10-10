@@ -5,6 +5,15 @@ across the whole document, and the document's ``percentile`` distance sets the
 break threshold. Groups below ``min_child_chars`` merge into a neighbour, and
 groups above ``max_child_chars`` split at sentence boundaries. Each child carries
 the normalized mean of its sentence vectors, so ingest does not embed it again.
+
+Documented deviations from the plain specification:
+
+- A break occurs where ``distance >= threshold`` (and ``distance > 0``), not
+  strictly ``>``. A strict comparison cannot break at the 90th percentile of a
+  document whose distances take only two values, such as the 9-sentence case
+  in the tests, where the threshold equals the larger value.
+- ``min_child_chars`` is best-effort. Merging runs before the oversize split, so
+  a tail piece produced by splitting an oversize group can stay below the minimum.
 """
 
 from __future__ import annotations
@@ -68,21 +77,22 @@ def _paragraph_spans(text: str, max_chars: int) -> list[Span]:
         blocks.append(last)
 
     packed: list[Span] = []
-    current: Span | None = None
+    cur_s: int | None = None
+    cur_e = 0
     for s, e in blocks:
         if e - s > max_chars:
-            if current:
-                packed.append(current)
-                current = None
+            if cur_s is not None:
+                packed.append((cur_s, cur_e))
+                cur_s = None
             packed.extend(_window_spans(text, s, e, max_chars))
-        elif current and e - current[0] <= max_chars:
-            current = (current[0], e)
+        elif cur_s is not None and e - cur_s <= max_chars:
+            cur_e = e
         else:
-            if current:
-                packed.append(current)
-            current = (s, e)
-    if current:
-        packed.append(current)
+            if cur_s is not None:
+                packed.append((cur_s, cur_e))
+            cur_s, cur_e = s, e
+    if cur_s is not None:
+        packed.append((cur_s, cur_e))
     return packed
 
 
