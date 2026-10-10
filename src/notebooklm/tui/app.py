@@ -3,6 +3,7 @@ import logging
 import sys
 
 from rich.console import Console
+from rich.layout import Layout
 from rich.live import Live
 
 from .cache import TUICache
@@ -12,23 +13,39 @@ from .logging_bridge import install_tui_log_handler
 from .renderers import (
     render_footer,
     render_header,
+    render_jobs,
     render_main,
+    render_modebar,
     render_sidebar,
 )
-from .state import TUIState, View
+from .state import Mode, TUIState, View
 from .theme import THEME
 from .views.notebook_list import load_notebooks_sync
 
 logger = logging.getLogger(__name__)
 
 
+def layout_for_mode(cache: dict[Mode, Layout], mode: Mode) -> Layout:
+    """Return the cached layout for ``mode``, building it on first use."""
+    if mode not in cache:
+        cache[mode] = build_layout(mode)
+    return cache[mode]
+
+
 def update_layout(layout, state):
     layout["header"].update(render_header(state))
-    layout["sidebar"].update(render_sidebar(state))
+    layout["modebar"].update(render_modebar(state))
 
-    results_panel, detail_panel = render_main(state)
-    layout["content"]["results"].update(results_panel)
-    layout["content"]["detail"].update(detail_panel)
+    if state.mode == Mode.JOBS:
+        jobs_panel, jobs_detail = render_jobs(state)
+        layout["jobs_list"].update(jobs_panel)
+        layout["jobs_detail"].update(jobs_detail)
+    else:
+        layout["sidebar"].update(render_sidebar(state))
+
+        results_panel, detail_panel = render_main(state)
+        layout["content"]["results"].update(results_panel)
+        layout["content"]["detail"].update(detail_panel)
 
     layout["footer"].update(render_footer(state))
 
@@ -119,7 +136,8 @@ def run_tui(download_dir: str | None = None) -> None:
     with console.status("Loading notebooks...", spinner="dots"):
         load_notebooks_sync(state)
 
-    layout = build_layout()
+    layouts: dict[Mode, Layout] = {}
+    layout = layout_for_mode(layouts, state.mode)
 
     # Initial render
     update_layout(layout, state)
@@ -226,6 +244,10 @@ def run_tui(download_dir: str | None = None) -> None:
                             state_changed = True
 
                 if state_changed:
+                    target = layout_for_mode(layouts, state.mode)
+                    if target is not layout:
+                        layout = target
+                        live.update(layout)
                     update_layout(layout, state)
                     live.refresh()
         except KeyboardInterrupt:
