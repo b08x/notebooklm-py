@@ -17,8 +17,14 @@ OUTPUT = {
 
 
 class FakeEngine:
-    def __init__(self, fail_on: set[str] | None = None, cancel_store: tuple | None = None):
+    def __init__(
+        self,
+        fail_on: set[str] | None = None,
+        cancel_store: tuple | None = None,
+        malformed_on: set[str] | None = None,
+    ):
         self.fail_on = fail_on or set()
+        self.malformed_on = malformed_on or set()
         self.cancel_store = cancel_store
         self.calls: list[str] = []
         self.lms: list[Any] = []
@@ -31,6 +37,8 @@ class FakeEngine:
             store.request_cancel(job_id)
         if text in self.fail_on:
             raise ValueError(f"bad input: {text}")
+        if text in self.malformed_on:
+            return {"ideational": {}, "interpersonal": ["not", "a", "dict"]}
         return OUTPUT
 
 
@@ -163,3 +171,25 @@ def test_cancel_stops_before_next_child_and_keeps_finished_work(store: JobStore)
 
     assert engine.calls == ["The cat sat."]
     assert _saved_ids(db) == {1}
+
+
+def test_malformed_output_fails_only_its_child(store: JobStore) -> None:
+    ctx, job_id = _ctx(store)
+    db = FakeDb(_children())
+    engine = FakeEngine(malformed_on={"It was warm."})
+
+    summary = asyncio.run(
+        run_sfl_tag(ctx, load=db.load, save=db.save, engine_factory=lambda: engine)
+    )
+
+    assert summary == "Tagged 2 children (1 failed)"
+    assert _saved_ids(db) == {1, 3}
+    items = store.items(job_id)
+    assert items[0].status == ItemStatus.FAILED
+    assert "ValueError" in (items[0].error or "")
+    assert items[1].status == ItemStatus.DONE
+
+
+def test_to_sfl_rejects_non_dict_interpersonal() -> None:
+    with pytest.raises(ValueError, match="interpersonal is list"):
+        to_sfl({"ideational": {}, "interpersonal": ["a", "b"]})

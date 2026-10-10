@@ -42,7 +42,12 @@ async def load_children(
 ) -> list[ChildRow]:
     """Children of the notebook's active runs, ordered by parent index then id."""
     stmt = (
-        select(Clause.id, Clause.parent_id, ParentChunk.index, Clause.text)
+        select(
+            Clause.id.label("id"),
+            Clause.parent_id.label("parent_id"),
+            ParentChunk.index.label("parent_index"),
+            Clause.text.label("text"),
+        )
         .join(ChunkRun, Clause.run_id == ChunkRun.id)
         .join(ParentChunk, Clause.parent_id == ParentChunk.id)
         .where(ChunkRun.is_active.is_(True), ChunkRun.notebook_id == notebook_id)
@@ -50,7 +55,10 @@ async def load_children(
     )
     async with session_factory() as session:
         rows = (await session.execute(stmt)).all()
-    return [ChildRow(id=r[0], parent_id=r[1], parent_index=r[2], text=r[3]) for r in rows]
+    return [
+        ChildRow(id=row.id, parent_id=row.parent_id, parent_index=row.parent_index, text=row.text)
+        for row in rows
+    ]
 
 
 async def save_sfl(
@@ -64,9 +72,14 @@ async def save_sfl(
 
 
 def to_sfl(output: dict[str, Any]) -> dict[str, Any]:
-    """Map ``SFLEngine.forward`` output to the stored ``sfl`` shape."""
+    """Map ``SFLEngine.forward`` output to the stored ``sfl`` shape.
+
+    Raises ``ValueError`` when ``interpersonal`` is not a mapping.
+    """
     pass1 = output.get("ideational", {})
-    interpersonal = dict(output.get("interpersonal", {}))
+    interpersonal = output.get("interpersonal", {})
+    if not isinstance(interpersonal, dict):
+        raise ValueError(f"interpersonal is {type(interpersonal).__name__}, expected dict")
     sfl: dict[str, Any] = {key: interpersonal.get(key) for key in SFL_KEYS}
     sfl["pass1"] = pass1
     raw = {k: v for k, v in interpersonal.items() if k not in SFL_KEYS}
@@ -95,34 +108,35 @@ async def run_sfl_tag(
 
     engine = engine_factory()
     lm = dspy.settings.lm
-    groups: dict[int, list[ChildRow]] = {}
+    groups: dict[int, tuple[int, list[ChildRow]]] = {}
     for child in children:
-        groups.setdefault(child.parent_id, []).append(child)
+        groups.setdefault(child.parent_id, (child.parent_index, []))[1].append(child)
 
     tagged = 0
     failed = 0
-    for parent_number, rows in enumerate(groups.values(), start=1):
-        item = ctx.add_item(f"parent {rows[0].parent_index}: {len(rows)} children", "sfl_tag")
+    for parent_number, (parent_index, rows) in enumerate(groups.values(), start=1):
+        item = ctx.add_item(f"parent {parent_index}: {len(rows)} children", "sfl_tag")
         ctx.item_running(item)
         ctx.phase(f"parent {parent_number}/{len(groups)}", 100 * (parent_number - 1) / len(groups))
         results: dict[int, dict[str, Any]] = {}
-        errors: list[str] = []
+        first_error: str | None = None
+        error_count = 0
         try:
             for row in rows:
                 ctx.check_cancelled()
                 try:
                     output = await asyncio.to_thread(_forward, engine, lm, row.text)
+                    results[row.id] = to_sfl(output)
                 except Exception as e:
-                    errors.append(f"{type(e).__name__}: {e}")
-                    continue
-                results[row.id] = to_sfl(output)
+                    error_count += 1
+                    first_error = first_error or f"{type(e).__name__}: {e}"
         finally:
             if results:
                 await save(session_factory, results)
         tagged += len(results)
-        failed += len(errors)
-        if errors:
-            ctx.item_failed(item, f"{len(errors)}/{len(rows)} children failed: {errors[0]}")
+        failed += error_count
+        if first_error is not None:
+            ctx.item_failed(item, f"{error_count}/{len(rows)} children failed: {first_error}")
         else:
             ctx.item_done(item)
     return f"Tagged {tagged} children ({failed} failed)"
