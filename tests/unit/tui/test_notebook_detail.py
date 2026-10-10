@@ -31,20 +31,12 @@ def _patched_session_maker(mock_maker) -> MagicMock:
     return mock_session
 
 
-
-
-
-
 def test_start_ingestion_noop_without_selected_notebook():
     state = TUIState()
     state.selected_notebook = None
     start_ingestion(state)
     assert state.background_task is None
     assert state.job_store is None
-
-
-
-
 
 
 def test_start_source_selection_noop_without_selected_notebook():
@@ -240,10 +232,6 @@ def test_run_assess_audio_overview_source_fallback_switches_view():
 
 
 # --- notes in the ingestion picker (notebook-curation goal, step 4b) ------------
-
-
-
-
 
 
 @pytest.mark.asyncio

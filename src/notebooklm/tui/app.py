@@ -18,11 +18,24 @@ from .renderers import (
     render_modebar,
     render_sidebar,
 )
+from .renderers.factcheck import render_factcheck
+from .renderers.ingest import render_ingest
 from .state import Mode, TUIState, View
 from .theme import THEME
+from .views import corpus_view
 from .views.notebook_list import load_notebooks_sync
 
 logger = logging.getLogger(__name__)
+
+
+def uses_legacy_assessment(state: TUIState) -> bool:
+    """Fact-check mode shows the audio-assessment panes while that flow is active."""
+    return state.mode == Mode.FACT_CHECK and bool(state.assessment_state)
+
+
+def layout_mode(state: TUIState) -> Mode:
+    """Which layout shape ``state`` renders into (legacy assessment uses the default)."""
+    return Mode.NOTEBOOKS if uses_legacy_assessment(state) else state.mode
 
 
 def layout_for_mode(cache: dict[Mode, Layout], mode: Mode) -> Layout:
@@ -36,10 +49,21 @@ def update_layout(layout, state):
     layout["header"].update(render_header(state))
     layout["modebar"].update(render_modebar(state))
 
-    if state.mode == Mode.JOBS:
+    shape = layout_mode(state)
+    if shape == Mode.JOBS:
         jobs_panel, jobs_detail = render_jobs(state)
         layout["jobs_list"].update(jobs_panel)
         layout["jobs_detail"].update(jobs_detail)
+    elif shape == Mode.INGEST:
+        tree, kids, detail = render_ingest(state)
+        layout["ingest_tree"].update(tree)
+        layout["ingest_children"].update(kids)
+        layout["ingest_detail"].update(detail)
+    elif shape == Mode.FACT_CHECK:
+        claims, sift, evidence = render_factcheck(state)
+        layout["fc_claims"].update(claims)
+        layout["fc_sift"].update(sift)
+        layout["fc_evidence"].update(evidence)
     else:
         layout["sidebar"].update(render_sidebar(state))
 
@@ -137,7 +161,7 @@ def run_tui(download_dir: str | None = None) -> None:
         load_notebooks_sync(state)
 
     layouts: dict[Mode, Layout] = {}
-    layout = layout_for_mode(layouts, state.mode)
+    layout = layout_for_mode(layouts, layout_mode(state))
 
     # Initial render
     update_layout(layout, state)
@@ -147,6 +171,7 @@ def run_tui(download_dir: str | None = None) -> None:
         try:
             # Force first render
             live.refresh()
+            corpus_loading = False
             while True:
                 keys = get_keys()
                 state_changed = False
@@ -228,6 +253,18 @@ def run_tui(download_dir: str | None = None) -> None:
                     if before != after or state.running_jobs():
                         state_changed = True
 
+                # Ingest / Fact-check data loads on a worker thread; redraw
+                # while a query is pending and once more when it lands.
+                was_loading = corpus_loading
+                if state.mode == Mode.INGEST:
+                    corpus_view.load_ingest(state)
+                    corpus_view.load_children(state)
+                elif state.mode == Mode.FACT_CHECK and not uses_legacy_assessment(state):
+                    corpus_view.load_claims(state)
+                corpus_loading = corpus_view.is_loading(state)
+                if corpus_loading or was_loading:
+                    state_changed = True
+
                 # Auto-refresh if tokens replenish enough to unpause, or meter changes
                 state.update_tokens()
                 if not hasattr(state, "_last_rendered_tokens"):
@@ -244,7 +281,7 @@ def run_tui(download_dir: str | None = None) -> None:
                             state_changed = True
 
                 if state_changed:
-                    target = layout_for_mode(layouts, state.mode)
+                    target = layout_for_mode(layouts, layout_mode(state))
                     if target is not layout:
                         layout = target
                         live.update(layout)

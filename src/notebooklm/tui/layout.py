@@ -13,6 +13,25 @@ def build_layout(mode: Mode = Mode.NOTEBOOKS) -> Layout:
         Layout(name="footer", size=3),
     )
 
+    if mode == Mode.INGEST:
+        layout["body"].split_row(
+            Layout(name="ingest_tree", ratio=3, minimum_size=40),
+            Layout(name="ingest_right", ratio=4),
+        )
+        layout["ingest_right"].split_column(
+            Layout(name="ingest_children", ratio=2), Layout(name="ingest_detail", ratio=3)
+        )
+        return layout
+
+    if mode == Mode.FACT_CHECK:
+        layout["body"].split_row(
+            Layout(name="fc_claims", ratio=4), Layout(name="fc_right", ratio=3)
+        )
+        layout["fc_right"].split_column(
+            Layout(name="fc_sift", ratio=2), Layout(name="fc_evidence", ratio=3)
+        )
+        return layout
+
     if mode == Mode.JOBS:
         layout["body"].split_row(
             Layout(name="jobs_list", ratio=3), Layout(name="jobs_detail", ratio=4)

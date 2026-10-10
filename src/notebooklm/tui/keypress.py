@@ -220,6 +220,14 @@ def handle_key(key: str, state: TUIState) -> bool:
     if state.mode == Mode.JOBS and key in ("j", "k", "x", "R", "C", "f", "\r", "\n"):
         return _handle_jobs_key(key, state)
 
+    if state.mode == Mode.INGEST and key in _INGEST_KEYS:
+        view = state.ingest_view
+        if key != "\x1b" or view.get("picker") or view.get("show_compare"):
+            return _handle_ingest_key(key, state)
+
+    if state.mode == Mode.FACT_CHECK and not state.assessment_state and key in _FACTCHECK_KEYS:
+        return _handle_factcheck_key(key, state)
+
     if state.current_view == View.CHAT:
         if key == "\x1b" or key == "\t":  # Escape or Tab
             if state.previous_view:
@@ -510,6 +518,106 @@ def _switch_mode(state: TUIState, mode: Mode) -> None:
     if target is not None and target != state.current_view:
         state.previous_view = state.current_view
         state.current_view = target
+
+
+_INGEST_KEYS = frozenset(
+    {"j", "k", "J", "K", "t", "d", "g", "f", "v", "i", "r", "x", "s", "F", "T", "\r", "\n", "\x1b"}
+)
+_FACTCHECK_KEYS = frozenset({"j", "k", "a", "c", "u", "F", "g"})
+
+
+def _enqueue(
+    state: TUIState, kind: str, notebook_id: str | None, payload: dict | None = None
+) -> None:
+    if state.job_store is None:
+        state.error_message = "Job queue unavailable"
+        return
+    state.job_store.enqueue(kind, notebook_id, payload or {})
+    state.jobs_snapshot_at = 0.0
+    state.error_message = f"Queued {kind}" + (f" for {notebook_id}" if notebook_id else "")
+
+
+def _handle_ingest_key(key: str, state: TUIState) -> bool:
+    """Ingest mode: parent/child cursors, detail toggles, strategy picker, jobs."""
+    from .views import corpus_view as cv
+    from .views.notebook_detail import start_ingestion
+
+    view = state.ingest_view
+    nb = state.selected_notebook
+
+    if view.get("picker"):
+        choices = cv.STRATEGY_CHOICES
+        cursor = view.get("picker_cursor", 0)
+        if key == "j":
+            view["picker_cursor"] = min(cursor + 1, len(choices) - 1)
+        elif key == "k":
+            view["picker_cursor"] = max(cursor - 1, 0)
+        elif key in ("\r", "\n"):
+            view["picker"] = False
+            start_ingestion(state, None, strategy=choices[cursor])
+        elif key == "\x1b":
+            view["picker"] = False
+        return True
+
+    if key == "\x1b":
+        view["show_compare"] = False
+    elif key in ("j", "k"):
+        count = len(cv.parent_rows(view))
+        cursor = view.get("cursor", 0)
+        view["cursor"] = min(cursor + 1, max(count - 1, 0)) if key == "j" else max(cursor - 1, 0)
+        view["child_cursor"] = 0
+        if view.get("show_compare"):
+            cv.load_compare(state)
+    elif key in ("J", "K"):
+        count = len(cv.selected_children(view))
+        cursor = view.get("child_cursor", 0)
+        view["child_cursor"] = (
+            min(cursor + 1, max(count - 1, 0)) if key == "J" else max(cursor - 1, 0)
+        )
+    elif key in ("t", "d", "g", "f"):
+        view["detail"] = {"t": "tokens", "d": "deps", "g": "groups", "f": "sfl"}[key]
+        view["show_compare"] = False
+    elif key == "v":
+        views = cv.DETAIL_VIEWS
+        current = view.get("detail", views[0])
+        view["detail"] = views[(views.index(current) + 1) % len(views)]
+    elif key == "i":
+        start_ingestion(state, None)
+    elif key == "r":
+        view["picker"] = True
+        view["picker_cursor"] = 0
+    elif key == "x":
+        view["show_compare"] = not view.get("show_compare")
+        if view["show_compare"]:
+            cv.load_compare(state)
+    elif key == "s":
+        _enqueue(state, "sfl_tag", nb)
+    elif key == "F":
+        _enqueue(state, "fact_check", nb)
+    elif key == "T":
+        _enqueue(state, "topic_model", None, {"min_topic_size": 10})
+    elif key in ("\r", "\n"):
+        cv.load_ingest(state, force=True)
+    return True
+
+
+def _handle_factcheck_key(key: str, state: TUIState) -> bool:
+    """Fact-check mode: claim cursor, verdict filters, reload, queue a check."""
+    from .views import corpus_view as cv
+
+    view = state.factcheck_view
+    if key in ("j", "k"):
+        count = len(view.get("claims") or [])
+        cursor = view.get("cursor", 0)
+        view["cursor"] = min(cursor + 1, max(count - 1, 0)) if key == "j" else max(cursor - 1, 0)
+    elif key in cv.VERDICT_FILTERS:
+        view["filter"] = cv.VERDICT_FILTERS[key]
+        cv.load_claims(state)
+    elif key == "g":
+        cv.load_claims(state, force=True)
+    elif key == "F":
+        _enqueue(state, "fact_check", state.selected_notebook)
+    return True
 
 
 def _handle_jobs_key(key: str, state: TUIState) -> bool:

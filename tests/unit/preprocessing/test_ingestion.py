@@ -6,15 +6,12 @@ runs, parents, children and embeddings that only a real schema can validate.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-import pytest_asyncio
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.pool import NullPool
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from notebooklm._preprocessing.chunking import ChildChunk, ChunkResult, ChunkStats, ParentChunk
 from notebooklm._preprocessing.features import ClauseFeatures
@@ -25,26 +22,12 @@ from notebooklm._preprocessing.ingestion import (
 )
 from notebooklm.db.models import ChunkRun, Clause, Embedding
 from notebooklm.db.models import ParentChunk as ParentChunkRow
-from notebooklm.db.session import DATABASE_URL
+from tests._fixtures.postgres import pg_session  # noqa: F401
 
 
-@pytest_asyncio.fixture
-async def session() -> AsyncIterator[AsyncSession]:
-    engine = create_async_engine(DATABASE_URL, poolclass=NullPool)
-    try:
-        conn = await engine.connect()
-    except Exception as e:  # pragma: no cover - environment failure path
-        await engine.dispose()
-        pytest.fail(f"Postgres unreachable at {DATABASE_URL}: {e}", pytrace=False)
-    trans = await conn.begin()
-    sess = AsyncSession(bind=conn, join_transaction_mode="create_savepoint")
-    try:
-        yield sess
-    finally:
-        await sess.close()
-        await trans.rollback()
-        await conn.close()
-        await engine.dispose()
+@pytest.fixture
+def session(pg_session: AsyncSession) -> AsyncSession:  # noqa: F811
+    return pg_session
 
 
 class _Strategy:
