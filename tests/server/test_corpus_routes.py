@@ -385,9 +385,17 @@ def test_artifact_list_and_ingest_job(env: Any) -> None:
 
 def test_sfl_run_for_document_scope(env: Any) -> None:
     job = env.http.post("/v1/corpus/sfl/runs", json={"scope": {"document_ids": [env.doc_b]}}).json()
-    _wait(lambda: env.http.get(f"/v1/corpus/jobs/{job['id']}").json()["status"] != "running")
-    done = env.http.get(f"/v1/corpus/jobs/{job['id']}").json()
-    assert done["status"] == "done" and done["result"] == {"tagged": 2, "failed": 0}
+    events = _sse(env.http, f"/v1/corpus/jobs/{job['id']}/events", until="finished")
+    assert events[0]["type"] == "started" and events[-1]["status"] == "done"
+    assert events[-1]["result"] == {"tagged": 2, "failed": 0}
+    clauses = [e for e in events if str(e.get("message", "")).startswith("tagging clause")]
+    assert [(e["message"], e["done"], e["total"]) for e in clauses] == [
+        ("tagging clause 1/2", 0, 2),
+        ("tagging clause 2/2", 1, 2),
+        ("tagging clause 2/2", 1, 2),
+        ("tagging clause 2/2", 2, 2),
+    ]
+    job = env.http.post("/v1/corpus/sfl/runs", json={"scope": {"document_ids": [env.doc_b]}}).json()
     a = env.http.get(f"/v1/corpus/chunks/{env.ids['Kernel panics hit the cgroup limit']}").json()
     b = env.http.get(f"/v1/corpus/chunks/{env.ids['It might rain']}").json()
     assert a["has_sfl"] is False and b["has_sfl"] is True

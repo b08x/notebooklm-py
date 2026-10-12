@@ -113,6 +113,8 @@ class GroupProgress:
     done: Callable[[Any, int, int, str | None], None]
     """``done(handle, n_children, n_failed, first_error)``"""
     check_cancelled: Callable[[], None] = lambda: None
+    child: Callable[[int, int, int], None] = lambda *_: None
+    """``child(clauses_done, total, parent_number)`` before and after each child."""
 
 
 async def tag_children(
@@ -133,6 +135,8 @@ async def tag_children(
 
     tagged = 0
     failed = 0
+    processed = 0
+    total = len(children)
     for parent_number, (parent_index, rows) in enumerate(groups.values(), start=1):
         handle = progress.start(parent_number, len(groups), parent_index, len(rows))
         results: dict[int, dict[str, Any]] = {}
@@ -141,12 +145,16 @@ async def tag_children(
         try:
             for row in rows:
                 progress.check_cancelled()
+                progress.child(processed, total, parent_number)
                 try:
                     output = await asyncio.to_thread(_forward, engine, lm, row.text)
                     results[row.id] = to_sfl(output)
                 except Exception as e:
                     error_count += 1
                     first_error = first_error or f"{type(e).__name__}: {e}"
+                finally:
+                    processed += 1
+                    progress.child(processed, total, parent_number)
         finally:
             if results:
                 await save(session_factory, results)

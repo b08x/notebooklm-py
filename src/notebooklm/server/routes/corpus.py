@@ -580,10 +580,14 @@ async def sfl_run(body: SflBody, services: ServicesDep) -> dict[str, Any]:
                 tagged_so_far,
             )
 
+        def child(clauses_done: int, total: int, parent_number: int) -> None:
+            k = min(clauses_done + 1, total)
+            job.progress(f"tagging clause {k}/{total}", clauses_done, total)
+
         tagged, failed = await tag_children(
             children,
             session_factory=services.session_maker,  # type: ignore[arg-type]
-            progress=GroupProgress(start=start, done=done),
+            progress=GroupProgress(start=start, done=done, child=child),
             engine=services.sfl_engine_factory(),
             lm=services.lm,
         )
