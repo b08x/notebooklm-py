@@ -522,6 +522,10 @@ class SflBody(BaseModel):
 async def sfl_run(body: SflBody, services: ServicesDep) -> dict[str, Any]:
     """Tag SFL for any scope (documents, runs, chunks or a notebook) in the background."""
     scope = scope_from(body.scope)
+    label = f"SFL tag {scope.describe()}"
+    for existing in services.jobs.active():
+        if existing.kind == "sfl_tag" and existing.label == label:
+            return existing.snapshot()
 
     async def run(job: Any) -> Any:
         children = await load_children(services.session_maker, scope)  # type: ignore[arg-type]
