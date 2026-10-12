@@ -1,0 +1,147 @@
+{
+  "stage": "interview",
+  "title": "Corpus Explorer: QA remediation inside current tabs",
+  "goalSlug": "corpus-explorer-ux-intent",
+  "questions": [
+    {
+      "id": "notebook-titles",
+      "prompt": "Where should notebook titles come from so UUIDs never appear?",
+      "description": "Today GET /v1/corpus/notebooks fetches titles live (5s timeout) and the Notebook facet ignores them and renders shortId(uuid). Postgres stores no corpus notebook titles.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Persist titles in Postgres (written at ingest and refreshed whenever a live notebooks.list() succeeds); UI shows the cached title, with the short id only as secondary muted text or tooltip.",
+      "recommendedOptionIds": ["persist"],
+      "options": [
+        { "id": "persist", "label": "Persist in Postgres, refresh opportunistically" },
+        { "id": "live", "label": "Live fetch only; fall back to short id" },
+        { "id": "manual", "label": "Persist + allow manual rename/alias in the UI" }
+      ],
+      "required": true
+    },
+    {
+      "id": "title-surfaces",
+      "prompt": "Which surfaces must show notebook (and document) titles instead of ids?",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "Filters sidebar facet, Browse/Search row metadata, Detail pane header, Runs view, breadcrumbs, command palette.",
+      "recommendedOptionIds": ["facet", "rows", "detail", "runs", "crumbs", "palette"],
+      "options": [
+        { "id": "facet", "label": "Filters sidebar Notebook facet" },
+        { "id": "rows", "label": "Browse / Search row metadata" },
+        { "id": "detail", "label": "Detail pane header" },
+        { "id": "runs", "label": "Runs view" },
+        { "id": "crumbs", "label": "Breadcrumbs" },
+        { "id": "palette", "label": "Command palette" }
+      ],
+      "required": true
+    },
+    {
+      "id": "table-density",
+      "prompt": "How should the compressed table be fixed?",
+      "description": "BrowseTable uses @tanstack/react-table (native column resizing available). SearchResults is a hand-built list, not a table.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "Drag-resizable columns in Browse with widths persisted per browser; double-click a handle to reset; text column wraps/expands; column show/hide menu.",
+      "recommendedOptionIds": ["resize", "persist", "reset", "hide"],
+      "options": [
+        { "id": "resize", "label": "Drag-resize column widths" },
+        { "id": "persist", "label": "Remember widths across reloads" },
+        { "id": "reset", "label": "Double-click handle resets width" },
+        { "id": "hide", "label": "Show/hide columns menu" },
+        { "id": "density", "label": "Compact / comfortable density toggle" },
+        { "id": "search-table", "label": "Also convert Search results into the same resizable table" }
+      ],
+      "required": true
+    },
+    {
+      "id": "sfl-progress",
+      "prompt": "What should SFL tagging progress look like while it runs (30s+ per chunk)?",
+      "description": "Progress is reported per parent, so a single-chunk job jumps 0 → done. The Detail pane 'Tag SFL' button only toasts and never follows job events.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "Per-child progress from the backend (n of N clauses + current stage text), elapsed timer, a persistent jobs tray in the status footer listing active/recent jobs, and the triggering button shows inline running state until done; on completion the chunk refreshes.",
+      "recommendedOptionIds": ["per-child", "stage", "elapsed", "tray", "inline", "refresh"],
+      "options": [
+        { "id": "per-child", "label": "Per-clause progress (n / N)" },
+        { "id": "stage", "label": "Current stage text (e.g. 'tagging clause 3/7')" },
+        { "id": "elapsed", "label": "Elapsed time" },
+        { "id": "tray", "label": "Jobs tray in status footer (active + recent)" },
+        { "id": "inline", "label": "Triggering button shows running state" },
+        { "id": "refresh", "label": "Auto-refresh the chunk/row when done" },
+        { "id": "cancel", "label": "Cancel a running job" }
+      ],
+      "required": true
+    },
+    {
+      "id": "observability",
+      "prompt": "What backend observability must every SFL tagging job produce?",
+      "description": "Fact-check runs and TUI jobs open job_span(); the server sfl_tag job opens none and logs nothing.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "One Langfuse trace per job via job_span('sfl_tag', job_id, scope); INFO log lines on start, per-parent completion, and finish/failure; trace URL in the job snapshot and shown as a link in the UI.",
+      "recommendedOptionIds": ["span", "logs", "link"],
+      "options": [
+        { "id": "span", "label": "Langfuse trace per job (job_span)" },
+        { "id": "logs", "label": "INFO logs: start / per-parent / finish / failure" },
+        { "id": "link", "label": "Trace link shown in UI for the job" },
+        { "id": "all-jobs", "label": "Same treatment for ingest and other server jobs" }
+      ],
+      "required": true
+    },
+    {
+      "id": "map",
+      "prompt": "What should the Map provide?",
+      "description": "Canvas scatter of PCA/UMAP-projected embeddings, colored by topic or document, no zoom/pan/legend.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "Wheel zoom + drag pan + reset button; legend listing each color with its topic/document title and count (click to isolate); an explainer line stating projection method, what a point is (one chunk), what color encodes, and that distance ≈ semantic similarity; hover tooltip with chunk preview; click opens detail.",
+      "recommendedOptionIds": ["zoom", "legend", "explain", "tooltip", "click"],
+      "options": [
+        { "id": "zoom", "label": "Wheel zoom, drag pan, reset view" },
+        { "id": "legend", "label": "Legend with titles + counts, click to isolate" },
+        { "id": "explain", "label": "Explainer: method, what a point/color/distance means" },
+        { "id": "tooltip", "label": "Hover tooltip with chunk preview" },
+        { "id": "click", "label": "Click a point opens Detail pane" },
+        { "id": "labels", "label": "Cluster labels drawn on the map (topic names at centroids)" }
+      ],
+      "required": true
+    },
+    {
+      "id": "navigation",
+      "prompt": "How should navigation history and breadcrumbs work?",
+      "description": "setTab uses history.replaceState, so Back never returns to a prior view.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "URL encodes tab + open chunk + filters; tab changes and opening a chunk pushState so browser Back/Forward work; breadcrumb bar 'Tab › Notebook › Document › Chunk' with clickable segments using titles.",
+      "recommendedOptionIds": ["push", "url-state", "crumbs"],
+      "options": [
+        { "id": "push", "label": "Browser Back/Forward across tabs and opened chunks" },
+        { "id": "url-state", "label": "URL encodes tab, open chunk, filters (shareable/reloadable)" },
+        { "id": "crumbs", "label": "Breadcrumbs: Tab › Notebook › Document › Chunk" },
+        { "id": "recent", "label": "Recent-views list in command palette" }
+      ],
+      "required": true
+    },
+    {
+      "id": "out-of-scope",
+      "prompt": "Confirm what is out of scope for this goal.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "Workflow-based IA restructure (Curate → Tag → Verify → Explore) is deferred to a follow-up goal; no changes to SFL tagging model quality/speed; no TUI changes.",
+      "recommendedOptionIds": ["ia", "speed", "tui"],
+      "options": [
+        { "id": "ia", "label": "Workflow-based navigation restructure (follow-up goal)" },
+        { "id": "speed", "label": "Making SFL tagging itself faster" },
+        { "id": "tui", "label": "TUI changes" },
+        { "id": "redesign", "label": "Visual redesign beyond the touched components" }
+      ],
+      "required": true
+    },
+    {
+      "id": "verification",
+      "prompt": "How should the result be verified?",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "Vitest component tests for each UI fact, pytest for backend title cache / progress / span+logs, Playwright smoke extended for back-nav, map zoom and resize, plus a recorded manual re-run of the original QA script.",
+      "recommendedOptionIds": ["vitest", "pytest", "playwright", "manual"],
+      "options": [
+        { "id": "vitest", "label": "Vitest component tests" },
+        { "id": "pytest", "label": "pytest backend tests" },
+        { "id": "playwright", "label": "Playwright smoke extensions" },
+        { "id": "manual", "label": "Manual re-run of the QA video script" }
+      ],
+      "required": true
+    }
+  ]
+}

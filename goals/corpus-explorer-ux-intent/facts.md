@@ -1,0 +1,33 @@
+# Facts
+
+- Postgres stores a title for every notebook present in the corpus; ingest writes it and every successful live notebooks.list() refreshes it.
+- GET /v1/corpus/notebooks returns the stored title for each notebook even when the server has no signed-in NotebookLM client.
+- The Filters sidebar Notebook facet shows the notebook title; the short id appears only as a tooltip or muted secondary text.
+- Browse and Search row metadata, the Detail pane header, the Runs view, breadcrumbs and the command palette show notebook and document titles, not UUIDs.
+- If no title has ever been stored for a notebook, the UI shows the short id with an 'untitled' marker instead of a full UUID.
+- Every Browse table column has a drag handle on its header edge that changes the column width.
+- Browse column widths persist across page reloads in the same browser.
+- Double-clicking a column resize handle restores that column's default width.
+- A columns menu in the Browse header shows or hides individual columns, and the choice persists across reloads.
+- The backend reports SFL tagging progress per clause (n of N) with stage text such as 'tagging clause 3/7', including for a single-chunk job.
+- Clicking Tag SFL in the Detail pane switches the button to a running state showing n/N progress and elapsed time until the job finishes.
+- The inline 'Tag first' button in the fact-check gate shows the same n/N progress, stage text and elapsed time.
+- The status footer has a jobs tray that lists active and recently finished jobs with kind, scope label, progress, elapsed time and outcome.
+- When an SFL job finishes, the affected chunk detail and table rows refresh without a manual reload and show the new SFL tags.
+- A failed SFL job shows its error text in the jobs tray and on the triggering button.
+- Every server SFL tagging job runs inside job_span('sfl_tag', ...) and produces one Langfuse trace.
+- Every server SFL tagging job writes INFO log lines at start, after each parent, and at finish, and writes an ERROR line on failure, each with the job id.
+- The SFL job snapshot includes a trace URL, and the jobs tray links to that trace in Langfuse.
+- The Map zooms with the mouse wheel around the cursor, pans by dragging, and has a Reset view button.
+- The Map shows a legend with each color's topic or document title and point count.
+- Clicking a legend entry isolates that group on the Map; clicking it again restores all groups.
+- The Map shows an explainer stating the projection method (PCA or UMAP), that one point is one chunk, what color encodes, and that nearby points are semantically similar.
+- Hovering a Map point shows a tooltip with a chunk text preview and its document title.
+- Clicking a Map point opens that chunk in the Detail pane.
+- The URL encodes the active tab, the open chunk and the active filters; reloading the page restores that view.
+- Changing tabs or opening a chunk adds a browser history entry, so Back and Forward return to the previous view.
+- A breadcrumb bar shows Tab › Notebook › Document › Chunk using titles, and clicking a segment navigates to that level.
+- The top-level tabs stay Search, Browse, Map, Runs and Fact-check; the workflow-based restructure is recorded as a follow-up goal.
+- New controls use the existing tokens and the better-ui values: transitions of 150ms or less on color and opacity, named transition properties, and scale 0.96 on press.
+- Vitest, pytest, the Playwright smoke and the CI-equivalent pytest command all pass.
+- A manual re-run of the original QA video script reproduces none of the six observations.
