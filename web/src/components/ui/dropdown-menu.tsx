@@ -1,4 +1,5 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
+import { Check } from "lucide-react";
 import type * as React from "react";
 import { cn } from "@/lib/utils";
 
@@ -31,4 +32,21 @@ export function DropdownMenuItem({ className, ...props }: React.ComponentProps<t
 
 export function DropdownMenuLabel({ className, ...props }: React.ComponentProps<typeof Menu.Label>) {
   return <Menu.Label className={cn("px-2 py-1 text-[11px] font-semibold tracking-wide text-subtle uppercase", className)} {...props} />;
+}
+
+export function DropdownMenuCheckboxItem({ className, children, ...props }: React.ComponentProps<typeof Menu.CheckboxItem>) {
+  return (
+    <Menu.CheckboxItem
+      className={cn(
+        "grid grid-cols-[14px_1fr] items-center gap-2 rounded-md px-2 py-1.5 text-[12.5px] outline-none select-none data-[highlighted]:bg-surface-2",
+        className,
+      )}
+      {...props}
+    >
+      <Menu.ItemIndicator>
+        <Check className="size-3 text-primary" strokeWidth={3} />
+      </Menu.ItemIndicator>
+      {children}
+    </Menu.CheckboxItem>
+  );
 }

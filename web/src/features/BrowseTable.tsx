@@ -1,8 +1,16 @@
 import { type ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useEffect, useMemo, useRef } from "react";
+import { Columns3 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useBrowse } from "@/lib/queries";
 import type { ChunkRow } from "@/lib/types";
 import { cn, fmt, shortId } from "@/lib/utils";
@@ -11,6 +19,36 @@ import { actions, useApp } from "@/state/store";
 import { toggleRow } from "./selection";
 
 const ROW_H = 36;
+const SIZING_KEY = "ce-browse-colsizing";
+const VISIBILITY_KEY = "ce-browse-colvis";
+
+function loadJson(key: string): Record<string, unknown> | undefined {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as Record<string, unknown>) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function saveJson(key: string, value: Record<string, unknown>): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // private mode or full storage: persistence is best-effort
+  }
+}
+
+const COLUMN_LABELS: Record<string, string> = {
+  select: "Selector",
+  id: "#",
+  text: "Chunk",
+  doc: "Document",
+  kind: "Kind",
+  len: "Len",
+  quality: "Quality",
+  fc: "Fact-check",
+};
 
 export function BrowseTable({ header }: { header?: React.ReactNode }) {
   const filters = useApp((s) => s.filters);
@@ -32,6 +70,8 @@ export function BrowseTable({ header }: { header?: React.ReactNode }) {
       {
         id: "select",
         size: 32,
+        enableHiding: false,
+        enableResizing: false,
         header: () => null,
         cell: ({ row }) => (
           <span onClick={(e) => e.stopPropagation()}>
@@ -51,6 +91,7 @@ export function BrowseTable({ header }: { header?: React.ReactNode }) {
         id: "text",
         header: "Chunk",
         size: 520,
+        enableResizing: false,
         cell: ({ row }) => (
           <span className={cn("block truncate", row.original.quality !== "clean" && "font-mono text-[12px] text-muted")}>{row.original.text}</span>
         ),
@@ -89,7 +130,23 @@ export function BrowseTable({ header }: { header?: React.ReactNode }) {
     [selected],
   );
 
-  const table = useReactTable({ data: rows, columns, getCoreRowModel: getCoreRowModel(), getRowId: (r) => r.external_id });
+  const [columnSizing, setColumnSizing] = useState<Record<string, number>>(
+    () => (loadJson(SIZING_KEY) as Record<string, number>) ?? {},
+  );
+  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(
+    () => (loadJson(VISIBILITY_KEY) as Record<string, boolean>) ?? {},
+  );
+
+  const table = useReactTable({
+    data: rows,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    getRowId: (r) => r.external_id,
+    columnResizeMode: "onChange",
+    onColumnSizingChange: setColumnSizing,
+    onColumnVisibilityChange: setColumnVisibility,
+    state: { columnSizing, columnVisibility },
+  });
   const parentRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -111,7 +168,15 @@ export function BrowseTable({ header }: { header?: React.ReactNode }) {
   }, [cursor, rows, virtualizer]);
 
   const tableRows = table.getRowModel().rows;
-  const template = columns.map((c) => (c.id === "text" ? "minmax(0,1fr)" : `${c.size}px`)).join(" ");
+  const headers = table.getHeaderGroups()[0].headers;
+  const template = headers.map((h) => (h.column.id === "text" ? "minmax(0,1fr)" : `${h.getSize()}px`)).join(" ");
+
+  useEffect(() => {
+    saveJson(SIZING_KEY, columnSizing);
+  }, [columnSizing]);
+  useEffect(() => {
+    saveJson(VISIBILITY_KEY, columnVisibility);
+  }, [columnVisibility]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -121,12 +186,46 @@ export function BrowseTable({ header }: { header?: React.ReactNode }) {
         </span>
         <span>ordered by id · {fmt.format(rows.length)} loaded</span>
         {header}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" className="ml-auto" aria-label="Columns" data-testid="columns-trigger">
+              <Columns3 /> Columns
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {table.getAllLeafColumns().filter((c) => c.getCanHide()).map((c) => (
+              <DropdownMenuCheckboxItem
+                key={c.id}
+                checked={c.getIsVisible()}
+                onCheckedChange={(v) => c.toggleVisibility(!!v)}
+                onSelect={(e) => e.preventDefault()}
+                data-testid={`column-toggle-${c.id}`}
+              >
+                {COLUMN_LABELS[c.id] ?? c.id}
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       <div role="table" aria-label="All chunks" aria-rowcount={total} className="flex min-h-0 flex-1 flex-col text-[13px]">
         <div role="row" className="grid border-b border-line px-3.5 py-1.5 text-[11px] font-semibold tracking-[0.06em] text-subtle uppercase" style={{ gridTemplateColumns: template, columnGap: 12 }}>
-          {table.getHeaderGroups()[0].headers.map((h) => (
-            <span role="columnheader" key={h.id}>
+          {headers.map((h) => (
+            <span role="columnheader" key={h.id} className="relative">
               {flexRender(h.column.columnDef.header, h.getContext())}
+              {h.column.getCanResize() && (
+                <span
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label={`Resize ${COLUMN_LABELS[h.column.id] ?? h.column.id}`}
+                  data-testid={`resize-${h.column.id}`}
+                  onMouseDown={h.getResizeHandler()}
+                  onDoubleClick={() => h.column.resetSize()}
+                  className={cn(
+                    "absolute -right-1.5 top-0 h-full w-2 cursor-col-resize touch-none rounded transition-[background-color] duration-150 hover:bg-primary/60",
+                    h.column.getIsResizing() && "bg-primary/60",
+                  )}
+                />
+              )}
             </span>
           ))}
         </div>

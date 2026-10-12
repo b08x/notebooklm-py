@@ -1,4 +1,5 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { mockFetch, renderWithClient, row } from "@/test/utils";
 import { getRowIds } from "@/state/rows";
@@ -33,5 +34,46 @@ describe("BrowseTable (fact-15)", () => {
     expect(store.get().detailId).toBe(visible.dataset.rowId);
     act(() => store.set({ hidden: ["d:1:1"] }));
     await waitFor(() => expect(getRowIds()).toHaveLength(200));
+  });
+
+  it("resizes via drag handles, resets on double-click, and hides columns from the Columns menu", async () => {
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, value: 720 });
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, value: 900 });
+    mockFetch({ "GET /v1/corpus/chunks": { items: [row()], next_cursor: null, total: 1 } });
+    renderWithClient(<BrowseTable />);
+    await screen.findByRole("columnheader", { name: /Len/ });
+
+    // Drag the Len handle 40px right: 56 -> 96, persisted under ce-browse-colsizing.
+    const handle = screen.getByTestId("resize-len");
+    fireEvent.mouseDown(handle, { clientX: 500 });
+    fireEvent.mouseMove(document, { clientX: 540 });
+    fireEvent.mouseUp(document, { clientX: 540 });
+    await waitFor(() => {
+      expect(JSON.parse(localStorage.getItem("ce-browse-colsizing") ?? "{}")).toMatchObject({ len: 96 });
+      expect(document.querySelector("div[role=row]")?.getAttribute("style")).toContain("96px");
+    });
+
+    // Double-click the handle to reset the column to its default size.
+    fireEvent.doubleClick(handle);
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("ce-browse-colsizing") ?? "{}").len).toBeUndefined());
+
+    // Hide the Kind column from the Columns dropdown; it is persisted.
+    await userEvent.click(screen.getByTestId("columns-trigger"));
+    fireEvent.click(await screen.findByTestId("column-toggle-kind"));
+    await waitFor(() => expect(screen.queryByRole("columnheader", { name: /Kind/ })).toBeNull());
+    expect(JSON.parse(localStorage.getItem("ce-browse-colvis") ?? "{}")).toMatchObject({ kind: false });
+  });
+
+  it("restores saved column sizing and visibility on mount", async () => {
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, value: 720 });
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, value: 900 });
+    localStorage.setItem("ce-browse-colsizing", JSON.stringify({ len: 123 }));
+    localStorage.setItem("ce-browse-colvis", JSON.stringify({ kind: false }));
+    mockFetch({ "GET /v1/corpus/chunks": { items: [row()], next_cursor: null, total: 1 } });
+    renderWithClient(<BrowseTable />);
+    await screen.findByTestId("browse-total");
+    expect(await screen.findByRole("columnheader", { name: /Len/ })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: /Kind/ })).toBeNull();
+    expect(document.querySelector("div[role=row]")?.getAttribute("style")).toContain("123px");
   });
 });
