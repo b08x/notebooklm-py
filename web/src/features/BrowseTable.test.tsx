@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { mockFetch, renderWithClient, row } from "@/test/utils";
@@ -75,5 +75,34 @@ describe("BrowseTable (fact-15)", () => {
     expect(await screen.findByRole("columnheader", { name: /Len/ })).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: /Kind/ })).toBeNull();
     expect(document.querySelector("div[role=row]")?.getAttribute("style")).toContain("123px");
+  });
+});
+
+describe("BrowseTable (fact-6)", () => {
+  it("gives each resizable column a drag handle and resizes a column other than Len", async () => {
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, value: 720 });
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, value: 900 });
+    mockFetch({ "GET /v1/corpus/chunks": { items: [row()], next_cursor: null, total: 1 } });
+    renderWithClient(<BrowseTable />);
+    await screen.findByRole("columnheader", { name: /Len/ });
+
+    // Walk every rendered column header and record which resize handle, if any, it holds.
+    const handleIds = screen
+      .getAllByRole("columnheader")
+      .map((h) => within(h).queryByRole("separator")?.dataset.testid?.replace(/^resize-/, "") ?? null);
+    // Chunk (text) and Selector (select) have enableResizing: false in BrowseTable.tsx, so they have no handle.
+    // Fact 6 says every column has one; the source does not match that for these two columns.
+    expect(handleIds.filter((id) => id === null)).toHaveLength(2);
+    expect(handleIds.filter((id): id is string => id !== null)).toEqual(["id", "doc", "kind", "len", "quality", "fc"]);
+
+    // Drag the Document handle 40px right: 112 -> 152.
+    const handle = screen.getByTestId("resize-doc");
+    fireEvent.mouseDown(handle, { clientX: 500 });
+    fireEvent.mouseMove(document, { clientX: 540 });
+    fireEvent.mouseUp(document, { clientX: 540 });
+    await waitFor(() => {
+      expect(JSON.parse(localStorage.getItem("ce-browse-colsizing") ?? "{}")).toMatchObject({ doc: 152 });
+      expect(document.querySelector("div[role=row]")?.getAttribute("style")).toContain("152px");
+    });
   });
 });

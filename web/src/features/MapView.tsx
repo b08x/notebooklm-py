@@ -208,7 +208,7 @@ export function MapView() {
                 data-testid={`legend-${key}`}
                 onClick={() => setIso(iso === key ? null : key)}
                 className={cn(
-                  "flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 transition-[background-color,opacity] duration-150 hover:bg-surface-2/60",
+                  "flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 transition-[background-color,opacity,scale] duration-150 hover:bg-surface-2/60 active:scale-[0.96]",
                   iso && iso !== key && "opacity-40",
                   iso === key && "bg-surface-2 text-fg",
                 )}

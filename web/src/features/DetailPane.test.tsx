@@ -1,7 +1,8 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { mockFetch, renderWithClient, row } from "@/test/utils";
+import { useJobInvalidation } from "@/state/useJobInvalidation";
+import { mockFetch, renderWithClient, row, SseBody, sse } from "@/test/utils";
 import { store } from "@/state/store";
 import { DetailPane } from "./DetailPane";
 
@@ -28,6 +29,25 @@ const detail = {
   run: { id: 1, strategy: "recursive", chunker_version: "1", is_active: true, trace_id: null, source_hash: "x", params: {}, created_at: null },
   created_at: null,
 };
+
+const job = (over: Record<string, unknown> = {}) => ({
+  id: "j1",
+  kind: "sfl_tag",
+  label: "chunk doc:1:0",
+  status: "queued",
+  message: "",
+  done: 0,
+  total: 1,
+  result: null,
+  error: null,
+  document_ids: [],
+  trace_url: null,
+  created_at: 100,
+  started_at: null,
+  finished_at: null,
+  last_seq: 0,
+  ...over,
+});
 
 describe("DetailPane", () => {
   it("shows the parent chunk with the clause highlighted inside it (fact-18)", async () => {
@@ -113,5 +133,65 @@ describe("DetailPane", () => {
     await userEvent.click((await screen.findAllByRole("menuitem"))[2]);
     expect(store.get().factcheckScope).toEqual({ run_ids: [1] });
     expect(store.get().tab).toBe("factcheck");
+  });
+
+  it("shows notebook and document titles, not UUIDs (fact-4, partial)", async () => {
+    const NB = "9b1d2c3e-0000-4000-8000-000000000001";
+    const DOC = "7a6f5e4d-0000-4000-8000-000000000002";
+    mockFetch({
+      "GET /v1/corpus/chunks/doc:1:0": { ...detail, notebook_id: NB, document_id: DOC, title: "Kernel Incident Report" },
+      "GET /v1/corpus/notebooks": { items: [{ id: NB, title: "Ops Notebook" }] },
+    });
+    renderWithClient(<DetailPane />);
+    store.set({ detailId: "doc:1:0" });
+    expect(await screen.findByText(/doc Kernel Incident Report/)).toBeInTheDocument();
+    expect(await screen.findByText(/nb Ops Notebook/)).toBeInTheDocument();
+    expect(screen.queryByText(new RegExp(NB))).not.toBeInTheDocument();
+    expect(screen.queryByText(new RegExp(DOC))).not.toBeInTheDocument();
+  });
+
+  it("switches Tag SFL to a running state with n/N and elapsed time (fact-11)", async () => {
+    mockFetch({
+      "GET /v1/corpus/chunks/doc:1:0": { ...detail, sfl: null },
+      "POST /v1/corpus/sfl/runs": job(),
+      "GET /v1/corpus/jobs/j1/events": () =>
+        new SseBody(sse([{ seq: 1, type: "progress", message: "tagging clause 2/3", done: 2, total: 3 }])),
+    });
+    renderWithClient(<DetailPane />);
+    store.set({ detailId: "doc:1:0", detailTab: "linguistics" });
+    await userEvent.click(await screen.findByRole("button", { name: "Tag SFL for this chunk" }));
+    const running = await screen.findByTestId("tag-sfl-running");
+    expect(running).toBeDisabled();
+    expect(running).toHaveTextContent(/2\/3 · 00:0\d/);
+  });
+
+  it("refreshes the chunk detail and shows new SFL tags when the job finishes (fact-14)", async () => {
+    const tagged = {
+      ...detail,
+      sfl: {
+        ideational: { participants: ["kernel"], processes: ["panics"], circumstances: [] },
+        interpersonal: { tenor: ["formality: formal"], mood: ["declarative"], modality: ["high"] },
+      },
+    };
+    let reads = 0;
+    mockFetch({
+      "GET /v1/corpus/chunks/doc:1:0": () => {
+        reads += 1;
+        return reads === 1 ? { ...detail, sfl: null } : tagged;
+      },
+      "POST /v1/corpus/sfl/runs": job(),
+      "GET /v1/corpus/jobs/j1/events": () => new SseBody(sse([{ seq: 1, type: "finished", status: "done" }])),
+    });
+    // The same hook App.tsx mounts at the root refreshes the chunk query when the job finishes.
+    function WithInvalidation() {
+      useJobInvalidation();
+      return <DetailPane />;
+    }
+    renderWithClient(<WithInvalidation />);
+    store.set({ detailId: "doc:1:0", detailTab: "linguistics" });
+    await userEvent.click(await screen.findByRole("button", { name: "Tag SFL for this chunk" }));
+    const sfl = await screen.findByTestId("sfl");
+    expect(sfl).toHaveTextContent("formality: formal");
+    expect(reads).toBeGreaterThanOrEqual(2);
   });
 });

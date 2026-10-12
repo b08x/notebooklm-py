@@ -384,6 +384,32 @@ def test_artifact_list_and_ingest_job(env: Any) -> None:
     assert env.http.get("/v1/corpus/jobs/nope/events").status_code == 404
 
 
+def test_ingest_writes_notebook_title(env: Any) -> None:
+    """Starting an ingest stores the notebook's live title in Postgres (fact 1, ingest path)."""
+    from notebooklm._app import notebook_titles
+
+    def stored() -> str | None:
+        async def go() -> str | None:
+            async with async_session_maker() as session:
+                titles = await notebook_titles.stored_titles(session, [env.notebook])
+                return titles.get(env.notebook)
+
+        return asyncio.run(go())
+
+    class LiveList:
+        async def list(self) -> list[Any]:
+            return [type("Nb", (), {"id": env.notebook, "title": "Ingested Title"})()]
+
+    assert stored() is None  # the seeded notebook has no stored title yet
+    env.client.notebooks = LiveList()  # type: ignore[attr-defined]
+    aid = f"{env.prefix}-report"
+    job = env.http.post(f"/v1/corpus/artifacts/{aid}/ingest", json={"notebook_id": env.notebook})
+    assert job.status_code == 202
+    assert stored() == "Ingested Title"  # written by the ingest request itself
+    job_id = job.json()["id"]
+    _wait(lambda: env.http.get(f"/v1/corpus/jobs/{job_id}").json()["status"] == "done")
+
+
 def test_sfl_run_for_document_scope(
     env: Any, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:

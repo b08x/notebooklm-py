@@ -17,10 +17,14 @@ const result = (hits: SearchHit[], vectorOk = true): SearchResult => ({
   elapsed_ms: 41,
 });
 
-function renderResults(res: SearchResult, extra: Partial<React.ComponentProps<typeof SearchResults>> = {}) {
+function renderResults(
+  res: SearchResult,
+  extra: Partial<React.ComponentProps<typeof SearchResults>> = {},
+  notebooks: { id: string; title: string | null }[] = [{ id: "nb", title: "Notebook" }],
+) {
   const onOpen = vi.fn();
   const onToggle = vi.fn();
-  mockFetch({ "GET /v1/corpus/notebooks": { items: [{ id: "nb", title: "Notebook", chunks: 3, documents: 1 }] } });
+  mockFetch({ "GET /v1/corpus/notebooks": { items: notebooks.map((n) => ({ ...n, chunks: 3, documents: 1 })) } });
   renderWithClient(
     <SearchResults
       result={res}
@@ -93,5 +97,19 @@ describe("SearchResults", () => {
     unmount();
     renderResults(result([]));
     expect(screen.getByText(/No chunks match/)).toBeInTheDocument();
+  });
+
+  it("row metadata shows the notebook and document titles, never the full UUIDs (fact 4)", async () => {
+    const NB = "7f3c2a1e-9b4d-4c6e-8a1f-2d3e4f5a6b7c";
+    const DOC = "d0c1e2f3-1a2b-4c5d-8e9f-0a1b2c3d4e5f";
+    renderResults(
+      result([hit({ kw_rank: 1, score: 0.02, notebook_id: NB, document_id: DOC, title: "Design notes" })]),
+      {},
+      [{ id: NB, title: "Kernel Panic Notebook" }],
+    );
+    expect(await screen.findByTitle("Kernel Panic Notebook")).toHaveTextContent("nb Kernel Panic Notebook");
+    expect(screen.getByTitle("Design notes")).toHaveTextContent("doc Design notes");
+    expect(document.body.textContent).not.toContain(NB);
+    expect(document.body.textContent).not.toContain(DOC);
   });
 });

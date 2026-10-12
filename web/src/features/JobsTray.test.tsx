@@ -52,4 +52,44 @@ describe("JobsTray", () => {
     expect(screen.getByTestId("jobs-message-j1")).toHaveTextContent("tagging clause 1/3 · 1/3");
     expect(screen.getByTestId("jobs-trace-j1")).toHaveAttribute("href", "https://langfuse.dev/trace/j1");
   });
+
+  it("lists a finished job with its outcome and elapsed time", async () => {
+    // Started 75s before the POST resolves, so the finished row reads 01:15 (formatElapsed floors seconds).
+    mockFetch({
+      "POST /v1/corpus/sfl/runs": () => ({ ...job, started_at: Date.now() / 1000 - 75 }),
+      "GET /v1/corpus/jobs/j1/events": () =>
+        new SseBody(sse([{ seq: 1, type: "finished", status: "done" }])),
+    });
+    renderWithClient(
+      <>
+        <TagSflButton scope={{ run_ids: [7] }} label="run #7" />
+        <JobsTray />
+      </>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Tag SFL for run #7" }));
+    await screen.findByTestId("tag-sfl-done");
+    expect(screen.queryByTestId("jobs-badge")).toBeNull();
+    await userEvent.click(screen.getByTestId("jobs-tray-trigger"));
+    expect(screen.getByTestId("jobs-row-j1")).toHaveTextContent("sfl_tag");
+    expect(screen.getByTestId("jobs-message-j1")).toHaveTextContent("done · 0/3 · 01:15");
+  });
+
+  it("shows a failed job's error text in the tray and on the triggering button", async () => {
+    mockFetch({
+      "POST /v1/corpus/sfl/runs": job,
+      "GET /v1/corpus/jobs/j1/events": () =>
+        new SseBody(sse([{ seq: 1, type: "finished", status: "failed", error: "boom" }])),
+    });
+    renderWithClient(
+      <>
+        <TagSflButton scope={{ run_ids: [7] }} label="run #7" />
+        <JobsTray />
+      </>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Tag SFL for run #7" }));
+    expect(await screen.findByTestId("tag-sfl-failed")).toHaveAttribute("title", "boom");
+    await userEvent.click(screen.getByTestId("jobs-tray-trigger"));
+    expect(screen.getByTestId("jobs-message-j1")).toHaveTextContent(/^boom/);
+    expect(screen.getByTestId("jobs-message-j1")).not.toHaveTextContent("failed");
+  });
 });

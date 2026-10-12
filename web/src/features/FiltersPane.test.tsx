@@ -4,6 +4,8 @@ import { mockFetch, renderWithClient } from "@/test/utils";
 import { store } from "@/state/store";
 import { FiltersPane } from "./FiltersPane";
 
+const NB_UUID = "7f3c2a1e-9b4d-4c6e-8a1f-2d3e4f5a6b7c";
+
 const FACETS = {
   notebook: [{ value: "nb-1", count: 5991 }],
   document: [{ value: "doc-a", count: 40 }],
@@ -68,5 +70,30 @@ describe("FiltersPane (facts 16-17, 62)", () => {
     expect(screen.getByLabelText("Design notes")).toBeInTheDocument();
     expect(screen.getByLabelText("doc-b-uu… untitled")).toBeInTheDocument();
     expect(document.body.textContent).not.toContain("doc-b-uuid-long");
+  });
+
+  it("notebook facet shows the stored title; the full id is not visible text (fact 3)", async () => {
+    mockFetch({
+      "GET /v1/corpus/facets": { ...FACETS, notebook: [{ value: NB_UUID, count: 12 }] },
+      "GET /v1/corpus/notebooks": { items: [{ id: NB_UUID, title: "Kernel Panic Notebook", chunks: 12, documents: 1 }] },
+      "GET /v1/corpus/stats": { clauses: 1 },
+    });
+    renderWithClient(<FiltersPane />);
+    expect(await screen.findByTitle("Kernel Panic Notebook")).toHaveTextContent("Kernel Panic Notebook");
+    expect(screen.getByLabelText("Kernel Panic Notebook")).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain(NB_UUID);
+    expect(document.body.textContent).not.toContain("7f3c2a1e");
+  });
+
+  it("a notebook with no stored title shows its short id with an untitled marker, never the full UUID (fact 5)", async () => {
+    mockFetch({
+      "GET /v1/corpus/facets": { ...FACETS, notebook: [{ value: NB_UUID, count: 12 }] },
+      "GET /v1/corpus/notebooks": { items: [{ id: NB_UUID, title: null, chunks: 12, documents: 1 }] },
+      "GET /v1/corpus/stats": { clauses: 1 },
+    });
+    renderWithClient(<FiltersPane />);
+    expect(await screen.findByTitle("7f3c2a1e… untitled")).toHaveTextContent("7f3c2a1e… untitled");
+    expect(screen.getByLabelText("7f3c2a1e… untitled")).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain(NB_UUID);
   });
 });

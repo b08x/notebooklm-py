@@ -18,8 +18,8 @@ import { useHotkeys } from "@/hooks/useHotkeys";
 import { onApiError } from "@/lib/api";
 import { useHealth } from "@/lib/queries";
 import { getToken, setToken } from "@/lib/token";
-import { onJobFinished } from "@/state/jobs";
 import { useApp } from "@/state/store";
+import { useJobInvalidation } from "@/state/useJobInvalidation";
 
 async function tokenStillValid(): Promise<boolean> {
   const token = getToken();
@@ -35,18 +35,8 @@ async function tokenStillValid(): Promise<boolean> {
 function Explorer() {
   const tab = useApp((s) => s.tab);
   const health = useHealth();
-  const qc = useQueryClient();
   useHotkeys();
-  // Jobs mutate chunks (SFL tags, ingest) — refresh whatever view is open once they finish.
-  useEffect(
-    () =>
-      onJobFinished(() => {
-        for (const key of ["stats", "facets", "browse", "search", "chunk", "runs"]) {
-          void qc.invalidateQueries({ queryKey: [key] });
-        }
-      }),
-    [qc],
-  );
+  useJobInvalidation();
   return (
     <div className="grid h-full grid-rows-[48px_auto_minmax(0,1fr)_28px] bg-bg text-fg">
       <Header />
