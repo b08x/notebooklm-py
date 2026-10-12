@@ -156,7 +156,7 @@ describe("Start panel (facts 34, 49)", () => {
       "GET /v1/corpus/notebooks": { items: [{ id: "nb", title: "Notebook", chunks: 3, documents: 1 }] },
       "GET /v1/corpus/factcheck/runs": { items: [] },
       "POST /v1/corpus/factcheck/runs": new Status(409, { error: { category: "sfl_required", message: "run sfl_tag first (3 children untagged)" } }),
-      "POST /v1/corpus/sfl/runs": { id: "j", status: "running" },
+      "POST /v1/corpus/sfl/runs": { id: "j", kind: "sfl_tag", label: "2 selected chunks", status: "queued", message: "", done: 0, total: 0, result: null, error: null, document_ids: [], trace_url: null, created_at: 0, started_at: null, finished_at: null, last_seq: 0 },
       "GET /v1/corpus/jobs/j/events": new SseBody(sse([{ seq: 1, type: "finished", status: "done" }])),
     });
     renderWithClient(<FactCheckView />);
@@ -168,7 +168,7 @@ describe("Start panel (facts 34, 49)", () => {
       gate_source: "rule",
       gate_mode: "interactive",
     });
-    fireEvent.click(screen.getByRole("button", { name: /Tag SFL first/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Tag SFL for 2 selected chunks/ }));
     await waitFor(() => expect(calls.find((c) => c.path === "/v1/corpus/sfl/runs")?.body).toEqual({ scope: { external_ids: ["a", "b"] } }));
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   });

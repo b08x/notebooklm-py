@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
-import { CircleCheck, CircleDashed, CircleDot, CircleSlash, CircleX, ExternalLink, Loader2, Pause, Play, ShieldCheck, Sparkles, Square, TriangleAlert } from "lucide-react";
+import { CircleCheck, CircleDashed, CircleDot, CircleSlash, CircleX, ExternalLink, Loader2, Pause, Play, ShieldCheck, Square, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -12,11 +12,12 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ApiError, followEvents, get, post } from "@/lib/api";
 import { useFactCheckRuns, useNotebooks } from "@/lib/queries";
-import type { FactCheckRunSnapshot, ItemStatus, JobSnapshot, RunEvent, RunItem } from "@/lib/types";
+import type { FactCheckRunSnapshot, ItemStatus, RunEvent, RunItem } from "@/lib/types";
 import { cn, formatElapsed, shortId } from "@/lib/utils";
 import { SflChips } from "../DetailPane";
 import { type FactCheckScope, actions, store, useApp } from "@/state/store";
 import { GateCard } from "./GateCard";
+import { TagSflButton } from "../TagSflButton";
 import { activeItem, applyEvent } from "./runState";
 
 const STATUS_ICON: Record<ItemStatus, React.ReactNode> = {
@@ -64,7 +65,6 @@ function StartPanel() {
   const [mode, setMode] = useState<"interactive" | "auto">("interactive");
   const [autoSkip, setAuto] = useState(false);
   const [sflNeeded, setSflNeeded] = useState<string | null>(null);
-  const [tagging, setTagging] = useState<JobSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
 
   const start = async () => {
@@ -86,26 +86,6 @@ function StartPanel() {
     } finally {
       setBusy(false);
     }
-  };
-
-  const tagFirst = async () => {
-    const job = await post<JobSnapshot>("/v1/corpus/sfl/runs", { scope });
-    setTagging(job);
-    const ctl = new AbortController();
-    await followEvents(
-      `/v1/corpus/jobs/${job.id}/events`,
-      (ev) => {
-        if (ev.type === "progress") setTagging((j) => (j ? { ...j, message: String(ev.message), done: Number(ev.done), total: Number(ev.total) } : j));
-        if (ev.type === "finished") {
-          setTagging(null);
-          if (ev.status === "done") {
-            setSflNeeded(null);
-            toast.success("SFL tagging finished — start the run");
-          } else toast.error(`SFL tagging failed: ${String(ev.error)}`);
-        }
-      },
-      { signal: ctl.signal, isFinal: (ev) => ev.type === "finished" },
-    );
   };
 
   return (
@@ -176,18 +156,16 @@ function StartPanel() {
         <div role="alert" className="flex items-center gap-2 rounded-lg bg-warn/10 p-3 text-[12.5px] text-warn">
           <TriangleAlert className="size-4 shrink-0" />
           <span className="flex-1">{sflNeeded}</span>
-          <Button
-            onClick={() =>
-              void tagFirst().catch((e: Error) => {
-                setTagging(null);
-                toast.error(e.message);
-              })
-            }
-            disabled={!!tagging}
-          >
-            {tagging ? <Loader2 className="animate-spin" /> : <Sparkles />}
-            {tagging ? `Tagging ${tagging.done ?? 0}/${tagging.total ?? "?"}` : "Tag SFL first"}
-          </Button>
+          <TagSflButton
+            scope={scope as unknown as Record<string, unknown>}
+            label={describeScope(scope)}
+            onDone={(ok) => {
+              if (ok) {
+                setSflNeeded(null);
+                toast.success("SFL tagging finished — start the run");
+              } else toast.error("SFL tagging failed");
+            }}
+          />
         </div>
       )}
       <Button variant="primary" size="md" disabled={!scope || busy} onClick={() => void start()}>

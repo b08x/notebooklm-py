@@ -1,4 +1,4 @@
-import { ChevronDown, Copy, ExternalLink, FileSearch, ShieldCheck, Sparkles, Trash2 } from "lucide-react";
+import { ChevronDown, Copy, ExternalLink, FileSearch, ShieldCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -6,12 +6,12 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Kbd } from "@/components/ui/kbd";
 import { SectionLabel } from "@/components/ui/section-label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { post } from "@/lib/api";
 import { useDetail, useNeighbors } from "@/lib/queries";
 import type { ChunkDetail, SflFormatted } from "@/lib/types";
 import { cn, shortId } from "@/lib/utils";
 import { actions, store, useApp } from "@/state/store";
 import { RowMeta } from "./RowMeta";
+import { startSflJob, TagSflButton } from "./TagSflButton";
 
 const ENTITY_COLORS: Record<string, string> = {
   PROPN: "var(--cat-blue)",
@@ -19,16 +19,6 @@ const ENTITY_COLORS: Record<string, string> = {
   PRON: "var(--cat-pink)",
   NUM: "var(--cat-amber)",
 };
-
-/** Start SFL tagging for any scope (chunk, document, run or selection). */
-export async function tagSfl(scope: Record<string, unknown>, label: string): Promise<void> {
-  try {
-    await post("/v1/corpus/sfl/runs", { scope });
-    toast(`SFL tagging started for ${label}`);
-  } catch (e) {
-    toast.error((e as Error).message);
-  }
-}
 
 export function ParentContext({ detail }: { detail: ChunkDetail }) {
   const p = detail.parent;
@@ -277,9 +267,7 @@ export function DetailPane() {
               ) : (
                 <div className="flex items-center gap-2 text-[12.5px] text-muted">
                   Not tagged yet.
-                  <Button onClick={() => void tagSfl({ external_ids: [d.external_id] }, "this chunk")}>
-                    <Sparkles /> Tag SFL
-                  </Button>
+                  <TagSflButton scope={{ external_ids: [d.external_id] }} label="this chunk" size="sm" />
                 </div>
               )}
             </div>
@@ -317,10 +305,10 @@ export function DetailPane() {
               <DropdownMenuItem onSelect={() => actions.startFactCheck({ run_ids: [d.run_id as number] })}>Whole run #{d.run_id}</DropdownMenuItem>
             )}
             <DropdownMenuLabel>Tag SFL…</DropdownMenuLabel>
-            <DropdownMenuItem onSelect={() => void tagSfl({ external_ids: [d.external_id] }, "this chunk")}>This chunk</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => void tagSfl({ document_ids: [d.document_id] }, "this document")}>Whole document</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void startSflJob({ external_ids: [d.external_id] }).catch((e: Error) => toast.error(e.message))}>This chunk</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void startSflJob({ document_ids: [d.document_id] }).catch((e: Error) => toast.error(e.message))}>Whole document</DropdownMenuItem>
             {d.run_id !== null && (
-              <DropdownMenuItem onSelect={() => void tagSfl({ run_ids: [d.run_id as number] }, `run #${d.run_id}`)}>Whole run #{d.run_id}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void startSflJob({ run_ids: [d.run_id as number] }).catch((e: Error) => toast.error(e.message))}>Whole run #{d.run_id}</DropdownMenuItem>
             )}
           </DropdownMenuContent>
         </DropdownMenu>

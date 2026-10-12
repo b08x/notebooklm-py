@@ -1,6 +1,7 @@
 import type { Health } from "@/lib/types";
 import { fmt } from "@/lib/utils";
 import { store } from "@/state/store";
+import { JobsTray } from "./JobsTray";
 
 function Dot({ tone }: { tone: "ok" | "warn" | "bad" }) {
   return <i className="mr-1.5 inline-block size-[7px] rounded-full align-[1px]" style={{ background: `var(--${tone})` }} />;
@@ -45,6 +46,7 @@ export function StatusFooter({ health }: { health: Health | undefined }) {
         </button>
       ))}
       <span className="ml-auto hidden lg:inline">j/k move · x select · enter open · ⌫ delete · ? keys</span>
+      <JobsTray />
     </footer>
   );
 }

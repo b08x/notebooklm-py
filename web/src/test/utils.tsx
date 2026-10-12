@@ -3,6 +3,7 @@ import { render } from "@testing-library/react";
 import type * as React from "react";
 import { vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { resetJobs } from "@/state/jobs";
 import { resetStore } from "@/state/store";
 
 export interface Call {
@@ -60,6 +61,7 @@ export function mockFetch(routes: Routes): Call[] {
 
 export function renderWithClient(ui: React.ReactElement) {
   resetStore();
+  resetJobs();
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return {
     client,

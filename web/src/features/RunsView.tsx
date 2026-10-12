@@ -1,11 +1,10 @@
-import { CloudDownload, Loader2, ShieldCheck, Sparkles, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import { CloudDownload, Loader2, ShieldCheck, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { post } from "@/lib/api";
 import { useJobs, useRuns } from "@/lib/queries";
 import { cn, fmt, shortId } from "@/lib/utils";
 import { actions, store } from "@/state/store";
+import { TagSflButton } from "./TagSflButton";
 
 const COLS = "64px minmax(180px,1fr) 92px 96px 70px 70px 64px 64px 64px 120px";
 
@@ -54,18 +53,13 @@ export function RunsView() {
             <span className="tabular">{Math.round(r.p95_len)}</span>
             <span>{r.is_active ? <Badge tone="ok">active</Badge> : <span className="text-subtle">—</span>}</span>
             <span className="flex justify-end gap-0.5">
-              <Button
-                variant="ghost"
+              <TagSflButton
+                scope={{ run_ids: [r.id] }}
+                label={`run #${r.id}`}
                 size="icon"
-                aria-label={`Tag SFL for run ${r.id}`}
-                title="Tag SFL"
-                onClick={async () => {
-                  await post("/v1/corpus/sfl/runs", { scope: { run_ids: [r.id] } });
-                  toast(`SFL tagging started for run #${r.id}`);
-                }}
-              >
-                <Sparkles />
-              </Button>
+                iconOnly
+                ariaLabel={`Tag SFL for run ${r.id}`}
+              />
               <Button variant="ghost" size="icon" aria-label={`Fact-check run ${r.id}`} title="Fact-check" onClick={() => actions.startFactCheck({ run_ids: [r.id] })}>
                 <ShieldCheck />
               </Button>

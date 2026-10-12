@@ -1,13 +1,13 @@
 import { AnimatePresence, motion } from "motion/react";
-import { ChevronDown, Download, MessageSquareText, ShieldCheck, Sparkles, Trash2, X } from "lucide-react";
+import { ChevronDown, Download, MessageSquareText, ShieldCheck, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Kbd } from "@/components/ui/kbd";
 import { fmt } from "@/lib/utils";
 import { actions, store, useApp } from "@/state/store";
-import { tagSfl } from "./DetailPane";
 import { downloadExport, pushAsNote } from "./exports";
+import { TagSflButton } from "./TagSflButton";
 
 export function deleteSelection(): void {
   const ids = store.get().selected;
@@ -50,9 +50,7 @@ export function SelectionBar() {
           <Button onClick={() => actions.startFactCheck({ external_ids: selected })}>
             <ShieldCheck /> Re-fact-check
           </Button>
-          <Button onClick={() => void tagSfl({ external_ids: selected }, `${selected.length} chunks`)}>
-            <Sparkles /> Tag SFL
-          </Button>
+          <TagSflButton scope={{ external_ids: selected }} label={`${selected.length} chunks`} />
           <Button variant="destructive" onClick={deleteSelection}>
             <Trash2 /> Delete <Kbd className="ml-0.5">⌫</Kbd>
           </Button>

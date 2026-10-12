@@ -1,4 +1,5 @@
 import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { get, post } from "./api";
 import type {
   ArtifactRow,
@@ -10,7 +11,7 @@ import type {
   Filters,
   Health,
   JobSnapshot,
-  MapPoint,
+  MapResponse,
   Mode,
   Neighbor,
   NotebookRow,
@@ -114,7 +115,7 @@ export function useRuns() {
 export function useMap(filters: Filters) {
   return useQuery({
     queryKey: ["map", filters],
-    queryFn: () => get<{ points: MapPoint[]; color_by: "topic" | "document" }>("/v1/corpus/map", filterParams(filters)),
+    queryFn: () => get<MapResponse>("/v1/corpus/map", filterParams(filters)),
     staleTime: 60_000,
   });
 }
@@ -125,6 +126,15 @@ export function useNotebooks() {
     queryFn: () => get<{ items: NotebookRow[] }>("/v1/corpus/notebooks"),
     staleTime: 30_000,
   });
+}
+
+/** Notebook id → title map for every surface that shows notebook titles. */
+export function useNotebookTitles(): Map<string, string | null> {
+  const { data } = useNotebooks();
+  return useMemo(
+    () => new Map((data?.items ?? []).map((n) => [n.id, n.title])),
+    [data],
+  );
 }
 
 export function useJobs() {

@@ -64,7 +64,7 @@ export interface FacetValue {
 export type Facets = Record<
   "notebook" | "document" | "run" | "strategy" | "kind" | "fact_check" | "quality" | "length",
   FacetValue[]
->;
+> & { labels?: { document: Record<string, string> } };
 
 export interface Stats {
   clauses: number;
@@ -166,7 +166,17 @@ export interface JobSnapshot {
   result: Record<string, unknown> | null;
   error: string | null;
   document_ids: string[];
+  trace_url: string | null;
+  created_at: number;
+  started_at: number | null;
+  finished_at: number | null;
   last_seq: number;
+}
+
+export interface MapResponse {
+  points: MapPoint[];
+  color_by: "topic" | "document";
+  method: "pca" | "umap";
 }
 
 export interface Health {
