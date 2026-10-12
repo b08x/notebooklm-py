@@ -13,6 +13,7 @@ This module imports NO ``click`` / ``rich`` / ``cli``.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from collections.abc import AsyncIterator
 from typing import Annotated, Any, Literal
@@ -40,6 +41,8 @@ from .._corpus import (
 )
 
 __all__ = ["router"]
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/corpus", tags=["corpus"])
 
@@ -567,8 +570,10 @@ async def sfl_run(body: SflBody, services: ServicesDep) -> dict[str, Any]:
             raise RuntimeError("no ingested children in scope")
         job.progress("tagging", 0, len(children))
         tagged_so_far = 0
+        parent_state = {"number": 0, "total": 0}
 
         def start(number: int, total: int, parent_index: int, n_children: int) -> int:
+            parent_state.update(number=number, total=total)
             job.progress(f"parent {number}/{total}", tagged_so_far)
             return n_children
 
@@ -578,6 +583,14 @@ async def sfl_run(body: SflBody, services: ServicesDep) -> dict[str, Any]:
             job.progress(
                 f"{n_failed} failed: {first_error}" if first_error else "parent done",
                 tagged_so_far,
+            )
+            logger.info(
+                "job_id=%s kind=sfl_tag parent %s/%s tagged=%s failed=%s",
+                job.id,
+                parent_state["number"],
+                parent_state["total"],
+                n_children,
+                n_failed,
             )
 
         def child(clauses_done: int, total: int, parent_number: int) -> None:
@@ -593,7 +606,7 @@ async def sfl_run(body: SflBody, services: ServicesDep) -> dict[str, Any]:
         )
         return {"tagged": tagged, "failed": failed}
 
-    job = services.jobs.start("sfl_tag", f"SFL tag {scope.describe()}", run)
+    job = services.jobs.start("sfl_tag", label, run, traced=True)
     return job.snapshot()
 
 

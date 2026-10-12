@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -383,8 +384,26 @@ def test_artifact_list_and_ingest_job(env: Any) -> None:
     assert env.http.get("/v1/corpus/jobs/nope/events").status_code == 404
 
 
-def test_sfl_run_for_document_scope(env: Any) -> None:
+def test_sfl_run_for_document_scope(
+    env: Any, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    from notebooklm._app import tracing
+
+    caplog.set_level(logging.INFO, logger="notebooklm._app.background")
+    caplog.set_level(logging.INFO, logger="notebooklm.server.routes.corpus")
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(tracing.trace, "get_tracer", provider.get_tracer)
+    monkeypatch.delenv("LANGFUSE_HOST", raising=False)
+    monkeypatch.delenv("LANGFUSE_BASE_URL", raising=False)
+
     job = env.http.post("/v1/corpus/sfl/runs", json={"scope": {"document_ids": [env.doc_b]}}).json()
+    assert job["trace_url"] is None  # the snapshot predates the root span closing
     events = _sse(env.http, f"/v1/corpus/jobs/{job['id']}/events", until="finished")
     assert events[0]["type"] == "started" and events[-1]["status"] == "done"
     assert events[-1]["result"] == {"tagged": 2, "failed": 0}
@@ -395,13 +414,30 @@ def test_sfl_run_for_document_scope(env: Any) -> None:
         ("tagging clause 2/2", 1, 2),
         ("tagging clause 2/2", 2, 2),
     ]
-    job = env.http.post("/v1/corpus/sfl/runs", json={"scope": {"document_ids": [env.doc_b]}}).json()
+
+    # fact 16/18: one job.sfl_tag root span; the snapshot links to its Langfuse trace.
+    roots = [s for s in exporter.get_finished_spans() if s.name == "job.sfl_tag"]
+    assert len(roots) == 1
+    trace_hex = format(roots[0].context.trace_id, "032x")
+    done = env.http.get(f"/v1/corpus/jobs/{job['id']}").json()
+    assert done["trace_url"] == f"http://tinybot:3000/trace/{trace_hex}"
+
+    # fact 17: INFO lines at start, per parent and finish, each with the job id.
+    lines = [r.message for r in caplog.records if f"job_id={job['id']}" in r.message]
+    assert any("started" in m for m in lines)
+    assert any("parent 1/1 tagged=2 failed=0" in m for m in lines)
+    assert any("kind=sfl_tag done" in m for m in lines)
+
     a = env.http.get(f"/v1/corpus/chunks/{env.ids['Kernel panics hit the cgroup limit']}").json()
     b = env.http.get(f"/v1/corpus/chunks/{env.ids['It might rain']}").json()
     assert a["has_sfl"] is False and b["has_sfl"] is True
     assert env.http.post("/v1/corpus/sfl/runs", json={"scope": {}}).status_code == 422
+
+    # failing variant: ERROR line with the job id
     empty = env.http.post("/v1/corpus/sfl/runs", json={"scope": {"document_ids": ["nope"]}}).json()
     _wait(lambda: env.http.get(f"/v1/corpus/jobs/{empty['id']}").json()["status"] == "failed")
+    errors = [r for r in caplog.records if f"job_id={empty['id']}" in r.message and r.levelno >= 40]
+    assert errors and "no ingested children in scope" in errors[0].message
 
 
 def test_corpus_explorer_module_is_llm_free() -> None:
