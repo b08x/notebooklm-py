@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { mockFetch, renderWithClient } from "@/test/utils";
@@ -67,7 +67,7 @@ describe("SelectionBar (facts 24-26)", () => {
 });
 
 describe("MapView (fact-31)", () => {
-  it("reports the projected points and how they are colored", async () => {
+  it("reports the projected points, method, and how they are colored", async () => {
     mockFetch({
       "GET /v1/corpus/map": {
         points: [
@@ -75,12 +75,87 @@ describe("MapView (fact-31)", () => {
           { x: 1, y: 1, external_id: "b", document_id: "d2", preview: "q", topic: null },
         ],
         color_by: "document",
+        method: "pca",
       },
     });
     renderWithClient(<MapView />);
     expect(await screen.findByText("2 chunks")).toBeInTheDocument();
-    expect(screen.getByText("colored by document")).toBeInTheDocument();
+    expect(screen.getByText(/PCA projection of chunk embeddings · 1 point = 1 chunk · color = document/)).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Embedding map of 2 chunks" })).toBeInTheDocument();
+  });
+
+  it("zooms around the cursor with the wheel and resets the view", async () => {
+    mockFetch({
+      "GET /v1/corpus/map": {
+        points: [
+          { x: 0, y: 0, external_id: "a", document_id: "d1", preview: "p", topic: null },
+          { x: 1, y: 1, external_id: "b", document_id: "d2", preview: "q", topic: null },
+        ],
+        color_by: "document",
+        method: "umap",
+      },
+    });
+    renderWithClient(<MapView />);
+    const map = await screen.findByTestId("map");
+    expect(map).toHaveAttribute("data-k", "1.00");
+    fireEvent.wheel(map, { deltaY: -240, clientX: 100, clientY: 100 });
+    await waitFor(() => expect(screen.getByTestId("map")).toHaveAttribute("data-k", "1.43"));
+    fireEvent.wheel(map, { deltaY: 240, clientX: 100, clientY: 100 });
+    await waitFor(() => expect(screen.getByTestId("map")).toHaveAttribute("data-k", "1.00"));
+    // A drag pans the canvas and suppresses the click that opens a chunk.
+    const canvas = screen.getByRole("img");
+    fireEvent.pointerDown(canvas, { clientX: 50, clientY: 50, pointerId: 1 });
+    fireEvent.pointerMove(canvas, { clientX: 90, clientY: 60, pointerId: 1 });
+    fireEvent.pointerUp(canvas, { clientX: 90, clientY: 60, pointerId: 1 });
+    const reset = await screen.findByTestId("map-reset");
+    fireEvent.click(canvas); // the pan suppressed this click
+    expect(store.get().detailId).toBeNull();
+    fireEvent.click(reset);
+    await waitFor(() => expect(screen.queryByTestId("map-reset")).toBeNull());
+    expect(screen.getByTestId("map")).toHaveAttribute("data-k", "1.00");
+  });
+
+  it("legends document titles, isolates a group on click, and tooltips name the document", async () => {
+    mockFetch({
+      "GET /v1/corpus/map": {
+        points: [
+          { x: 0, y: 0, external_id: "a", document_id: "d1", preview: "preview text", topic: null },
+          { x: 0.4, y: 0.4, external_id: "b", document_id: "d1", preview: "x", topic: null },
+          { x: 1, y: 1, external_id: "c", document_id: "d2", preview: "y", topic: null },
+        ],
+        color_by: "document",
+        method: "pca",
+      },
+      "GET /v1/corpus/facets": { labels: { document: { d1: "Design notes" } } },
+    });
+    renderWithClient(<MapView />);
+    const legend = await screen.findByTestId("map-legend");
+    expect(within(legend).getByText("Design notes")).toBeInTheDocument();
+    expect(within(legend).getByText("d2 untitled")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("legend-d2"));
+    expect(screen.getByTestId("legend-d2")).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByTestId("legend-d2"));
+    expect(screen.getByTestId("legend-d2")).toHaveAttribute("aria-pressed", "false");
+    // Hovering a point shows its document title in the tooltip.
+    fireEvent.pointerMove(screen.getByRole("img"), { clientX: 24, clientY: 376, pointerId: 1 });
+    expect(await screen.findByTestId("map-tooltip")).toHaveTextContent("Design notes");
+    expect(screen.getByTestId("map-tooltip")).toHaveTextContent("preview text");
+  });
+
+  it("caps the legend and offers a +N more overflow line", async () => {
+    mockFetch({
+      "GET /v1/corpus/map": {
+        points: Array.from({ length: 13 }, (_, i) => ({
+          x: i, y: i, external_id: `e${i}`, document_id: `d${i}`, preview: "p", topic: null,
+        })),
+        color_by: "document",
+        method: "pca",
+      },
+    });
+    renderWithClient(<MapView />);
+    const legend = await screen.findByTestId("map-legend");
+    expect(within(legend).getAllByRole("button")).toHaveLength(12);
+    expect(screen.getByTestId("map-legend-more")).toHaveTextContent("+1 more");
   });
 });
 

@@ -38,6 +38,9 @@ Element.prototype.scrollIntoView ??= function scrollIntoView() {};
 HTMLCanvasElement.prototype.getContext = (() => null) as unknown as typeof HTMLCanvasElement.prototype.getContext;
 Element.prototype.hasPointerCapture ??= () => false;
 Element.prototype.releasePointerCapture ??= () => {};
+// jsdom has no PointerEvent, so fireEvent's pointer events would carry no
+// coordinates; MouseEvent takes clientX/clientY through the same init bag.
+globalThis.PointerEvent ??= MouseEvent as unknown as typeof PointerEvent;
 window.matchMedia ??= ((query: string) => ({
   matches: false,
   media: query,
