@@ -1,14 +1,10 @@
 import { useSyncExternalStore } from "react";
 import type { DeleteLevel, Filters, Mode } from "@/lib/types";
+import type { Tab } from "./url";
+import { fromUrl, toUrl } from "./url";
 
-export type Tab = "search" | "browse" | "map" | "runs" | "factcheck";
-export const TABS: { id: Tab; label: string }[] = [
-  { id: "search", label: "Search" },
-  { id: "browse", label: "Browse" },
-  { id: "map", label: "Map" },
-  { id: "runs", label: "Runs" },
-  { id: "factcheck", label: "Fact-check" },
-];
+export type { Tab } from "./url";
+export { TABS } from "./url";
 
 export interface DeleteRequest {
   level: DeleteLevel;
@@ -89,7 +85,13 @@ export function createStore<T>(init: T) {
   };
 }
 
-export const store = createStore<AppState>(tabFromUrl(initial));
+/** Initial state from the address bar, so a deep link restores the view. */
+function hydrate(state: AppState): AppState {
+  if (typeof window === "undefined") return state;
+  return { ...state, ...fromUrl(window.location) };
+}
+
+export const store = createStore<AppState>(hydrate(initial));
 
 export function useApp<S>(selector: (s: AppState) => S): S {
   return useSyncExternalStore(store.subscribe, () => selector(store.get()), () => selector(store.get()));
@@ -97,21 +99,51 @@ export function useApp<S>(selector: (s: AppState) => S): S {
 
 export const resetStore = () => store.reset({ ...initial });
 
-function tabFromUrl(state: AppState): AppState {
-  if (typeof window === "undefined") return state;
-  const seg = window.location.pathname.replace(/^\/ui\/?/, "").split("/")[0];
-  const tab = TABS.find((t) => t.id === seg)?.id;
-  return tab ? { ...state, tab } : state;
+/** True while a popstate handler applies the URL, so the sync does not re-write it. */
+let restoring = false;
+
+function inApp(): boolean {
+  return typeof window !== "undefined" && window.location.pathname.startsWith("/ui");
+}
+
+function currentUrl(): string {
+  return window.location.pathname + window.location.search;
+}
+
+/** Push a new history entry for navigation (tab, open chunk); replace for the rest. */
+function syncUrl(patch: Partial<AppState>, mode: "push" | "replace") {
+  if (!inApp()) return;
+  const url = toUrl({ ...store.get(), ...patch });
+  if (currentUrl() === url) return;
+  if (mode === "push") window.history.pushState(null, "", url);
+  else window.history.replaceState(null, "", url);
+}
+
+if (typeof window !== "undefined") {
+  // Filter, query and mode changes rewrite the current entry — typing must not
+  // flood the history (pushState above already covered tab and chunk changes).
+  store.subscribe(() => {
+    if (restoring || !inApp()) return;
+    const url = toUrl(store.get());
+    if (currentUrl() !== url) window.history.replaceState(null, "", url);
+  });
+  window.addEventListener("popstate", () => {
+    restoring = true;
+    try {
+      store.set(fromUrl(window.location));
+    } finally {
+      restoring = false;
+    }
+  });
 }
 
 export const actions = {
   setTab(tab: Tab) {
+    syncUrl({ tab }, "push");
     store.set({ tab });
-    if (typeof window !== "undefined" && window.location.pathname.startsWith("/ui")) {
-      window.history.replaceState(null, "", `/ui/${tab}`);
-    }
   },
   open(detailId: string | null) {
+    syncUrl({ detailId }, detailId ? "push" : "replace");
     store.set({ detailId, cursor: detailId ?? store.get().cursor });
   },
   toggleSelect(id: string) {

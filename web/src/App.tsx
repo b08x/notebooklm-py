@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AskDrawer } from "@/features/AskDrawer";
+import { Breadcrumbs } from "@/features/Breadcrumbs";
 import { CommandPalette } from "@/features/CommandPalette";
 import { DbDown } from "@/features/DbDown";
 import { DeleteDialog } from "@/features/DeleteDialog";
@@ -47,8 +48,9 @@ function Explorer() {
     [qc],
   );
   return (
-    <div className="grid h-full grid-rows-[48px_minmax(0,1fr)_28px] bg-bg text-fg">
+    <div className="grid h-full grid-rows-[48px_auto_minmax(0,1fr)_28px] bg-bg text-fg">
       <Header />
+      <Breadcrumbs />
       <div className="flex min-h-0 min-w-0 overflow-hidden">{tab === "factcheck" ? <FactCheckView /> : <Workbench />}</div>
       <StatusFooter health={health.data} />
       <DeleteDialog />
