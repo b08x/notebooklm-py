@@ -4,6 +4,8 @@ import { defineConfig } from "@playwright/test";
 const PORT = Number(process.env.E2E_PORT ?? 8799);
 export const E2E_TOKEN = "e2e-token";
 export const E2E_NOTEBOOK = process.env.E2E_NOTEBOOK ?? "nb-e2e";
+// Title the seed script stores for the fixture notebook (scripts/seed_corpus_fixture.py).
+export const E2E_NOTEBOOK_TITLE = `Fixture notebook ${E2E_NOTEBOOK}`;
 
 // Use a preinstalled Chromium when the matching Playwright build is not downloaded.
 const chromium = process.env.PLAYWRIGHT_CHROMIUM_PATH ?? (existsSync("/opt/pw-browsers/chromium") ? "/opt/pw-browsers/chromium" : undefined);

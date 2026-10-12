@@ -33,7 +33,7 @@ export function Breadcrumbs() {
             filters: { ...s.filters, notebook_ids: undefined, document_ids: undefined },
           }))
         }
-        className="rounded px-1 transition-[color,background-color] duration-150 hover:bg-surface-2 hover:text-fg"
+        className="rounded px-1 transition-[color,background-color,scale] duration-150 hover:bg-surface-2 hover:text-fg active:scale-[0.96]"
       >
         {TABS.find((t) => t.id === tab)?.label}
       </button>
@@ -44,7 +44,7 @@ export function Breadcrumbs() {
             type="button"
             data-testid="crumb-notebook"
             onClick={() => store.set({ detailId: null, filters: { notebook_ids: [notebook] } })}
-            className="max-w-[240px] truncate rounded px-1 transition-[color,background-color] duration-150 hover:bg-surface-2 hover:text-fg"
+            className="max-w-[240px] truncate rounded px-1 transition-[color,background-color,scale] duration-150 hover:bg-surface-2 hover:text-fg active:scale-[0.96]"
             title={notebook}
           >
             {notebookLabel(notebook, titles)}
@@ -60,7 +60,7 @@ export function Breadcrumbs() {
             onClick={() =>
               store.set((s) => ({ detailId: null, filters: { ...s.filters, document_ids: [document] } }))
             }
-            className="max-w-[240px] truncate rounded px-1 transition-[color,background-color] duration-150 hover:bg-surface-2 hover:text-fg"
+            className="max-w-[240px] truncate rounded px-1 transition-[color,background-color,scale] duration-150 hover:bg-surface-2 hover:text-fg active:scale-[0.96]"
             title={document}
           >
             {documentLabel(document, detail?.title ? { [document]: detail.title } : facets?.labels?.document)}

@@ -1467,6 +1467,7 @@ src/notebooklm/
 - `src/notebooklm/_app/fact_checks.py` - Fact-check persistence: scoped child loading and verdict rows.
 - `src/notebooklm/_app/topics.py` - BERTopic fitting over active-run children.
 - `src/notebooklm/_app/tracing.py` - Job root spans and Langfuse trace URLs.
+- `src/notebooklm/_app/notebook_titles.py` - Stored corpus notebook titles (ingest and live-list upserts, title lookup).
 - `src/notebooklm/_preprocessing/audio_prep.py` - Temporary FLAC preparation (mono, 80 Hz high-pass, -19 LUFS, -1 dBFS ceiling) before transcription.
 - `src/notebooklm/_preprocessing/checkworthiness.py` - Rule-based pre-LLM check-worthiness gate.
 - `src/notebooklm/_preprocessing/chunking` - Chunking strategy package.

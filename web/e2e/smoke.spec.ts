@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { E2E_NOTEBOOK, E2E_TOKEN } from "../playwright.config";
+import { selectFixtureNotebook } from "./helpers";
 
 const QUERY = "OOM killer";
 
@@ -13,7 +14,7 @@ test.beforeEach(async ({ page }) => {
 
 test("search → open chunk → delete → Cancel keeps it → delete → Confirm removes it (fact-47)", async ({ page, request }) => {
   await page.goto("/ui/search");
-  await page.getByRole("checkbox", { name: E2E_NOTEBOOK, exact: true }).click();
+  await selectFixtureNotebook(page);
   await page.getByLabel("Search the corpus").fill(QUERY);
 
   const rows = page.getByTestId("result-row");
@@ -75,7 +76,7 @@ test("map: clicking a projected point opens that chunk (fact-31)", async ({ page
   expect(map.color_by).toBe("document");
 
   await page.goto("/ui/map");
-  await page.getByRole("checkbox", { name: E2E_NOTEBOOK, exact: true }).click();
+  await selectFixtureNotebook(page);
   const canvas = page.getByRole("img", { name: `Embedding map of ${points.length} chunks` });
   await expect(canvas).toBeVisible();
   const box = await canvas.boundingBox();

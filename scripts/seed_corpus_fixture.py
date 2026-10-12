@@ -24,10 +24,11 @@ from typing import Any
 
 from sqlalchemy import delete, or_, select, update
 
+from notebooklm._app.notebook_titles import upsert_titles
 from notebooklm._preprocessing.chunking import ChildChunk, ChunkResult, ChunkStats, ParentChunk
 from notebooklm._preprocessing.features import ClauseFeatures
 from notebooklm._preprocessing.ingestion import IngestionService
-from notebooklm.db.models import ChunkRun, Clause, RemovalLog
+from notebooklm.db.models import ChunkRun, Clause, CorpusNotebook, RemovalLog
 from notebooklm.db.session import async_session_maker
 
 DIM = 768
@@ -134,6 +135,11 @@ def _features(texts: list[str]) -> list[ClauseFeatures]:
     return feats
 
 
+def notebook_title(notebook: str) -> str:
+    """Stored title of the fixture notebook (the Corpus Explorer shows titles, not ids)."""
+    return f"Fixture notebook {notebook}"
+
+
 async def seed(notebook: str) -> dict[str, Any]:
     service = IngestionService(
         None,
@@ -161,6 +167,7 @@ async def seed(notebook: str) -> dict[str, Any]:
             update(Clause).where(Clause.document_id.like(f"{notebook}-%")).values(sfl=SFL)
         )
         await session.commit()
+        await upsert_titles(session, {notebook: notebook_title(notebook)})
         n = len(
             (
                 await session.execute(
@@ -168,13 +175,20 @@ async def seed(notebook: str) -> dict[str, Any]:
                 )
             ).all()
         )
-    return {"notebook_id": notebook, "documents": list(runs), "runs": runs, "chunks": n}
+    return {
+        "notebook_id": notebook,
+        "title": notebook_title(notebook),
+        "documents": list(runs),
+        "runs": runs,
+        "chunks": n,
+    }
 
 
 async def remove(notebook: str) -> dict[str, Any]:
     async with async_session_maker() as session:
         await session.execute(delete(ChunkRun).where(ChunkRun.notebook_id == notebook))
         await session.execute(delete(Clause).where(Clause.document_id.like(f"{notebook}-%")))
+        await session.execute(delete(CorpusNotebook).where(CorpusNotebook.notebook_id == notebook))
         await session.execute(
             delete(RemovalLog).where(
                 or_(RemovalLog.notebook_id == notebook, RemovalLog.item_id.like(f"{notebook}-%"))
