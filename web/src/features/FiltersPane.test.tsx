@@ -52,4 +52,21 @@ describe("FiltersPane (facts 16-17, 62)", () => {
     fireEvent.click(screen.getByText("Clear filters"));
     expect(store.get().filters.quality).toBeUndefined();
   });
+
+  it("labels notebooks and documents by stored title; unnamed ones show a short id, never a full UUID", async () => {
+    mockFetch({
+      "GET /v1/corpus/facets": {
+        ...FACETS,
+        document: [{ value: "doc-a", count: 40 }, { value: "doc-b-uuid-long", count: 7 }],
+        labels: { document: { "doc-a": "Design notes" } },
+      },
+      "GET /v1/corpus/notebooks": { items: [{ id: "nb-1", title: "Kernel Panic Notebook", chunks: 40, documents: 1 }] },
+      "GET /v1/corpus/stats": { clauses: 1 },
+    });
+    renderWithClient(<FiltersPane />);
+    expect(await screen.findByLabelText("Kernel Panic Notebook")).toBeInTheDocument();
+    expect(screen.getByLabelText("Design notes")).toBeInTheDocument();
+    expect(screen.getByLabelText("doc-b-uu… untitled")).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("doc-b-uuid-long");
+  });
 });

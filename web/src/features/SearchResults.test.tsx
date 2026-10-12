@@ -1,7 +1,7 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { SearchHit, SearchResult } from "@/lib/types";
-import { row } from "@/test/utils";
+import { mockFetch, renderWithClient, row } from "@/test/utils";
 import { SearchResults } from "./SearchResults";
 
 const hit = (over: Partial<SearchHit>): SearchHit =>
@@ -20,7 +20,8 @@ const result = (hits: SearchHit[], vectorOk = true): SearchResult => ({
 function renderResults(res: SearchResult, extra: Partial<React.ComponentProps<typeof SearchResults>> = {}) {
   const onOpen = vi.fn();
   const onToggle = vi.fn();
-  render(
+  mockFetch({ "GET /v1/corpus/notebooks": { items: [{ id: "nb", title: "Notebook", chunks: 3, documents: 1 }] } });
+  renderWithClient(
     <SearchResults
       result={res}
       loading={false}
@@ -85,7 +86,7 @@ describe("SearchResults", () => {
   });
 
   it("prompts when there is no query and reports no matches", () => {
-    const { unmount } = render(
+    const { unmount } = renderWithClient(
       <SearchResults result={undefined} loading={false} query="" selected={[]} cursor={null} detailId={null} hidden={[]} onOpen={vi.fn()} onToggle={vi.fn()} />,
     );
     expect(screen.getByText("Search the corpus")).toBeInTheDocument();

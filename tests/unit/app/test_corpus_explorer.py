@@ -64,7 +64,7 @@ async def seeded(pg_session: AsyncSession):  # noqa: F811
         "||The OOM killer picks the largest RSS",
     )
     s.run_b = await s.ingest(
-        "b", f"Entity recognition with spaCy pipelines|{B64}|{NUM}", params={"kind": "audio"}
+        "b", f"Entity recognition with spaCy pipelines|{B64}|{NUM}", params={"kind": "audio", "title": "Audio transcript"}
     )
     return s
 
@@ -187,6 +187,8 @@ async def test_filters_and_facets(seeded: Seeder) -> None:
     assert {"value": s.notebook, "count": 5} in f["notebook"]
     assert sum(i["count"] for i in f["length"]) == 5
     assert {i["value"] for i in f["document"]} == {s.doc("a"), s.doc("b")}
+    # Stored titles ride along under labels.document; untitled documents are omitted.
+    assert f["labels"]["document"] == {s.doc("b"): "Audio transcript"}
     assert f["strategy"] == [{"value": "split", "count": 5}]
     assert {i["value"] for i in f["run"]} == {s.run_a2, s.run_b}
 
@@ -295,6 +297,7 @@ async def test_map_points_color_by_document_then_topic(seeded: Seeder) -> None:
     s = seeded
     out = await ce.map_points(s.session, filters=_nb(s))
     assert out["color_by"] == "document"
+    assert out["method"] == "pca"
     assert len(out["points"]) == 7
     p = out["points"][0]
     assert set(p) >= {"x", "y", "external_id", "document_id"}
@@ -323,9 +326,15 @@ async def test_map_cache_for_unfiltered_map(pg_session: AsyncSession) -> None:  
 
 
 def test_project_small_inputs() -> None:
-    assert ce._project([], "pca").shape == (0, 2)
-    assert ce._project([[1.0, 2.0]], "pca").shape == (1, 2)
-    assert ce._project([[1.0, 2.0], [2.0, 1.0]], "pca").shape == (2, 2)
+    empty, method = ce._project([], "pca")
+    assert empty.shape == (0, 2)
+    assert method == "pca"
+    one, method = ce._project([[1.0, 2.0]], "pca")
+    assert one.shape == (1, 2)
+    assert method == "pca"
+    two, method = ce._project([[1.0, 2.0], [2.0, 1.0]], "umap")
+    assert two.shape == (2, 2)
+    assert method == "pca"  # too few points for UMAP: falls back to PCA
 
 
 def test_entities_from_handles_bad_shapes() -> None:

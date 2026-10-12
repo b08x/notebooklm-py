@@ -210,7 +210,7 @@ export function DetailPane() {
         : level === "parent"
           ? `parent chunk ${(d.parent?.index ?? 0) + 1} and its ${d.parent?.n_children ?? 0} children`
           : level === "document"
-            ? `document ${shortId(d.title ?? d.document_id, 24)} (every run)`
+            ? `document ${d.title ?? `${shortId(d.document_id, 8)} untitled`} (every run)`
             : `run #${d.run_id}`;
     actions.requestDelete({ level, ids, hide: [d.external_id], label });
   };

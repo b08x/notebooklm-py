@@ -3,9 +3,9 @@ import { useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SectionLabel } from "@/components/ui/section-label";
 import { Switch } from "@/components/ui/switch";
-import { useFacets, useStats } from "@/lib/queries";
+import { useFacets, useNotebookTitles, useStats } from "@/lib/queries";
 import type { FacetValue, Filters } from "@/lib/types";
-import { cn, fmt, shortId } from "@/lib/utils";
+import { cn, fmt, documentLabel, notebookLabel } from "@/lib/utils";
 import { actions, useApp } from "@/state/store";
 
 const LABELS: Record<string, string> = {
@@ -65,7 +65,7 @@ function Facet({
             className="flex cursor-default items-center gap-2 rounded-md px-1.5 py-1 text-[13px] transition-[background-color] duration-150 hover:bg-surface"
           >
             <Checkbox checked={chosen.includes(value)} onCheckedChange={() => toggle(value)} aria-label={label} />
-            <span className="min-w-0 truncate" title={String(value)}>
+            <span className="min-w-0 truncate" title={label}>
               {label}
             </span>
             <em className="ml-auto text-[12px] text-muted not-italic tabular" data-testid={`facet-count-${field}-${value}`}>
@@ -135,6 +135,7 @@ export function FiltersPane() {
   const filters = useApp((s) => s.filters);
   const stats = useStats(filters);
   const facets = useFacets(filters);
+  const titles = useNotebookTitles();
   const f = facets.data;
   const active = Object.values(filters).some((v) => (Array.isArray(v) ? v.length : v !== undefined && v !== false));
   return (
@@ -163,7 +164,7 @@ export function FiltersPane() {
           <Stat value={stats.data?.runs} label="runs" />
         </div>
       </div>
-      <Facet title="Notebook" values={f?.notebook} field="notebook_ids" filters={filters} format={(v) => shortId(v, 18)} />
+      <Facet title="Notebook" values={f?.notebook} field="notebook_ids" filters={filters} format={(v) => notebookLabel(v, titles)} />
       <Facet title="Kind" values={f?.kind} field="kinds" filters={filters} />
       <Facet title="Quality" values={f?.quality} field="quality" filters={filters} />
       <section className="mb-4" aria-label="Near-duplicates">
@@ -179,7 +180,7 @@ export function FiltersPane() {
       <Facet title="Fact-check" values={f?.fact_check} field="fact_check" filters={filters} />
       <LengthRange filters={filters} />
       <Facet title="Strategy" values={f?.strategy} field="strategies" filters={filters} />
-      <Facet title="Document" values={f?.document} field="document_ids" filters={filters} limit={6} format={(v) => shortId(v, 22)} />
+      <Facet title="Document" values={f?.document} field="document_ids" filters={filters} limit={6} format={(v) => documentLabel(v, f?.labels?.document)} />
       <Facet title="Run" values={f?.run} field="run_ids" filters={filters} limit={6} format={(v) => `run #${v}`} />
       {facets.isError && <p className={cn("text-[12px] text-bad")}>Facets failed to load.</p>}
     </aside>

@@ -380,6 +380,7 @@ async def facets(session: AsyncSession, filters: CorpusFilters | None = None) ->
 
     Each facet is counted with every *other* filter applied (its own selection
     cleared), so unchecked values still show how many rows they would add.
+    ``labels.document`` carries each document's stored title for the UI.
     """
     flt = filters or CorpusFilters()
     out: dict[str, list[dict[str, Any]]] = {}
@@ -390,7 +391,21 @@ async def facets(session: AsyncSession, filters: CorpusFilters | None = None) ->
         ).group_by(literal_column("value"))
         counts = {value: int(n) for value, n in (await session.execute(stmt)).all()}
         out[name] = _ordered_counts(name, counts)
-    return out
+    doc_titles = (
+        await session.execute(
+            apply_filters(
+                select(
+                    Clause.document_id.label("document_id"),
+                    func.max(ChunkRun.params["title"].astext).label("title"),
+                ),
+                flt,
+            ).group_by(Clause.document_id)
+        )
+    ).all()
+    return {
+        **out,
+        "labels": {"document": {d: t for d, t in doc_titles if t}},
+    }
 
 
 def _ordered_counts(name: str, counts: dict[Any, int]) -> list[dict[str, Any]]:
@@ -738,29 +753,30 @@ async def embedder_health(timeout: float = 2.0) -> dict[str, Any]:
 _MAP_CACHE: dict[tuple[int, int, str], list[dict[str, Any]]] = {}
 
 
-def _project(vectors: Any, method: str) -> Any:
+def _project(vectors: Any, method: str) -> tuple[Any, str]:
+    """Project to 2D. Returns ``(coords, actual_method)`` — UMAP may fall back to PCA."""
     import numpy as np
 
     data = np.asarray(vectors, dtype=np.float32)
     if len(data) == 0:
-        return np.zeros((0, 2), dtype=np.float32)
+        return np.zeros((0, 2), dtype=np.float32), method
     if method == "umap" and len(data) >= 15:
         try:
             import umap
 
             reducer = umap.UMAP(n_components=2, random_state=42, metric="cosine")
-            return reducer.fit_transform(data)
+            return reducer.fit_transform(data), "umap"
         except Exception as e:  # noqa: BLE001 - UMAP is optional; PCA always works
             logger.info("UMAP unavailable (%s); falling back to PCA", e)
     centered = data - data.mean(axis=0)
     if len(data) == 1:
-        return np.zeros((1, 2), dtype=np.float32)
+        return np.zeros((1, 2), dtype=np.float32), "pca"
     _, _, vt = np.linalg.svd(centered, full_matrices=False)
     comps = vt[:2]
     projected = centered @ comps.T
     if projected.shape[1] < 2:
         projected = np.hstack([projected, np.zeros((len(projected), 1), dtype=np.float32)])
-    return projected
+    return projected, "pca"
 
 
 async def map_points(
@@ -794,8 +810,12 @@ async def map_points(
         s = await stats(session)
         key = (s["clauses"], s["max_clause_id"], method)
         if key in _MAP_CACHE:
-            return {"points": _MAP_CACHE[key], "color_by": "topic" if has_topics else "document"}
-    coords = await asyncio.to_thread(_project, [r[4] for r in rows], method)
+            return {
+                "points": _MAP_CACHE[key],
+                "color_by": "topic" if has_topics else "document",
+                "method": method,
+            }
+    coords, actual_method = await asyncio.to_thread(_project, [r[4] for r in rows], method)
     points = [
         {
             "x": float(coords[i][0]),
@@ -810,4 +830,4 @@ async def map_points(
     if key is not None:
         _MAP_CACHE.clear()
         _MAP_CACHE[key] = points
-    return {"points": points, "color_by": "topic" if has_topics else "document"}
+    return {"points": points, "color_by": "topic" if has_topics else "document", "method": actual_method}

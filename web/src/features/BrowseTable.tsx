@@ -55,7 +55,19 @@ export function BrowseTable({ header }: { header?: React.ReactNode }) {
           <span className={cn("block truncate", row.original.quality !== "clean" && "font-mono text-[12px] text-muted")}>{row.original.text}</span>
         ),
       },
-      { id: "doc", header: "Document", size: 112, cell: ({ row }) => <span className="truncate font-mono text-[11.5px] text-muted" title={row.original.document_id}>{shortId(row.original.title ?? row.original.document_id, 14)}</span> },
+      {
+        id: "doc",
+        header: "Document",
+        size: 112,
+        cell: ({ row }) => {
+          const doc = row.original.title ?? `${shortId(row.original.document_id, 8)} untitled`;
+          return (
+            <span className="truncate font-mono text-[11.5px] text-muted" title={doc}>
+              {doc}
+            </span>
+          );
+        },
+      },
       { id: "kind", header: "Kind", size: 76, cell: ({ row }) => <Badge tone={row.original.kind === "source" ? "neutral" : "info"}>{row.original.kind.replace("_", " ")}</Badge> },
       { id: "len", header: "Len", size: 56, cell: ({ row }) => <span className="font-mono text-[11.5px] text-muted tabular">{row.original.length}</span> },
       {

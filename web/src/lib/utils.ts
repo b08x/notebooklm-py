@@ -19,6 +19,12 @@ export function notebookLabel(id: string | null | undefined, titles: Map<string,
   return title || `${shortId(id, 8)} untitled`;
 }
 
+/** Document title from the facets labels, or a short id plus "untitled". */
+export function documentLabel(id: string | null | undefined, titles: Record<string, string> | undefined): string {
+  if (!id) return "—";
+  return titles?.[id] ?? `${shortId(id, 8)} untitled`;
+}
+
 /** True when a real title is known for the notebook (styles the untitled marker muted). */
 export function hasNotebookTitle(id: string | null | undefined, titles: Map<string, string | null>): boolean {
   return !!id && !!titles.get(id);

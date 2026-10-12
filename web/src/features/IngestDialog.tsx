@@ -11,9 +11,9 @@ import { SectionLabel } from "@/components/ui/section-label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { followEvents, post } from "@/lib/api";
-import { useArtifacts, useNotebooks, useProviders } from "@/lib/queries";
+import { useArtifacts, useNotebooks, useNotebookTitles, useProviders } from "@/lib/queries";
 import type { ArtifactRow, JobSnapshot, Provider } from "@/lib/types";
-import { cn, shortId } from "@/lib/utils";
+import { cn, notebookLabel } from "@/lib/utils";
 import { store, useApp } from "@/state/store";
 
 export const LANGUAGES: [string, string][] = [
@@ -105,6 +105,7 @@ export function IngestDialog() {
   const open = useApp((s) => s.ingestOpen);
   const qc = useQueryClient();
   const notebooks = useNotebooks();
+  const nbTitles = useNotebookTitles();
   const [notebookId, setNotebookId] = useState<string | null>(null);
   const artifacts = useArtifacts(open ? notebookId : null);
   const providersQ = useProviders();
@@ -181,7 +182,7 @@ export function IngestDialog() {
             <SelectContent>
               {(notebooks.data?.items ?? []).map((n) => (
                 <SelectItem key={n.id} value={n.id}>
-                  {n.title ?? shortId(n.id, 24)}
+                  {notebookLabel(n.id, nbTitles)}
                 </SelectItem>
               ))}
             </SelectContent>

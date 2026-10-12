@@ -44,7 +44,7 @@ export function RunsView() {
         {items.map((r) => (
           <div key={r.id} role="row" className={cn("grid items-center gap-3 border-b border-line/60 px-3.5 py-1.5", !r.is_active && "text-muted")} style={{ gridTemplateColumns: COLS }}>
             <span className="font-mono text-[11.5px] tabular">#{r.id}</span>
-            <span className="truncate" title={r.document_id}>{r.title ?? shortId(r.document_id, 28)}</span>
+            <span className="truncate" title={r.title ?? `${shortId(r.document_id, 8)} untitled`}>{r.title ?? `${shortId(r.document_id, 8)} untitled`}</span>
             <Badge tone={r.kind === "source" ? "neutral" : "info"}>{r.kind.replace("_", " ")}</Badge>
             <span className="truncate font-mono text-[12px]">{r.strategy}</span>
             <span className="tabular">{fmt.format(r.n_parents)}</span>

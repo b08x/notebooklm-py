@@ -11,9 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ApiError, followEvents, get, post } from "@/lib/api";
-import { useFactCheckRuns, useNotebooks } from "@/lib/queries";
+import { useFactCheckRuns, useNotebooks, useNotebookTitles } from "@/lib/queries";
 import type { FactCheckRunSnapshot, ItemStatus, RunEvent, RunItem } from "@/lib/types";
-import { cn, formatElapsed, shortId } from "@/lib/utils";
+import { cn, formatElapsed, notebookLabel } from "@/lib/utils";
 import { SflChips } from "../DetailPane";
 import { type FactCheckScope, actions, store, useApp } from "@/state/store";
 import { GateCard } from "./GateCard";
@@ -47,18 +47,19 @@ export async function setAutoSkip(runId: string, on: boolean): Promise<void> {
   await post(`/v1/corpus/factcheck/runs/${runId}/auto-skip`, { on });
 }
 
-function describeScope(scope: FactCheckScope | null): string {
+function describeScope(scope: FactCheckScope | null, titles: Map<string, string | null>): string {
   if (!scope) return "nothing selected";
   if (scope.external_ids?.length) return `${scope.external_ids.length} selected chunk${scope.external_ids.length === 1 ? "" : "s"}`;
   if (scope.run_ids?.length) return `run #${scope.run_ids.join(", #")}`;
   if (scope.document_ids?.length) return `${scope.document_ids.length} document(s)`;
-  if (scope.notebook_id) return `notebook ${shortId(scope.notebook_id, 18)}`;
+  if (scope.notebook_id) return `notebook ${notebookLabel(scope.notebook_id, titles)}`;
   return "nothing selected";
 }
 
 function StartPanel() {
   const scope = useApp((s) => s.factcheckScope);
   const notebooks = useNotebooks();
+  const nbTitles = useNotebookTitles();
   const runs = useFactCheckRuns();
   const qc = useQueryClient();
   const [gateSource, setGateSource] = useState<"rule" | "jev">("rule");
@@ -104,10 +105,10 @@ function StartPanel() {
             <SelectValue placeholder="Choose a notebook…" />
           </SelectTrigger>
           <SelectContent>
-            {scope && !scope.notebook_id && <SelectItem value="__custom">{describeScope(scope)}</SelectItem>}
+            {scope && !scope.notebook_id && <SelectItem value="__custom">{describeScope(scope, nbTitles)}</SelectItem>}
             {(notebooks.data?.items ?? []).map((n) => (
               <SelectItem key={n.id} value={n.id}>
-                {n.title ?? shortId(n.id, 24)} · {n.chunks} chunks
+                {notebookLabel(n.id, nbTitles)} · {n.chunks} chunks
               </SelectItem>
             ))}
           </SelectContent>
@@ -158,7 +159,7 @@ function StartPanel() {
           <span className="flex-1">{sflNeeded}</span>
           <TagSflButton
             scope={scope as unknown as Record<string, unknown>}
-            label={describeScope(scope)}
+            label={describeScope(scope, nbTitles)}
             onDone={(ok) => {
               if (ok) {
                 setSflNeeded(null);
@@ -169,7 +170,7 @@ function StartPanel() {
         </div>
       )}
       <Button variant="primary" size="md" disabled={!scope || busy} onClick={() => void start()}>
-        <ShieldCheck /> Start run over {describeScope(scope)}
+        <ShieldCheck /> Start run over {describeScope(scope, nbTitles)}
       </Button>
       {(runs.data?.items.length ?? 0) > 0 && (
         <div className="mt-2">

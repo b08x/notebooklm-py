@@ -1,15 +1,20 @@
 import { Badge } from "@/components/ui/badge";
+import { useNotebookTitles } from "@/lib/queries";
 import type { ChunkRow } from "@/lib/types";
-import { shortId } from "@/lib/utils";
+import { notebookLabel, shortId } from "@/lib/utils";
 
 const QUALITY_LABEL: Record<string, string> = { base64: "base64", numeric_table: "numeric table" };
 const FC_TONE = { passed: "ok", failed: "bad", other: "neutral", unchecked: "neutral" } as const;
 
 export function RowMeta({ row }: { row: ChunkRow }) {
+  const titles = useNotebookTitles();
+  const doc = row.title ?? `${shortId(row.document_id, 8)} untitled`;
+  const nb = notebookLabel(row.notebook_id, titles);
   return (
     <div className="flex flex-wrap gap-2 font-mono text-[11.5px] text-muted">
       <span>#{row.id}</span>
-      <span title={row.document_id}>doc {shortId(row.title ?? row.document_id, 14)}</span>
+      <span title={doc}>doc {doc}</span>
+      {row.notebook_id && <span title={nb}>nb {nb}</span>}
       {row.sentence_index !== null && <span>line {row.sentence_index}</span>}
       {row.kind !== "source" && <Badge tone="info">{row.kind.replace("_", " ")}</Badge>}
       {row.strategy && <Badge>{row.strategy}</Badge>}
