@@ -47,12 +47,13 @@ export function MapView() {
   useEffect(() => {
     const c = canvas.current;
     const ctx = c?.getContext("2d");
-    if (!c || !ctx || !scale) return;
+    if (!c || !ctx) return;
     const dpr = window.devicePixelRatio || 1;
     c.width = size.w * dpr;
     c.height = size.h * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, size.w, size.h);
+    if (!scale || points.length === 0) return;
     ctx.globalAlpha = 0.8;
     for (const p of points) {
       ctx.fillStyle = colorFor(colorBy === "topic" ? (p.topic ?? "—") : p.document_id);
@@ -122,6 +123,11 @@ export function MapView() {
               {hover.p.topic ?? `doc ${shortId(hover.p.document_id, 12)}`}
             </div>
             {hover.p.preview}
+          </div>
+        )}
+        {!q.isLoading && points.length === 0 && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6 text-[13px] text-muted" data-testid="map-empty">
+            No chunks match these filters.
           </div>
         )}
       </div>

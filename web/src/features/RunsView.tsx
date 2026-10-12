@@ -7,7 +7,7 @@ import { useJobs, useRuns } from "@/lib/queries";
 import { cn, fmt, shortId } from "@/lib/utils";
 import { actions, store } from "@/state/store";
 
-const COLS = "64px minmax(0,1fr) 92px 96px 70px 70px 64px 64px 64px 120px";
+const COLS = "64px minmax(180px,1fr) 92px 96px 70px 70px 64px 64px 64px 120px";
 
 /** chunk_runs with strategy, parent/child counts, mean and p95 length, and the active flag. */
 export function RunsView() {
@@ -36,11 +36,12 @@ export function RunsView() {
         </div>
       ))}
       <div role="table" aria-label="Chunk runs" className="min-h-0 flex-1 overflow-auto text-[13px]">
-        <div role="row" className="sticky top-0 grid gap-3 border-b border-line bg-bg px-3.5 py-1.5 text-[11px] font-semibold tracking-[0.06em] text-subtle uppercase" style={{ gridTemplateColumns: COLS }}>
-          {["Run", "Document", "Kind", "Strategy", "Parents", "Children", "Mean", "p95", "Active", ""].map((h) => (
-            <span role="columnheader" key={h}>{h}</span>
-          ))}
-        </div>
+        <div className="min-w-[880px]">
+          <div role="row" className="sticky top-0 grid gap-3 border-b border-line bg-bg px-3.5 py-1.5 text-[11px] font-semibold tracking-[0.06em] text-subtle uppercase" style={{ gridTemplateColumns: COLS }}>
+            {["Run", "Document", "Kind", "Strategy", "Parents", "Children", "Mean", "p95", "Active", ""].map((h) => (
+              <span role="columnheader" key={h}>{h}</span>
+            ))}
+          </div>
         {items.map((r) => (
           <div key={r.id} role="row" className={cn("grid items-center gap-3 border-b border-line/60 px-3.5 py-1.5", !r.is_active && "text-muted")} style={{ gridTemplateColumns: COLS }}>
             <span className="font-mono text-[11.5px] tabular">#{r.id}</span>
@@ -80,6 +81,7 @@ export function RunsView() {
             </span>
           </div>
         ))}
+        </div>
       </div>
     </div>
   );
