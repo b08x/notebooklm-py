@@ -217,6 +217,23 @@ class FactCheck(Base):
     )
 
 
+class CorpusNotebook(Base):
+    """Last known title of one notebook present in the corpus.
+
+    Written at ingest and refreshed by every successful live
+    ``notebooks.list()``, so the UI can show titles even while the server has
+    no signed-in NotebookLM client.
+    """
+
+    __tablename__ = "corpus_notebooks"
+
+    notebook_id: Mapped[str] = mapped_column(String, primary_key=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class RemovalLog(Base):
     """One row per curated removal, notebook delete, or archive.
 

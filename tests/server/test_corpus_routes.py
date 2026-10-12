@@ -21,11 +21,12 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from notebooklm._app import corpus_explorer
+from notebooklm.db.session import async_session_maker
 from notebooklm.server import _static
 from notebooklm.server._corpus import CorpusServices
 from notebooklm.server.app import create_app
 
-from ._corpus_env import HEADERS, _health, _nb, _sse, _wait
+from ._corpus_env import HEADERS, FakeNotebooks, _health, _nb, _sse, _wait
 
 # ---------------------------------------------------------------------------
 # Auth + availability
@@ -181,6 +182,53 @@ def test_runs_map_notebooks_health(env: Any) -> None:
     health = env.http.get("/v1/corpus/health").json()
     assert health["postgres"]["ok"] is True and health["embedder"]["ok"] is True
     assert health["jobs"] == [] and health["factcheck_runs"] == []
+
+
+def test_notebook_titles_stored_live_and_failure(env: Any) -> None:
+    """Stored titles show without a client, a live list refreshes them, a live failure keeps them."""
+    from notebooklm._app import notebook_titles
+
+    def seed_stored() -> None:
+        async def go() -> None:
+            async with async_session_maker() as session:
+                await notebook_titles.upsert_titles(session, {env.notebook: "Stored Title"})
+
+        asyncio.run(go())
+
+    def stored() -> str | None:
+        async def go() -> str | None:
+            async with async_session_maker() as session:
+                titles = await notebook_titles.stored_titles(session, [env.notebook])
+                return titles.get(env.notebook)
+
+        return asyncio.run(go())
+
+    seed_stored()
+    assert stored() == "Stored Title"
+
+    class LiveList:
+        async def list(self) -> list[Any]:
+            return [type("Nb", (), {"id": env.notebook, "title": "Live Title"})()]
+
+    class DeadList:
+        async def list(self) -> list[Any]:
+            raise RuntimeError("signed out")
+
+    env.client.notebooks = LiveList()  # type: ignore[attr-defined]
+    items = {i["id"]: i["title"] for i in env.http.get("/v1/corpus/notebooks").json()["items"]}
+    assert items[env.notebook] == "Live Title"  # the live list overlays the stored row
+    assert stored() == "Live Title"  # ...and is persisted
+
+    env.client.notebooks = DeadList()  # type: ignore[attr-defined]
+    items = {i["id"]: i["title"] for i in env.http.get("/v1/corpus/notebooks").json()["items"]}
+    assert items[env.notebook] == "Live Title"  # a live failure keeps the stored title
+
+    env.client.notebooks = FakeNotebooks()  # type: ignore[attr-defined]
+    services = CorpusServices(session_maker=async_session_maker, configure_llm=False)
+    no_client = create_app(corpus_services=services, client_factory=_never)
+    with TestClient(no_client, headers=HEADERS, client=("127.0.0.1", 5555)) as http:
+        items = {i["id"]: i["title"] for i in http.get("/v1/corpus/notebooks").json()["items"]}
+        assert items[env.notebook] == "Live Title"  # no client at all → stored title only
 
 
 # ---------------------------------------------------------------------------

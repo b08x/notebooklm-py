@@ -15,7 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, or_, select, update
 
-from notebooklm.db.models import ChunkRun, Clause, RemovalLog
+from notebooklm.db.models import ChunkRun, Clause, CorpusNotebook, RemovalLog
 from notebooklm.db.session import async_session_maker
 from notebooklm.server._corpus import CorpusServices
 from notebooklm.server.app import create_app
@@ -95,6 +95,9 @@ async def _cleanup(prefix: str) -> None:
     async with async_session_maker() as session:
         await session.execute(delete(ChunkRun).where(ChunkRun.document_id.like(f"{prefix}%")))
         await session.execute(delete(Clause).where(Clause.document_id.like(f"{prefix}%")))
+        await session.execute(
+            delete(CorpusNotebook).where(CorpusNotebook.notebook_id.like(f"%{prefix}"))
+        )
         await session.execute(
             delete(RemovalLog).where(
                 or_(

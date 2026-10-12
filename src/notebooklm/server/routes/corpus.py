@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..._app import corpus_agent, corpus_answer, corpus_explorer, corpus_mutations
 from ..._app.artifact_ingest import ingest_artifact, list_ingestible
 from ..._app.corpus_explorer import ChunkNotFoundError, CorpusFilters
+from ..._app.notebook_titles import stored_titles, upsert_titles
 from ..._app.sfl_tagging import GroupProgress, load_children, tag_children
 from ..._preprocessing.transcription import TranscriptionOptions, providers
 from ...db.models import ChunkRun
@@ -195,15 +196,22 @@ async def notebooks(request: Request, session: SessionDep) -> dict[str, Any]:
         .order_by(func.sum(ChunkRun.n_children).desc())
     )
     rows = (await session.execute(stmt)).all()
-    titles: dict[str, str] = {}
+    titles = await stored_titles(session, [nb for nb, _, _ in rows])
     state = getattr(request.app.state, "notebooklm", None)
     client = getattr(state, "client", None)
     if client is not None:
         try:
             listed = await asyncio.wait_for(client.notebooks.list(), timeout=5)
-            titles = {nb.id: nb.title for nb in listed}
-        except Exception:  # noqa: BLE001 - titles are decoration only
-            titles = {}
+            live = {
+                nb.id: str(nb.title)
+                for nb in listed
+                if getattr(nb, "id", None) and getattr(nb, "title", None)
+            }
+            if live:
+                await upsert_titles(session, live)
+            titles.update(live)
+        except Exception:  # noqa: BLE001 - a live failure keeps the stored titles
+            pass
     return {
         "items": [
             {"id": nb, "title": titles.get(nb), "chunks": int(n or 0), "documents": int(d)}
@@ -477,6 +485,25 @@ class IngestBody(BaseModel):
     force: bool = False
 
 
+async def _notebook_title(client: Any, notebook_id: str) -> str | None:
+    """Best-effort live title: ``notebooks.get`` first, then the list."""
+    get = getattr(client.notebooks, "get", None)
+    if get is not None:
+        try:
+            nb = await asyncio.wait_for(get(notebook_id), timeout=5)
+            return getattr(nb, "title", None) or None
+        except Exception:  # noqa: BLE001 - fall back to the list
+            pass
+    try:
+        listed = await asyncio.wait_for(client.notebooks.list(), timeout=5)
+    except Exception:  # noqa: BLE001 - the title is decoration only
+        return None
+    for nb in listed:
+        if getattr(nb, "id", None) == notebook_id:
+            return getattr(nb, "title", None) or None
+    return None
+
+
 @router.post("/artifacts/{artifact_id}/ingest", status_code=202)
 async def ingest(
     artifact_id: str,
@@ -485,6 +512,13 @@ async def ingest(
     client: Annotated[Any, Depends(get_client)],
 ) -> dict[str, Any]:
     """Start a background ingest of one artifact (progress via ``/corpus/jobs/{id}/events``)."""
+    try:
+        title = await _notebook_title(client, body.notebook_id)
+        if title:
+            async with services.session_maker() as session:
+                await upsert_titles(session, {body.notebook_id: title})
+    except Exception:  # noqa: BLE001 - ingest proceeds without a stored title
+        pass
     defaults = TranscriptionOptions.from_env()
     language = body.language if body.language is not None else defaults.language
     options = TranscriptionOptions(
