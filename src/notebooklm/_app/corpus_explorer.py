@@ -17,6 +17,7 @@ import logging
 import os
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, fields, replace
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -37,9 +38,10 @@ from .._preprocessing.embeddings import (
     DEFAULT_OLLAMA_URL,
     EmbeddingAdapter,
 )
-from ..db.models import ChunkRun, Clause, Embedding, FactCheck, ParentChunk, Topic
+from ..db.models import ChunkRun, Clause, Embedding, FactCheck, LocalAsset, ParentChunk, Topic
 from .clause_search import ranked_search
 from .noise import QUALITY_VALUES, classify_noise, noise_sql
+from .notebook_titles import stored_titles
 from .sfl_format import format_sfl
 
 logger = logging.getLogger(__name__)
@@ -83,6 +85,10 @@ CONTEXT_LINES = 2
 
 class ChunkNotFoundError(LookupError):
     """No clause with that external id."""
+
+
+class DocumentNotFoundError(LookupError):
+    """No document with that id."""
 
 
 # ---------------------------------------------------------------------------
@@ -830,4 +836,228 @@ async def map_points(
     if key is not None:
         _MAP_CACHE.clear()
         _MAP_CACHE[key] = points
-    return {"points": points, "color_by": "topic" if has_topics else "document", "method": actual_method}
+    return {
+        "points": points,
+        "color_by": "topic" if has_topics else "document",
+        "method": actual_method,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Documents & clauses
+# ---------------------------------------------------------------------------
+
+
+def _derive_file_type(local_path: str | None, kind: str | None, title: str | None) -> str:
+    if local_path:
+        suffix = Path(local_path).suffix.lstrip(".").lower()
+        if suffix:
+            return suffix
+    if title and "." in title:
+        suffix = Path(title).suffix.lstrip(".").lower()
+        if suffix and len(suffix) <= 5:
+            return suffix
+    if kind:
+        k = kind.lower()
+        if k in ("audio", "video"):
+            return "transcript"
+        if k == "report":
+            return "md"
+        if k not in ("source", ""):
+            return k
+    return "unknown"
+
+
+async def documents(
+    session: AsyncSession, filters: CorpusFilters | None = None
+) -> list[dict[str, Any]]:
+    """One row per matching document with counts and collection metadata."""
+    flt = filters or CorpusFilters()
+    stmt = (
+        select(
+            Clause.document_id,
+            func.max(ChunkRun.notebook_id).label("notebook_id"),
+            func.max(ChunkRun.params["title"].astext).label("title"),
+            func.max(ChunkRun.params["kind"].astext).label("kind"),
+            func.max(LocalAsset.local_path).label("local_path"),
+            func.count(func.distinct(Clause.id)).label("clause_count"),
+            func.count(func.distinct(case((Clause.sfl.is_not(None), Clause.id)))).label(
+                "tagged_count"
+            ),
+            func.count(func.distinct(FactCheck.clause_external_id)).label("fact_checked_count"),
+        )
+        .join(LocalAsset, LocalAsset.asset_id == Clause.document_id, isouter=True)
+        .join(FactCheck, FactCheck.clause_external_id == Clause.external_id, isouter=True)
+    )
+    stmt = apply_filters(stmt, flt)
+    stmt = stmt.group_by(Clause.document_id).order_by(Clause.document_id)
+    rows = (await session.execute(stmt)).all()
+
+    notebook_ids = [r.notebook_id for r in rows if r.notebook_id]
+    titles = await stored_titles(session, notebook_ids) if notebook_ids else {}
+
+    items = []
+    for r in rows:
+        file_type = _derive_file_type(r.local_path, r.kind, r.title)
+        items.append(
+            {
+                "id": r.document_id,
+                "document_id": r.document_id,
+                "title": r.title or r.document_id,
+                "notebook_id": r.notebook_id,
+                "collection_id": r.notebook_id,
+                "collection_title": titles.get(r.notebook_id) if r.notebook_id else None,
+                "file_type": file_type,
+                "clause_count": int(r.clause_count or 0),
+                "tagged_count": int(r.tagged_count or 0),
+                "fact_checked_count": int(r.fact_checked_count or 0),
+            }
+        )
+    return items
+
+
+async def document_clauses(session: AsyncSession, document_id: str) -> dict[str, Any]:
+    """Parent chunks in order for one document, each with its clauses and verdicts."""
+    check_stmt = select(Clause.id).where(Clause.document_id == document_id).limit(1)
+    if (await session.execute(check_stmt)).first() is None:
+        raise DocumentNotFoundError(document_id)
+
+    run_stmt = (
+        select(ChunkRun)
+        .where(ChunkRun.document_id == document_id)
+        .order_by(ChunkRun.is_active.desc(), ChunkRun.id.desc())
+        .limit(1)
+    )
+    run = (await session.execute(run_stmt)).scalar_one_or_none()
+
+    p_stmt = select(ParentChunk).where(ParentChunk.document_id == document_id)
+    if run is not None:
+        p_stmt = p_stmt.where(ParentChunk.run_id == run.id)
+    p_stmt = p_stmt.order_by(ParentChunk.index.asc(), ParentChunk.id.asc())
+    parent_chunks = list((await session.execute(p_stmt)).scalars())
+
+    c_stmt = select(Clause).where(Clause.document_id == document_id)
+    if run is not None:
+        c_stmt = c_stmt.where(Clause.run_id == run.id)
+    c_stmt = c_stmt.order_by(Clause.sentence_index.asc().nulls_last(), Clause.id.asc())
+    clauses = list((await session.execute(c_stmt)).scalars())
+
+    fc_verdicts: dict[str, str] = {}
+    if clauses:
+        clause_eids = [c.external_id for c in clauses]
+        fc_stmt = (
+            select(FactCheck.clause_external_id, FactCheck.verdict)
+            .where(FactCheck.clause_external_id.in_(clause_eids))
+            .order_by(FactCheck.clause_external_id, FactCheck.id.desc())
+            .distinct(FactCheck.clause_external_id)
+        )
+        for eid, verdict in (await session.execute(fc_stmt)).all():
+            fc_verdicts[eid] = verdict
+
+    clauses_by_parent: dict[int | None, list[dict[str, Any]]] = {}
+    for c in clauses:
+        verdict = fc_verdicts.get(c.external_id)
+        if verdict is None and c.fact_check_passed is not None:
+            verdict = "supported" if c.fact_check_passed else "contradicted"
+        c_dict = {
+            "id": str(c.id),
+            "external_id": c.external_id,
+            "parent_id": c.parent_id,
+            "text": c.text,
+            "sentence_index": c.sentence_index,
+            "has_sfl": c.sfl is not None,
+            "sfl_status": "tagged" if c.sfl is not None else None,
+            "sfl_data": c.sfl,
+            "fact_check": verdict,
+            "latest_fact_check": {"verdict": verdict} if verdict else None,
+        }
+        clauses_by_parent.setdefault(c.parent_id, []).append(c_dict)
+
+    chunk_list: list[dict[str, Any]] = []
+    seen_clause_ids: set[str] = set()
+
+    for p in parent_chunks:
+        p_clauses = clauses_by_parent.get(p.id, [])
+        for cl_dict in p_clauses:
+            seen_clause_ids.add(cl_dict["id"])
+        chunk_list.append(
+            {
+                "id": p.id,
+                "index": p.index,
+                "text": p.text,
+                "char_start": p.char_start,
+                "char_end": p.char_end,
+                "clause_count": len(p_clauses),
+                "tagged_count": sum(1 for cl in p_clauses if cl["has_sfl"]),
+                "fact_checked_count": sum(1 for cl in p_clauses if cl["fact_check"] is not None),
+                "clauses": p_clauses,
+            }
+        )
+
+    orphans = [c for c in clauses if str(c.id) not in seen_clause_ids]
+    if orphans:
+        orphan_dicts = []
+        for c in orphans:
+            verdict = fc_verdicts.get(c.external_id)
+            if verdict is None and c.fact_check_passed is not None:
+                verdict = "supported" if c.fact_check_passed else "contradicted"
+            orphan_dicts.append(
+                {
+                    "id": str(c.id),
+                    "external_id": c.external_id,
+                    "parent_id": c.parent_id,
+                    "text": c.text,
+                    "sentence_index": c.sentence_index,
+                    "has_sfl": c.sfl is not None,
+                    "sfl_status": "tagged" if c.sfl is not None else None,
+                    "sfl_data": c.sfl,
+                    "fact_check": verdict,
+                    "latest_fact_check": {"verdict": verdict} if verdict else None,
+                }
+            )
+        if not chunk_list:
+            chunk_list.append(
+                {
+                    "id": 0,
+                    "index": 1,
+                    "text": " ".join(c["text"] for c in orphan_dicts),
+                    "char_start": 0,
+                    "char_end": sum(len(c["text"]) for c in orphan_dicts),
+                    "clause_count": len(orphan_dicts),
+                    "tagged_count": sum(1 for c in orphan_dicts if c["has_sfl"]),
+                    "fact_checked_count": sum(
+                        1 for c in orphan_dicts if c["fact_check"] is not None
+                    ),
+                    "clauses": orphan_dicts,
+                }
+            )
+        else:
+            chunk_list[0]["clauses"].extend(orphan_dicts)
+            chunk_list[0]["clause_count"] = len(chunk_list[0]["clauses"])
+            chunk_list[0]["tagged_count"] = sum(1 for c in chunk_list[0]["clauses"] if c["has_sfl"])
+            chunk_list[0]["fact_checked_count"] = sum(
+                1 for c in chunk_list[0]["clauses"] if c["fact_check"] is not None
+            )
+
+    nb_id = run.notebook_id if run else None
+    nb_title = None
+    if nb_id:
+        t_map = await stored_titles(session, [nb_id])
+        nb_title = t_map.get(nb_id)
+
+    doc_title = (run.params or {}).get("title") if run and run.params else None
+    if not doc_title:
+        doc_title = document_id
+
+    flattened_clauses = [cl for chunk in chunk_list for cl in chunk["clauses"]]
+
+    return {
+        "document_id": document_id,
+        "title": doc_title,
+        "notebook_id": nb_id,
+        "collection_id": nb_id,
+        "collection_title": nb_title,
+        "chunks": chunk_list,
+        "clauses": flattened_clauses,
+        "total": len(flattened_clauses),
+    }

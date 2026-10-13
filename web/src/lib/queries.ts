@@ -5,6 +5,8 @@ import type {
   ArtifactRow,
   BrowsePage,
   ChunkDetail,
+  DocumentClausesResponse,
+  DocumentsResponse,
   Facets,
   FactCheckRunSnapshot,
   FactCheckRunSummary,
@@ -178,5 +180,22 @@ export function useFactCheckRun(id: string | null) {
     queryKey: ["factcheck-run", id],
     queryFn: () => get<FactCheckRunSnapshot>(`/v1/corpus/factcheck/runs/${id}`),
     enabled: !!id,
+  });
+}
+
+export function useDocuments(filters?: Filters) {
+  return useQuery({
+    queryKey: ["documents", filters],
+    queryFn: () => get<DocumentsResponse>("/v1/corpus/documents", filters ? filterParams(filters) : undefined),
+    staleTime: 30_000,
+  });
+}
+
+export function useDocumentClauses(documentId: string | null) {
+  return useQuery({
+    queryKey: ["document-clauses", documentId],
+    queryFn: () => get<DocumentClausesResponse>(`/v1/corpus/documents/${documentId}/clauses`),
+    enabled: !!documentId,
+    staleTime: 30_000,
   });
 }

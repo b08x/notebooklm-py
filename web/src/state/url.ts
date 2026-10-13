@@ -1,13 +1,24 @@
+import type { ComponentType } from "react";
+import { Activity, BookOpen, Map, Search, Settings, ShieldCheck, Table } from "lucide-react";
 import type { Filters, Mode } from "@/lib/types";
 import type { AppState } from "./store";
 
-export type Tab = "search" | "browse" | "map" | "runs" | "factcheck";
-export const TABS: { id: Tab; label: string }[] = [
-  { id: "search", label: "Search" },
-  { id: "browse", label: "Browse" },
-  { id: "map", label: "Map" },
-  { id: "runs", label: "Runs" },
-  { id: "factcheck", label: "Fact-check" },
+export type Tab = "review" | "search" | "browse" | "map" | "runs" | "factcheck" | "settings";
+
+export interface TabConfig {
+  id: Tab;
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+}
+
+export const TABS: TabConfig[] = [
+  { id: "review", label: "Review", icon: BookOpen },
+  { id: "search", label: "Search", icon: Search },
+  { id: "browse", label: "Browse", icon: Table },
+  { id: "map", label: "Map", icon: Map },
+  { id: "runs", label: "Runs", icon: Activity },
+  { id: "factcheck", label: "Fact-check", icon: ShieldCheck },
+  { id: "settings", label: "Settings", icon: Settings },
 ];
 
 const MODES: Mode[] = ["keyword", "vector", "hybrid"];
@@ -40,7 +51,7 @@ export function toUrl(state: AppState): string {
 /** Parse a location into a state patch. Absent params reset to defaults. */
 export function fromUrl(loc: { pathname: string; search: string }): Partial<AppState> {
   const seg = loc.pathname.replace(/^\/ui\/?/, "").split("/")[0];
-  const tab = TABS.find((t) => t.id === seg)?.id;
+  const tab = seg === "" ? "review" : TABS.find((t) => t.id === seg)?.id;
   const p = new URLSearchParams(loc.search);
   const filters: Filters = {};
   const nb = p.getAll("nb");

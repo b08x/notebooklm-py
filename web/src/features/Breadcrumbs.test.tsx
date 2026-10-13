@@ -51,7 +51,7 @@ describe("Breadcrumbs (facts 25-27)", () => {
   it("shows Tab › Notebook › Document › Chunk with titles, never a UUID (facts 3-5)", async () => {
     mockFetch(routes);
     renderWithClient(<Breadcrumbs />);
-    store.set({ detailId: "doc:1:0" });
+    store.set({ tab: "search", detailId: "doc:1:0" });
     // The titles arrive from /notebooks and the chunk detail — wait for them.
     expect(await screen.findByText("Field Notes")).toBeInTheDocument();
     expect(screen.getByTestId("crumb-tab")).toHaveTextContent("Search");
@@ -59,6 +59,17 @@ describe("Breadcrumbs (facts 25-27)", () => {
     expect(screen.getByTestId("crumb-document")).toHaveTextContent("Audio transcript");
     expect(screen.getByTestId("crumb-chunk")).toHaveTextContent("1:0");
     expect(document.body.textContent).not.toContain(NB);
+  });
+
+  it("shows Collection › Document › Chunk without tab on review screen (fact 53)", async () => {
+    mockFetch(routes);
+    renderWithClient(<Breadcrumbs />);
+    store.set({ tab: "review", detailId: "doc:1:0" });
+    expect(await screen.findByText("Field Notes")).toBeInTheDocument();
+    expect(screen.queryByTestId("crumb-tab")).toBeNull();
+    expect(screen.getByTestId("crumb-notebook")).toHaveTextContent("Field Notes");
+    expect(screen.getByTestId("crumb-document")).toHaveTextContent("Audio transcript");
+    expect(screen.getByTestId("crumb-chunk")).toHaveTextContent("1:0");
   });
 
   it("falls back to single-valued filters when no chunk is open", async () => {
@@ -73,7 +84,7 @@ describe("Breadcrumbs (facts 25-27)", () => {
   it("clicking a segment narrows and closes the chunk", async () => {
     mockFetch(routes);
     renderWithClient(<Breadcrumbs />);
-    store.set({ detailId: "doc:1:0", filters: { run_ids: [2] } });
+    store.set({ tab: "search", detailId: "doc:1:0", filters: { run_ids: [2] } });
     await screen.findByText("Field Notes");
 
     // Notebook narrows to just that notebook and closes the chunk.
@@ -82,7 +93,7 @@ describe("Breadcrumbs (facts 25-27)", () => {
     expect(store.get().filters).toEqual({ notebook_ids: [NB] });
 
     // Document keeps the other filters and closes the chunk.
-    store.set({ detailId: "doc:1:0", filters: { notebook_ids: [NB], document_ids: ["doc-a"] } });
+    store.set({ tab: "search", detailId: "doc:1:0", filters: { notebook_ids: [NB], document_ids: ["doc-a"] } });
     await screen.findByTestId("crumb-chunk");
     await userEvent.click(screen.getByTestId("crumb-document"));
     expect(store.get().detailId).toBeNull();

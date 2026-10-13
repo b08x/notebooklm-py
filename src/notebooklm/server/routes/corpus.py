@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..._app import corpus_agent, corpus_answer, corpus_explorer, corpus_mutations
 from ..._app.artifact_ingest import ingest_artifact, list_ingestible
-from ..._app.corpus_explorer import ChunkNotFoundError, CorpusFilters
+from ..._app.corpus_explorer import ChunkNotFoundError, CorpusFilters, DocumentNotFoundError
 from ..._app.notebook_titles import stored_titles, upsert_titles
 from ..._app.sfl_tagging import GroupProgress, load_children, tag_children
 from ..._preprocessing.transcription import TranscriptionOptions, providers
@@ -93,9 +93,33 @@ def _not_found(e: ChunkNotFoundError) -> TypedHTTPError:
     return TypedHTTPError(404, "not_found", f"no chunk {e.args[0]!r}")
 
 
+def _document_not_found(e: DocumentNotFoundError) -> TypedHTTPError:
+    return TypedHTTPError(404, "not_found", f"no document {e.args[0]!r}")
+
+
 # ---------------------------------------------------------------------------
 # Read
 # ---------------------------------------------------------------------------
+
+
+@router.get("/documents")
+async def list_documents(
+    session: SessionDep,
+    filters: FiltersDep,
+) -> dict[str, Any]:
+    items = await corpus_explorer.documents(session, filters)
+    return {"items": items, "documents": items, "total": len(items)}
+
+
+@router.get("/documents/{document_id}/clauses")
+async def document_clauses(
+    document_id: str,
+    session: SessionDep,
+) -> dict[str, Any]:
+    try:
+        return await corpus_explorer.document_clauses(session, document_id)
+    except DocumentNotFoundError as e:
+        raise _document_not_found(e) from e
 
 
 @router.get("/stats")

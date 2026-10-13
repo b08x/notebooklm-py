@@ -38,12 +38,15 @@ export interface AppState {
   ingestOpen: boolean;
   paletteOpen: boolean;
   shortcutsOpen: boolean;
+  sidebarDrawerOpen: boolean;
+  listDrawerOpen: boolean;
+  inspectorDrawerOpen: boolean;
   factcheckScope: FactCheckScope | null;
   factcheckRunId: string | null;
 }
 
 const initial: AppState = {
-  tab: "search",
+  tab: "review",
   query: "",
   submittedQuery: "",
   mode: "hybrid",
@@ -58,6 +61,9 @@ const initial: AppState = {
   ingestOpen: false,
   paletteOpen: false,
   shortcutsOpen: false,
+  sidebarDrawerOpen: false,
+  listDrawerOpen: false,
+  inspectorDrawerOpen: false,
   factcheckScope: null,
   factcheckRunId: null,
 };
@@ -144,7 +150,11 @@ export const actions = {
   },
   open(detailId: string | null) {
     syncUrl({ detailId }, detailId ? "push" : "replace");
-    store.set({ detailId, cursor: detailId ?? store.get().cursor });
+    store.set({
+      detailId,
+      cursor: detailId ?? store.get().cursor,
+      ...(detailId ? { inspectorDrawerOpen: true } : {}),
+    });
   },
   toggleSelect(id: string) {
     const sel = store.get().selected;

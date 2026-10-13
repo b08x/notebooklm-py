@@ -7,7 +7,7 @@ const popstate = () => window.dispatchEvent(new PopStateEvent("popstate"));
 describe("url serialization (facts 25-27)", () => {
   beforeEach(() => {
     resetStore();
-    window.history.replaceState(null, "", "/ui/search");
+    window.history.replaceState(null, "", "/ui/review");
   });
 
   it("round-trips tab, chunk, query, mode and every filter", () => {
@@ -43,8 +43,25 @@ describe("url serialization (facts 25-27)", () => {
     expect(restored.filters).toEqual(state.filters);
   });
 
+  it("round-trips review screen with doc and chunk", () => {
+    const state = {
+      ...store.get(),
+      tab: "review" as const,
+      detailId: "clause-42",
+      filters: {
+        document_ids: ["doc-123"],
+      },
+    };
+    const url = toUrl(state);
+    expect(url).toBe("/ui/review?chunk=clause-42&doc=doc-123");
+    const restored = { ...store.get(), ...fromUrl(new URL(url, "http://localhost")) };
+    expect(restored.tab).toBe("review");
+    expect(restored.detailId).toBe("clause-42");
+    expect(restored.filters.document_ids).toEqual(["doc-123"]);
+  });
+
   it("drops default values from the url", () => {
-    expect(toUrl(store.get())).toBe("/ui/search");
+    expect(toUrl(store.get())).toBe("/ui/review");
   });
 
   it("fromUrl resets absent params to defaults", () => {
@@ -59,7 +76,7 @@ describe("url serialization (facts 25-27)", () => {
 
   it("ignores unknown tabs and modes", () => {
     const merged = { ...store.get(), ...fromUrl({ pathname: "/ui/nope", search: "?mode=nope" }) };
-    expect(merged.tab).toBe("search");
+    expect(merged.tab).toBe("review");
     expect(merged.mode).toBe("hybrid");
   });
 });

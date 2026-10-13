@@ -3,14 +3,16 @@ import { useEffect, useState } from "react";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AskDrawer } from "@/features/AskDrawer";
-import { Breadcrumbs } from "@/features/Breadcrumbs";
 import { CommandPalette } from "@/features/CommandPalette";
 import { DbDown } from "@/features/DbDown";
 import { DeleteDialog } from "@/features/DeleteDialog";
 import { FactCheckView } from "@/features/factcheck/FactCheckView";
 import { Header } from "@/features/Header";
 import { IngestDialog } from "@/features/IngestDialog";
+import { ReviewScreen } from "@/features/review/ReviewScreen";
+import { SettingsView } from "@/features/SettingsView";
 import { ShortcutSheet } from "@/features/ShortcutSheet";
+import { Sidebar } from "@/features/Sidebar";
 import { StatusFooter } from "@/features/StatusFooter";
 import { TokenGate } from "@/features/TokenGate";
 import { Workbench } from "@/features/Workbench";
@@ -38,11 +40,23 @@ function Explorer() {
   useHotkeys();
   useJobInvalidation();
   return (
-    <div className="grid h-full grid-rows-[48px_auto_minmax(0,1fr)_28px] bg-bg text-fg">
-      <Header />
-      <Breadcrumbs />
-      <div className="flex min-h-0 min-w-0 overflow-hidden">{tab === "factcheck" ? <FactCheckView /> : <Workbench />}</div>
-      <StatusFooter health={health.data} />
+    <div className="flex h-full w-full overflow-hidden bg-bg text-fg">
+      <Sidebar />
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <Header />
+        <main className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+          {tab === "review" ? (
+            <ReviewScreen />
+          ) : tab === "factcheck" ? (
+            <FactCheckView />
+          ) : tab === "settings" ? (
+            <SettingsView />
+          ) : (
+            <Workbench />
+          )}
+        </main>
+        <StatusFooter health={health.data} />
+      </div>
       <DeleteDialog />
       <AskDrawer />
       <IngestDialog />

@@ -301,3 +301,70 @@ export interface RunEvent {
   type: string;
   [key: string]: unknown;
 }
+
+export interface DocumentItem {
+  id: string;
+  document_id?: string;
+  title: string;
+  notebook_id?: string | null;
+  collection_id: string | null;
+  collection_title: string | null;
+  file_type: string;
+  clause_count: number;
+  tagged_count: number;
+  fact_checked_count: number;
+  created_at?: string | null;
+}
+
+export interface DocumentsResponse {
+  items?: DocumentItem[];
+  documents?: DocumentItem[];
+  total?: number;
+}
+
+export interface DocumentClauseItem {
+  id: string;
+  external_id: string;
+  sentence_index: number | null;
+  parent_id: number | null;
+  text: string;
+  length: number;
+  quality: string;
+  fact_check: string;
+  has_sfl: boolean;
+  sfl_status: string | null;
+  sfl_data: SflFormatted | null;
+  latest_fact_check: {
+    status?: string;
+    verdict?: string;
+    confidence?: number;
+    reason?: string;
+    citations?: { url: string; title: string; quote: string }[];
+    [key: string]: unknown;
+  } | null;
+  created_at: string | null;
+}
+
+export interface ChunkWithClauses {
+  id: number;
+  index: number;
+  text: string;
+  char_start: number;
+  char_end: number;
+  clause_count: number;
+  tagged_count: number;
+  fact_checked_count: number;
+  clauses: DocumentClauseItem[];
+}
+
+export interface DocumentClausesResponse {
+  document_id: string;
+  title?: string;
+  notebook_id?: string | null;
+  collection_id?: string | null;
+  collection_title?: string | null;
+  chunks?: ChunkWithClauses[];
+  clauses: DocumentClauseItem[];
+  total: number;
+}
+

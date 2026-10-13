@@ -41,13 +41,25 @@ Element.prototype.releasePointerCapture ??= () => {};
 // jsdom has no PointerEvent, so fireEvent's pointer events would carry no
 // coordinates; MouseEvent takes clientX/clientY through the same init bag.
 globalThis.PointerEvent ??= MouseEvent as unknown as typeof PointerEvent;
-window.matchMedia ??= ((query: string) => ({
-  matches: false,
-  media: query,
-  onchange: null,
-  addEventListener: () => {},
-  removeEventListener: () => {},
-  addListener: () => {},
-  removeListener: () => {},
-  dispatchEvent: () => false,
-})) as unknown as typeof window.matchMedia;
+Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, value: 720 });
+Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, value: 900 });
+Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, value: 720 });
+Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, value: 900 });
+Object.defineProperty(window, "innerWidth", { writable: true, configurable: true, value: 1440 });
+
+window.matchMedia = ((query: string) => {
+  const minWidth = query.match(/min-width:\s*(\d+)px/);
+  return {
+    get matches() {
+      const currentW = window.innerWidth ?? 1440;
+      return minWidth ? currentW >= Number(minWidth[1]) : false;
+    },
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  };
+}) as unknown as typeof window.matchMedia;

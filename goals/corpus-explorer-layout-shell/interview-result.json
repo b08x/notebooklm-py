@@ -1,0 +1,19 @@
+{
+  "stage": "interview-result",
+  "title": "Corpus Explorer layout shell and Review screen",
+  "goalSlug": "corpus-explorer-layout-shell",
+  "answers": {
+    "density": "B",
+    "anchor": "C",
+    "alignment": "B",
+    "negative_space": "B",
+    "codebase": "A: port SCC frame into notebooklm-py/web",
+    "app_nav": "A: vertical sidebar 256/64px",
+    "list": "A: documents grouped under Collection headers",
+    "collapse": "A: inspector first, then list",
+    "document_view": "D: continuous text grouped by collapsible chunks",
+    "inspector": "C: tabs plus pinned footer",
+    "header": "A: 40px header, footer unchanged"
+  },
+  "details": "decisions.md"
+}

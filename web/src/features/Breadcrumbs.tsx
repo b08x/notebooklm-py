@@ -23,23 +23,25 @@ export function Breadcrumbs() {
   if (!notebook && !document && !detailId) return null;
 
   return (
-    <nav aria-label="Breadcrumb" data-testid="breadcrumb" className="flex h-7 shrink-0 items-center gap-1 border-b border-line px-3 text-[12px] text-muted">
-      <button
-        type="button"
-        data-testid="crumb-tab"
-        onClick={() =>
-          store.set((s) => ({
-            detailId: null,
-            filters: { ...s.filters, notebook_ids: undefined, document_ids: undefined },
-          }))
-        }
-        className="rounded px-1 transition-[color,background-color,scale] duration-150 hover:bg-surface-2 hover:text-fg active:scale-[0.96]"
-      >
-        {TABS.find((t) => t.id === tab)?.label}
-      </button>
+    <nav aria-label="Breadcrumb" data-testid="breadcrumb" className="flex items-center gap-1 text-[12px] text-muted truncate">
+      {tab !== "review" && (
+        <button
+          type="button"
+          data-testid="crumb-tab"
+          onClick={() =>
+            store.set((s) => ({
+              detailId: null,
+              filters: { ...s.filters, notebook_ids: undefined, document_ids: undefined },
+            }))
+          }
+          className="rounded px-1 transition-[color,background-color,scale] duration-150 hover:bg-surface-2 hover:text-fg active:scale-[0.96]"
+        >
+          {TABS.find((t) => t.id === tab)?.label}
+        </button>
+      )}
       {notebook && (
         <>
-          <ChevronRight className="size-3 text-subtle" aria-hidden />
+          {tab !== "review" && <ChevronRight className="size-3 text-subtle" aria-hidden />}
           <button
             type="button"
             data-testid="crumb-notebook"

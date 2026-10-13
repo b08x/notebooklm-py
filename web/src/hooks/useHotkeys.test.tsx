@@ -52,7 +52,7 @@ describe("keyboard shortcuts (fact-42, fact-24)", () => {
     press("?");
     expect(store.get().shortcutsOpen).toBe(true);
     store.set({ shortcutsOpen: false });
-    press("3");
+    press("4");
     expect(store.get().tab).toBe("map");
     press("/");
     expect(store.get().tab).toBe("search");

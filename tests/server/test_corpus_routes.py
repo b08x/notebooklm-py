@@ -46,6 +46,7 @@ def test_every_corpus_route_requires_token(env: Any) -> None:
     for path, method in sorted(paths):
         url = (
             path.replace("{external_id}", "x")
+            .replace("{document_id}", "x")
             .replace("{run_id}", "x")
             .replace("{job_id}", "x")
             .replace("{artifact_id}", "x")
@@ -183,6 +184,51 @@ def test_runs_map_notebooks_health(env: Any) -> None:
     health = env.http.get("/v1/corpus/health").json()
     assert health["postgres"]["ok"] is True and health["embedder"]["ok"] is True
     assert health["jobs"] == [] and health["factcheck_runs"] == []
+
+
+def test_documents_and_document_clauses_routes(env: Any) -> None:
+    from notebooklm._app import notebook_titles
+
+    # Store a title in corpus_notebooks to test unsigned-in client
+    async def seed_title() -> None:
+        async with async_session_maker() as session:
+            await notebook_titles.upsert_titles(session, {env.notebook: "Collection Alpha"})
+
+    asyncio.run(seed_title())
+
+    # 1. GET /v1/corpus/documents
+    docs_resp = env.http.get(f"/v1/corpus/documents?notebook_ids={env.notebook}")
+    assert docs_resp.status_code == 200
+    docs = docs_resp.json()["items"]
+    assert len(docs) == 1
+    doc_a = docs[0]
+    assert doc_a["document_id"] == env.doc_a
+    assert doc_a["title"] == "Doc A"
+    assert doc_a["notebook_id"] == env.notebook
+    assert doc_a["collection_id"] == env.notebook
+    assert doc_a["collection_title"] == "Collection Alpha"
+    assert doc_a["clause_count"] == 3
+    assert doc_a["tagged_count"] == 0
+    assert doc_a["fact_checked_count"] == 0
+    assert "file_type" in doc_a
+
+    # 2. GET /v1/corpus/documents/{document_id}/clauses
+    clauses_resp = env.http.get(f"/v1/corpus/documents/{env.doc_a}/clauses")
+    assert clauses_resp.status_code == 200
+    data = clauses_resp.json()
+    assert data["document_id"] == env.doc_a
+    assert data["title"] == "Doc A"
+    assert data["collection_title"] == "Collection Alpha"
+    assert len(data["chunks"]) == 2  # 2 parent chunks in doc A
+    chunk0 = data["chunks"][0]
+    assert "clauses" in chunk0
+    assert chunk0["clause_count"] == 2
+    assert chunk0["clauses"][0]["text"] == "Named entity recognition uses spaCy"
+
+    # 3. GET /v1/corpus/documents/missing/clauses -> 404
+    missing_resp = env.http.get("/v1/corpus/documents/missing-doc-id/clauses")
+    assert missing_resp.status_code == 404
+    assert missing_resp.json()["error"]["category"] == "not_found"
 
 
 def test_notebook_titles_stored_live_and_failure(env: Any) -> None:

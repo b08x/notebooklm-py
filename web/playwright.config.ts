@@ -8,7 +8,14 @@ export const E2E_NOTEBOOK = process.env.E2E_NOTEBOOK ?? "nb-e2e";
 export const E2E_NOTEBOOK_TITLE = `Fixture notebook ${E2E_NOTEBOOK}`;
 
 // Use a preinstalled Chromium when the matching Playwright build is not downloaded.
-const chromium = process.env.PLAYWRIGHT_CHROMIUM_PATH ?? (existsSync("/opt/pw-browsers/chromium") ? "/opt/pw-browsers/chromium" : undefined);
+const chromium =
+  process.env.PLAYWRIGHT_CHROMIUM_PATH ??
+  (existsSync("/opt/pw-browsers/chromium")
+    ? "/opt/pw-browsers/chromium"
+    : [
+        `${process.env.HOME}/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome`,
+        `${process.env.HOME}/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome`,
+      ].find((p) => existsSync(p)));
 
 export default defineConfig({
   testDir: "./e2e",

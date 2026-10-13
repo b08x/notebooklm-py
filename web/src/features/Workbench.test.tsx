@@ -22,6 +22,7 @@ describe("search mode toggle (fact-11)", () => {
         <Workbench />
       </>,
     );
+    act(() => store.set({ tab: "search" }));
     const radios = screen.getAllByRole("radio").map((r) => r.textContent);
     expect(radios).toEqual(["Keyword", "Vector", "Hybrid · RRF"]);
     expect(screen.getByRole("radio", { name: "Hybrid · RRF" })).toHaveAttribute("aria-checked", "true");
@@ -48,7 +49,7 @@ describe("live updates (fact-33)", () => {
       "GET /v1/corpus/facets": EMPTY_FACETS,
     });
     renderWithClient(<Workbench />);
-    act(() => store.set({ submittedQuery: "kernel", query: "kernel" }));
+    act(() => store.set({ tab: "search", submittedQuery: "kernel", query: "kernel" }));
     const pill = await screen.findByRole("button", { name: /37 new chunks/ });
     expect(calls.some((c) => c.path.includes("since=100"))).toBe(true);
     const before = searches;

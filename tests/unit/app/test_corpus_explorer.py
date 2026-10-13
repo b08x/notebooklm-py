@@ -64,7 +64,9 @@ async def seeded(pg_session: AsyncSession):  # noqa: F811
         "||The OOM killer picks the largest RSS",
     )
     s.run_b = await s.ingest(
-        "b", f"Entity recognition with spaCy pipelines|{B64}|{NUM}", params={"kind": "audio", "title": "Audio transcript"}
+        "b",
+        f"Entity recognition with spaCy pipelines|{B64}|{NUM}",
+        params={"kind": "audio", "title": "Audio transcript"},
     )
     return s
 
@@ -349,3 +351,58 @@ async def test_embedder_health_never_raises(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setenv("OLLAMA_URL", "http://127.0.0.1:9")
     out = await ce.embedder_health(timeout=0.5)
     assert out["ok"] is False and "error" in out
+
+
+@pytest.mark.asyncio
+async def test_documents_and_clauses_queries(seeded: Seeder) -> None:
+    from notebooklm.db.models import FactCheck
+
+    # 1. documents query
+    docs = await ce.documents(seeded.session, _nb(seeded))
+    assert len(docs) == 2
+    doc_map = {d["document_id"]: d for d in docs}
+    doc_a = doc_map[seeded.doc("a")]
+    doc_b = doc_map[seeded.doc("b")]
+    # doc a has 4 clauses in active run a2
+    assert doc_a["clause_count"] == 4
+    assert doc_a["tagged_count"] == 0
+    assert doc_a["fact_checked_count"] == 0
+    # doc b has 3 clauses and audio kind -> transcript
+    assert doc_b["clause_count"] == 3
+    assert doc_b["file_type"] == "transcript"
+
+    # 2. Tag some clauses
+    a_ids = await _ids(seeded.session, seeded.doc("a"))
+    await seeded.session.execute(
+        update(Clause).where(Clause.external_id == a_ids[0]).values(sfl={"mood": "declarative"})
+    )
+    # Add a fact check
+    seeded.session.add(
+        FactCheck(
+            clause_external_id=a_ids[0],
+            verdict="supported",
+            confidence=0.95,
+        )
+    )
+    await seeded.session.flush()
+
+    docs_after = await ce.documents(seeded.session, _nb(seeded))
+    assert docs_after[0]["tagged_count"] == 1
+    assert docs_after[0]["fact_checked_count"] == 1
+
+    # 3. document_clauses query
+    detail = await ce.document_clauses(seeded.session, seeded.doc("a"))
+    assert detail["document_id"] == seeded.doc("a")
+    assert len(detail["chunks"]) >= 1
+    # Check parent chunks have clauses
+    first_chunk = detail["chunks"][0]
+    assert "clauses" in first_chunk
+    assert first_chunk["clause_count"] >= 1
+    first_clause = first_chunk["clauses"][0]
+    assert first_clause["external_id"] == a_ids[0]
+    assert first_clause["has_sfl"] is True
+    assert first_clause["fact_check"] == "supported"
+
+    # 4. Unknown document raises DocumentNotFoundError
+    with pytest.raises(ce.DocumentNotFoundError):
+        await ce.document_clauses(seeded.session, "does_not_exist")
