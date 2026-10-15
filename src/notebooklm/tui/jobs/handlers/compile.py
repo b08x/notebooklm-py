@@ -1,4 +1,4 @@
-"""``compile`` job handler: bind, fill, and compile an audio YAML for the Compiler view."""
+"""``compile`` job handler: bind, fill, and compile an audio prompt for the Compiler view."""
 
 from __future__ import annotations
 
@@ -14,10 +14,11 @@ CompileFn = Callable[..., Awaitable[None]]
 
 
 async def run_compile_job(ctx: JobContext, *, compile_fn: CompileFn = run_compile) -> str:
-    """Run the compile with the runner's LM and mirror phases into the job store."""
+    """Run the compile and mirror phases into the job store."""
     if ctx.state is None:
         raise RuntimeError("compile job requires TUI state")
-    project_file = Path(ctx.payload["project_file"])
+    project_file_str = ctx.payload.get("project_file")
+    project_file = Path(project_file_str) if project_file_str else None
     notebook_id = ctx.notebook_id or ""
     ctx.phase("compiling")
     await compile_fn(
@@ -29,7 +30,8 @@ async def run_compile_job(ctx: JobContext, *, compile_fn: CompileFn = run_compil
         before_api=ctx.acquire_token,
     )
     warning = ctx.state.compiler_state.get("warning")
-    return f"compiled {project_file.stem} ({warning or 'no warnings'})"
+    target_name = project_file.stem if project_file else notebook_id
+    return f"compiled {target_name} ({warning or 'no warnings'})"
 
 
 async def handle(ctx: JobContext) -> str | None:

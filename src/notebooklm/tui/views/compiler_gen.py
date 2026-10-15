@@ -37,7 +37,7 @@ from notebooklm._app.archive import slugify
 from notebooklm.client import NotebookLMClient
 from notebooklm.types import AudioFormat, AudioLength
 
-from ..compiler_bridge import compile_audio_config, load_audio_project
+from ..compiler_bridge import compile_audio_config, create_audio_config, load_audio_project
 from ..state import TUIState
 
 logger = logging.getLogger(__name__)
@@ -248,8 +248,8 @@ async def _chat_fallback(client: NotebookLMClient, notebook_id: str, config: Any
 # ---------------------------------------------------------------------------
 
 
-def start_compile(state: TUIState, project_file: str | Path) -> None:
-    """Queue a compile of ``project_file`` against the notebook selected in the sidebar."""
+def start_compile(state: TUIState, project_file: str | Path | None = None) -> None:
+    """Queue a compile against the notebook selected in the sidebar."""
     cs = state.compiler_state
     if cs.get("phase") in _ACTIVE_PHASES:
         return
@@ -270,31 +270,48 @@ def start_compile(state: TUIState, project_file: str | Path) -> None:
     for key in ("error", "warning", "prompt", "edited", "evidence", "scroll"):
         cs.pop(key, None)
     cs["phase"] = "compiling"
-    cs["project_yaml"] = str(project_file)
+    cs["started_at"] = time.time()
+    if project_file:
+        cs["project_yaml"] = str(project_file)
+    else:
+        cs.pop("project_yaml", None)
     cs["notebook_id"] = state.selected_notebook
 
-    state.job_store.enqueue("compile", state.selected_notebook, {"project_file": str(project_file)})
+    payload: dict[str, Any] = {}
+    if project_file:
+        payload["project_file"] = str(project_file)
+    state.job_store.enqueue("compile", state.selected_notebook, payload)
 
 
 async def run_compile(
     state: TUIState,
-    project_file: Path,
+    project_file: Path | None,
     notebook_id: str,
     lm: Any,
     *,
     progress: Callable[[str], None] | None = None,
     before_api: Callable[[], Awaitable[None]] | None = None,
 ) -> None:
-    """Bind, fill, and compile ``project_file``; sets ``compiler_state`` (facts 1–5).
+    """Bind, fill, and compile prompt from notebook; sets ``compiler_state`` (facts 1–5).
 
     Raises after recording the error in ``compiler_state`` so the job fails.
     """
     cs = state.compiler_state
     gate = before_api or _no_gate
+    target_label = project_file.stem if project_file else notebook_id
     try:
-        config = load_audio_project(project_file)
-        # Bind to the sidebar selection; the YAML file itself is never written (fact 2).
+        if project_file:
+            try:
+                config = load_audio_project(project_file)
+            except (FileNotFoundError, OSError):
+                config = create_audio_config(notebook_id=notebook_id)
+        else:
+            config = create_audio_config(notebook_id=notebook_id)
         config.notebook_id = notebook_id
+        if "audio_format" in cs:
+            config.audio_format = cs["audio_format"]
+        if "audio_length" in cs:
+            config.audio_length = cs["audio_length"]
         audio_format, audio_length = to_audio_enums(config.audio_format, config.audio_length)
 
         warning: str | None = None
@@ -302,9 +319,15 @@ async def run_compile(
         async with NotebookLMClient.from_storage() as client:
             await gate()
             notebook = await client.notebooks.get(notebook_id)
+            if hasattr(notebook, "title"):
+                config.title = notebook.title
+                notebook_title = notebook.title
+            else:
+                notebook_title = getattr(config, "title", notebook_id)
+
             if config.auto_extract:
                 # Slot extraction failures never fail the compile — the
-                # YAML's own values are kept with a warning (fact 3).
+                # default values are kept with a warning (fact 3).
                 try:
                     from notebooklm.db.session import async_session_maker
 
@@ -322,38 +345,47 @@ async def run_compile(
                             "No ingested clauses found — slots filled via NotebookLM chat fallback."
                         )
                 except Exception as e:
-                    warning = f"Slot extraction failed ({e}); the YAML's own values were used."
+                    try:
+                        await gate()
+                        await _chat_fallback(client, notebook_id, config)
+                    except Exception:
+                        warning = f"Slot extraction failed ({e}); default values were used."
             else:
                 try:
                     await gate()
                     await _chat_fallback(client, notebook_id, config)
                 except Exception as e:
-                    warning = f"Notebook binding failed ({e}); the YAML's own values were used."
-            notebook_title = notebook.title
+                    warning = f"Notebook binding failed ({e}); default values were used."
         prompt = compile_audio_config(config)
     except Exception as e:
-        logger.exception("Compiler: compile of %s failed", project_file)
-        cs["phase"] = "error"
-        cs["error"] = str(e)
+        logger.exception("Compiler: compile of %s failed", target_label)
+        is_current_nb = not state.selected_notebook or state.selected_notebook == notebook_id
+        if is_current_nb:
+            cs["phase"] = "error"
+            cs["error"] = str(e)
+            cs["notebook_id"] = notebook_id
         if progress:
             progress("error")
         raise
 
-    cs.update(
-        {
-            "phase": "compiled",
-            "prompt": prompt,
-            "edited": False,
-            "project": project_file.stem,
-            "template": config.template,
-            "notebook_title": notebook_title,
-            "audio_format": config.audio_format,
-            "audio_length": config.audio_length,
-            "warning": warning,
-            "evidence": evidence,
-            "scroll": 0,
-        }
-    )
+    is_current_nb = not state.selected_notebook or state.selected_notebook == notebook_id
+    if is_current_nb:
+        cs.update(
+            {
+                "phase": "compiled",
+                "prompt": prompt,
+                "edited": False,
+                "project": project_file.stem if project_file else notebook_title,
+                "template": getattr(config, "template", "mr-and-mrs-language-model"),
+                "notebook_id": notebook_id,
+                "notebook_title": notebook_title,
+                "audio_format": getattr(config, "audio_format", "default"),
+                "audio_length": getattr(config, "audio_length", "default"),
+                "warning": warning,
+                "evidence": evidence,
+                "scroll": 0,
+            }
+        )
     if progress:
         progress("compiled")
 

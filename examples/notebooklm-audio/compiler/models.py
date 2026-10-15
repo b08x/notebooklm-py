@@ -6,6 +6,137 @@ Enables automated slot binding and verification before dispatching to NotebookLM
 from pydantic import BaseModel, Field
 
 
+class Topic1(BaseModel):
+    """Structured breakdown for Topic 1."""
+
+    title: str = Field(
+        default="Concurrency Arbitration & Backpressure",
+        description="Title of the first core topic.",
+    )
+    theoretical_framework: str = Field(
+        default="Deterministic RPC event serialization",
+        description="High-level theoretical framework.",
+    )
+    low_level_mechanism: str = Field(
+        default="Threadpool worker starvation under async task bursts",
+        description="Low-level technical mechanism.",
+    )
+    failure_mode: str = Field(
+        default="Unbounded FIFO queue expansion",
+        description="Specific failure mode.",
+    )
+    pathological_effect: str = Field(
+        default="Cascading socket timeouts and client disconnect storms",
+        description="Pathological effect of the failure mode.",
+    )
+    operational_analogy: str = Field(
+        default="A highway tollbooth where every lane closes simultaneously",
+        description="Real-world or operational analogy.",
+    )
+
+
+class Topic2(BaseModel):
+    """Structured breakdown for Topic 2."""
+
+    title: str = Field(
+        default="Containerized Isolation vs Reality",
+        description="Title of the second core topic.",
+    )
+    industry_practice_or_wrapper: str = Field(
+        default="Stateless container abstraction layers",
+        description="Industry practice or superficial wrapper.",
+    )
+    technical_reality: str = Field(
+        default="Kernel-level cgroup memory enforcement without swap",
+        description="Technical reality beneath the wrapper.",
+    )
+    benchmark_or_failure_metric: str = Field(
+        default="Silent OOM SIGKILL frequency",
+        description="Benchmark or failure metric.",
+    )
+    obscured_data_point: str = Field(
+        default="Memory fragmentation overhead inside non-compacting heaps",
+        description="Obscured or overlooked data point.",
+    )
+    economic_or_regulatory_incentive: str = Field(
+        default="Overselling multi-tenant compute nodes for cloud margin",
+        description="Economic or regulatory incentive driving the practice.",
+    )
+
+
+class Topic3(BaseModel):
+    """Structured breakdown for Topic 3."""
+
+    title: str = Field(
+        default="Feedback Loops & Semantic Drift",
+        description="Title of the third core topic.",
+    )
+    recursive_or_feedback_loop: str = Field(
+        default="Self-referential output ingestion in chained agent loops",
+        description="Recursive or feedback loop description.",
+    )
+    behavioral_metric: str = Field(
+        default="Token generation throughput",
+        description="Observed behavioral metric.",
+    )
+    superficial_attribution: str = Field(
+        default="Emergent cognitive synthesis",
+        description="Superficial attribution mistaken for actual mechanism.",
+    )
+    degradation_mechanism: str = Field(
+        default="Iterative entropy collapse and lexical narrowing",
+        description="Actual degradation mechanism.",
+    )
+    system_components: str = Field(
+        default="Prompt cache, vector index, and sampling parameters",
+        description="System components across which degradation occurs.",
+    )
+
+
+class LexicalState(BaseModel):
+    """Substitution tag and conversational phrases for a specific state."""
+
+    tag: str = Field(default="State")
+    phrase_a: str = Field(default="Phase confirmed")
+    phrase_b: str = Field(default="Understood")
+
+
+class LexicalBindings(BaseModel):
+    """Four conversational state phrase bindings."""
+
+    convergence: LexicalState = Field(
+        default_factory=lambda: LexicalState(
+            tag="Convergence",
+            phrase_a="Weights aligned",
+            phrase_b="Parity achieved",
+        )
+    )
+    desync: LexicalState = Field(
+        default_factory=lambda: LexicalState(
+            tag="Desync",
+            phrase_a="Tensor mismatch",
+            phrase_b="Routing fault",
+        )
+    )
+    exhaustion: LexicalState = Field(
+        default_factory=lambda: LexicalState(
+            tag="Exhaustion",
+            phrase_a="Buffer starved",
+            phrase_b="Cgroup limit hit",
+        )
+    )
+    high_entropy: LexicalState = Field(
+        default_factory=lambda: LexicalState(
+            tag="High Entropy",
+            phrase_a="Speculative divergence",
+            phrase_b="Hallucinatory tangent",
+        )
+    )
+
+
+# --- Legacy classes retained for backward compatibility ---
+
+
 class LexicalDictionary(BaseModel):
     """Telemetry substitution dictionary mapped to source mechanisms and failure modes."""
 
@@ -55,23 +186,21 @@ class TelemetryConfig(BaseModel):
 class CompoundEscalation(BaseModel):
     """Compound state escalation rules and source-grounded diagnostics."""
 
-    compound: str = Field(example="State 2 + State 3")
+    compound: str = Field(default="State 2 + State 3")
     diagnostic: str = Field(
-        example="Cascading deadlock across multi-agent RPC channels when buffers exceed threshold"
+        default="Cascading deadlock across multi-agent RPC channels when buffers exceed threshold"
     )
-    tier: str = Field(example="Fatal (Tier-X)")
+    tier: str = Field(default="Fatal (Tier-X)")
 
 
 class AudioProjectConfig(BaseModel):
-    """Declarative configuration for audio overview compilation and automatic binding."""
+    """Declarative configuration for audio overview compilation, constructed directly from a notebook."""
 
     title: str = Field(
         default="Unnamed Diagnostic Session", description="Project or notebook title."
     )
     topic: str | None = Field(default=None, description="Discussion topic directive.")
-    notebook_id: str | None = Field(
-        default=None, description="Target NotebookLM UUID if binding to existing notebook."
-    )
+    notebook_id: str | None = Field(default=None, description="Target NotebookLM UUID.")
     template: str = Field(
         default="mr-and-mrs-language-model",
         description="Name of target Jinja2 audio script template.",
@@ -92,35 +221,6 @@ class AudioProjectConfig(BaseModel):
     include_escalations: bool = Field(default=True)
     include_style_module: bool = Field(default=True)
     catchphrase: str | None = Field(default="By Cor! God's truth! An unhandled exception!")
-    lexical_dictionary: LexicalDictionary = Field(default_factory=LexicalDictionary)
-    telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
-    escalations: list[CompoundEscalation] = Field(
-        default_factory=lambda: [
-            CompoundEscalation(
-                compound="State 2 (Confusion) + State 3 (Frustration)",
-                diagnostic="Recursive retry storm exhausting API quota without fallback",
-                tier="Severity 1 (Fatal)",
-            ),
-            CompoundEscalation(
-                compound="State 1 (Agreement) + State 4 (Tangent)",
-                diagnostic="Unconstrained hyper-scaling of untested speculative hypotheses",
-                tier="Severity 2 (Elevated)",
-            ),
-        ]
-    )
-    topics: list[str] = Field(
-        default_factory=lambda: [
-            "Mechanism 1: Concurrency arbitration and backpressure constraints in high-load RPC interfaces",
-            "Mechanism 2: Memory retention degradation over extended context window traversals",
-            "Mechanism 3: Failure modes during unverified third-party tool delegation",
-        ]
-    )
-    query_guidance: list[str] = Field(
-        default_factory=lambda: [
-            "What architectural invariants prevent cascading desynchronization during latency surges?",
-            "How does the system mitigate memory leak propagation across child conversation threads?",
-        ]
-    )
     audio_format: str = Field(
         default="default",
         description="Audio studio generation format (e.g. 'default', 'debate', 'deep-dive').",
@@ -129,6 +229,20 @@ class AudioProjectConfig(BaseModel):
         default="default", description="Target run time ('short', 'default', 'long')."
     )
 
+    topic_1: Topic1 = Field(default_factory=Topic1)
+    topic_2: Topic2 = Field(default_factory=Topic2)
+    topic_3: Topic3 = Field(default_factory=Topic3)
+    lexical_bindings: LexicalBindings = Field(default_factory=LexicalBindings)
+
+    # Legacy attributes for backward compatibility
+    topics: list[str] = Field(default_factory=list)
+    lexical_dictionary: LexicalDictionary = Field(default_factory=LexicalDictionary)
+    telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
+    escalations: list[CompoundEscalation] = Field(default_factory=list)
+    query_guidance: list[str] = Field(default_factory=list)
+
     def model_post_init(self, __context: object) -> None:
         if self.topic is None and self.title:
             self.topic = f"system architecture and diagnostic failure modes in '{self.title}'"
+        if not self.topics:
+            self.topics = [self.topic_1.title, self.topic_2.title, self.topic_3.title]

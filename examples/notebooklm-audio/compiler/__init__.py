@@ -7,15 +7,25 @@ to programmatically populate complex audio synthesis templates with zero manual 
 from .models import (
     AudioProjectConfig,
     CompoundEscalation,
+    LexicalBindings,
     LexicalDictionary,
+    LexicalState,
     TelemetryConfig,
     TelemetryTiers,
+    Topic1,
+    Topic2,
+    Topic3,
 )
 
 __all__ = [
     "AudioProjectConfig",
     "CompoundEscalation",
+    "LexicalBindings",
     "LexicalDictionary",
+    "LexicalState",
     "TelemetryConfig",
     "TelemetryTiers",
+    "Topic1",
+    "Topic2",
+    "Topic3",
 ]

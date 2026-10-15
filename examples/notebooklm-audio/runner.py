@@ -15,13 +15,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from compiler.auto_bind import auto_populate_from_notebook
-from compiler.loaders import load_audio_config
+from compiler.loaders import create_audio_config, load_audio_config
 from compiler.models import AudioProjectConfig
 from compiler.prompt import compile_audio_prompt
 
 from notebooklm import AudioFormat, AudioLength, NotebookLMClient
-
-DEFAULT_PROJECT = Path(__file__).parent / "projects" / "custom-telemetry-session.yaml"
 
 
 def to_audio_enums(fmt: str, length: str) -> tuple[AudioFormat | None, AudioLength | None]:
@@ -54,8 +52,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "project",
         nargs="?",
-        default=str(DEFAULT_PROJECT),
-        help="Path to declarative audio project YAML configuration.",
+        default=None,
+        help="Optional path to declarative audio project YAML configuration.",
     )
     parser.add_argument(
         "-n",
@@ -92,7 +90,7 @@ async def execute_audio_pipeline(
     target_id = notebook_id or config.notebook_id
     if not target_id or target_id == "dfa4c86e-11b2-4d22-9018-000011112222":
         raise ValueError(
-            "An explicit, valid existing notebook ID (-n / --notebook-id or in YAML) is required for live audio execution!"
+            "An explicit, valid existing notebook ID (-n / --notebook-id or in config) is required for live audio execution!"
         )
 
     audio_format, audio_length = to_audio_enums(config.audio_format, config.audio_length)
@@ -152,12 +150,16 @@ async def emit_compiled_prompt(config: AudioProjectConfig, notebook_id: str) -> 
 
 def main() -> None:
     args = parse_args()
-    project_file = Path(args.project).resolve()
 
     print("─── NotebookLM Automated Audio Prompt Compiler ────────────")
-    print(f"Reading configuration specification: {project_file.name}")
+    if args.project and Path(args.project).exists():
+        project_file = Path(args.project).resolve()
+        print(f"Reading configuration specification: {project_file.name}")
+        config = load_audio_config(project_file)
+    else:
+        print("Constructing dynamic audio specification from notebook...")
+        config = create_audio_config(notebook_id=args.notebook_id)
 
-    config = load_audio_config(project_file)
     if args.notebook_id:
         config.notebook_id = args.notebook_id
 
@@ -187,9 +189,7 @@ def main() -> None:
         print(
             "To execute against a live existing notebook and auto-extract diagnostic vocabulary from sources:"
         )
-        print(
-            f"  uv run examples/notebooklm-audio/runner.py {project_file} -n <NOTEBOOK_ID> --execute\n"
-        )
+        print("  uv run examples/notebooklm-audio/runner.py -n <NOTEBOOK_ID> --execute\n")
     else:
         asyncio.run(execute_audio_pipeline(config, args.out, notebook_id=args.notebook_id))
 

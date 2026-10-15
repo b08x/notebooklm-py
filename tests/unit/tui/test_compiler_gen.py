@@ -1041,3 +1041,61 @@ def test_start_generate_enqueues_generate_job(monkeypatch, tmp_path, no_router, 
     assert job.payload["evidence"] == {"agreement": [["c-1", "checkpoint clause text"]]}
     assert state.compiler_state["phase"] == "submitted"
     assert state.compiler_task is None
+
+
+def test_compile_selected_defaults_to_active_notebook(monkeypatch):
+    from notebooklm.tui.views import compiler_view
+
+    called: list = []
+    monkeypatch.setattr(gen, "start_compile", lambda state, path: called.append(path))
+
+    state = TUIState()
+    state.current_view = View.COMPILER
+    state.selected_notebook = "nb-active-123"
+    compiler_view.load_compiler_configs(state)
+
+    # When no config was selected, compile_selected compiles the active notebook directly
+    compiler_view.compile_selected(state)
+    assert called == [None]
+
+
+def test_compiler_dashboard_controls_cycle_format_and_length():
+    state = TUIState()
+    state.current_view = View.COMPILER
+
+    # Cycle format with 'f'
+    assert state.compiler_state.get("audio_format") is None
+    handle_key("f", state)
+    assert state.compiler_state["audio_format"] == "deep-dive"
+    handle_key("f", state)
+    assert state.compiler_state["audio_format"] == "debate"
+    handle_key("f", state)
+    assert state.compiler_state["audio_format"] == "critique"
+    handle_key("f", state)
+    assert state.compiler_state["audio_format"] == "brief"
+    handle_key("f", state)
+    assert state.compiler_state["audio_format"] == "default"
+
+    # Cycle length with 'l'
+    assert state.compiler_state.get("audio_length") is None
+    handle_key("l", state)
+    assert state.compiler_state["audio_length"] == "short"
+    handle_key("l", state)
+    assert state.compiler_state["audio_length"] == "long"
+    handle_key("l", state)
+    assert state.compiler_state["audio_length"] == "default"
+
+
+def test_compiler_dashboard_enter_and_c_trigger_compile(monkeypatch):
+    called: list = []
+    monkeypatch.setattr(gen, "start_compile", lambda state, path: called.append(path))
+
+    state = TUIState()
+    state.current_view = View.COMPILER
+    state.selected_notebook = "nb-active-123"
+
+    handle_key("c", state)
+    assert called == [None]
+
+    handle_key("\r", state)
+    assert called == [None, None]

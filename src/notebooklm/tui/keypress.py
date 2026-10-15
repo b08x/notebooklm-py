@@ -282,10 +282,22 @@ def handle_key(key: str, state: TUIState) -> bool:
                         selected_idx = max(selected_idx - 1, 0)
                     cs["selected_config"] = selected_idx
             return True
-        elif key == "\r" or key == "\n":
+        elif key in ("\r", "\n", "c"):
             from .views.compiler_view import compile_selected
 
             compile_selected(state)
+            return True
+        elif key == "f":
+            formats = ["default", "deep-dive", "debate", "critique", "brief"]
+            curr = cs.get("audio_format", "default")
+            next_idx = (formats.index(curr) + 1) % len(formats) if curr in formats else 0
+            cs["audio_format"] = formats[next_idx]
+            return True
+        elif key == "l":
+            lengths = ["default", "short", "long"]
+            curr = cs.get("audio_length", "default")
+            next_idx = (lengths.index(curr) + 1) % len(lengths) if curr in lengths else 0
+            cs["audio_length"] = lengths[next_idx]
             return True
         elif key == "e":
             # The key handler never touches the terminal itself — the app

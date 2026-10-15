@@ -10,15 +10,15 @@ def list_project_configs() -> list[Path]:
 
     configs = []
 
+    # Audio projects (if any exist)
+    audio_projects = examples_dir / "notebooklm-audio" / "projects"
+    if audio_projects.exists():
+        configs.extend(list(audio_projects.glob("*.yaml")))
+
     # Video projects
     video_projects = examples_dir / "notebooklm-video" / "projects"
     if video_projects.exists():
         configs.extend(list(video_projects.glob("*.yaml")))
-
-    # Audio projects
-    audio_projects = examples_dir / "notebooklm-audio" / "projects"
-    if audio_projects.exists():
-        configs.extend(list(audio_projects.glob("*.yaml")))
 
     return configs
 
@@ -36,11 +36,6 @@ def _load_module_from_path(name: str, path: Path):
 def compile_video_project(project_file: str | Path) -> Any:
     root = Path(__file__).resolve().parents[3]
     video_dir = root / "examples" / "notebooklm-video"
-
-    # We need to make sure the loaders and models inside video_dir/compiler are resolvable
-    # since prompt.py does relative imports. Actually, if we add it to sys.path briefly and remove it?
-    # No, relative imports (e.g. from .loaders import x) work if the module is loaded as part of a package.
-    # Easiest way: add to sys.path, import under a unique name or clear sys.modules['compiler'].
 
     sys_path_added = str(video_dir) not in sys.path
     if sys_path_added:
@@ -80,7 +75,13 @@ def _with_audio_compiler():
     # Video and audio projects ship different ``compiler`` packages under the
     # same name; pop the package too so a video compile earlier in the session
     # cannot shadow this import.
-    for stale in ("compiler", "compiler.prompt", "compiler.loaders", "compiler.models"):
+    for stale in (
+        "compiler",
+        "compiler.prompt",
+        "compiler.loaders",
+        "compiler.models",
+        "compiler.auto_bind",
+    ):
         sys.modules.pop(stale, None)
 
     try:
@@ -97,18 +98,31 @@ def compile_audio_project(project_file: str | Path) -> str:
 
 
 def load_audio_project(project_file: str | Path) -> Any:
-    """Load an audio project YAML into an in-memory ``AudioProjectConfig``.
-
-    Like :func:`compile_audio_project`, this never writes the YAML back — the
-    caller may mutate the returned config (e.g. override ``notebook_id``) and
-    recompile from it via :func:`compile_audio_config`.
-    """
+    """Load an audio project YAML into an in-memory ``AudioProjectConfig``."""
     _with_audio_compiler()
     from compiler.loaders import load_audio_config
 
     return load_audio_config(project_file)
 
 
+def create_audio_config(
+    notebook_id: str | None = None, title: str | None = None, **kwargs: Any
+) -> Any:
+    """Create an in-memory ``AudioProjectConfig`` directly for a notebook."""
+    _with_audio_compiler()
+    from compiler.loaders import create_audio_config as _create
+
+    return _create(notebook_id=notebook_id, title=title, **kwargs)
+
+
 def compile_audio_config(config: Any) -> str:
     """Compile an already-loaded ``AudioProjectConfig`` into its prompt text."""
     return _with_audio_compiler().compile_audio_prompt(config)
+
+
+async def auto_populate_audio_config(client: Any, notebook_id: str, config: Any) -> Any:
+    """Run chat-based RAG extraction against a notebook to populate an ``AudioProjectConfig``."""
+    _with_audio_compiler()
+    from compiler.auto_bind import auto_populate_from_notebook
+
+    return await auto_populate_from_notebook(client, notebook_id, config, verbose=False)

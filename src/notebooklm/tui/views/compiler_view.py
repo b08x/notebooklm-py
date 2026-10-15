@@ -1,32 +1,32 @@
 from ..state import TUIState
 
 # The compiler view should be rendered by renderers/main.py when state.current_view == View.COMPILER
-# It just displays the YAML configs and a preview.
-# Audio YAMLs compile (and later generate) through tui/views/compiler_gen.py;
-# video YAMLs keep the synchronous preview-only behavior.
+# It presents a direct compile dashboard for the active notebook with extraction controls.
 
 
 def load_compiler_configs(state: TUIState) -> None:
     from ..compiler_bridge import list_project_configs
 
-    configs = list_project_configs()
+    configs = [c for c in list_project_configs() if "notebooklm-video" not in str(c)]
     state.compiler_state["configs"] = configs
-    if configs and "selected_config" not in state.compiler_state:
-        state.compiler_state["selected_config"] = 0
+    state.compiler_state.setdefault("template", "mr-and-mrs-language-model")
+    state.compiler_state.setdefault("audio_format", "default")
+    state.compiler_state.setdefault("audio_length", "default")
 
 
 def compile_selected(state: TUIState) -> None:
     from ..compiler_bridge import compile_video_project
 
     configs = state.compiler_state.get("configs", [])
-    selected_idx = state.compiler_state.get("selected_config", 0)
+    selected_idx = state.compiler_state.get("selected_config")
 
-    if not configs or selected_idx >= len(configs):
-        return
-
-    project_file = configs[selected_idx]
-
-    if "notebooklm-video" in str(project_file):
+    if (
+        selected_idx is not None
+        and configs
+        and selected_idx < len(configs)
+        and "notebooklm-video" in str(configs[selected_idx])
+    ):
+        project_file = configs[selected_idx]
         try:
             result = compile_video_project(project_file)
             state.compiler_state["preview"] = (
@@ -36,8 +36,15 @@ def compile_selected(state: TUIState) -> None:
             state.compiler_state["preview"] = f"Error compiling {project_file.name}: {e}"
         return
 
-    # Audio project: compile against the selected sidebar notebook in the
-    # background (facts 1–3); compiler_gen handles the compile and its state.
+    # Audio compile against the selected sidebar notebook directly
     from .compiler_gen import start_compile
 
+    project_file = (
+        configs[selected_idx]
+        if selected_idx is not None
+        and configs
+        and selected_idx < len(configs)
+        and "notebooklm-video" not in str(configs[selected_idx])
+        else None
+    )
     start_compile(state, project_file)

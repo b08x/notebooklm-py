@@ -30,6 +30,8 @@ _CURATION_KEYS = [
 #: Compiler-view keys (fact 16): compile, edit, generate, scroll, back.
 _COMPILER_KEYS = [
     ("enter", "compile"),
+    ("f", "format"),
+    ("l", "length"),
     ("e", "edit"),
     ("g", "generate"),
     ("j/k", "scroll"),

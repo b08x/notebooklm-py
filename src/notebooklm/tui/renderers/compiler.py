@@ -45,35 +45,64 @@ def _target_notebook_title(state: TUIState) -> str | None:
     return None
 
 
-def _render_config_list(state: TUIState) -> Table:
-    configs = state.compiler_state.get("configs", [])
-    selected_idx = state.compiler_state.get("selected_config", 0)
+def _is_matching_notebook(state: TUIState) -> bool:
+    cs_nb = state.compiler_state.get("notebook_id")
+    return not cs_nb or not state.selected_notebook or cs_nb == state.selected_notebook
 
+
+def _render_compiler_dashboard(state: TUIState) -> Table:
+    cs = state.compiler_state
     table = Table.grid(expand=True)
-    table.add_column(width=2, no_wrap=True)
-    table.add_column(width=6, no_wrap=True)
+    table.add_column(width=16, no_wrap=True)
     table.add_column(ratio=1, no_wrap=True, overflow="ellipsis")
-
-    for i, config in enumerate(configs):
-        is_selected = i == selected_idx
-        kind = "video" if "notebooklm-video" in str(config) else "audio"
-        table.add_row(
-            Text("▌" if is_selected else " ", style="marker"),
-            Text(kind, style="label"),
-            Text(config.name),
-            style="selected" if is_selected else "foreground",
-        )
-
-    if not configs:
-        table.add_row("", "", Text("No YAML configurations found.", style="muted"))
 
     target = _target_notebook_title(state)
     if target:
-        table.add_row("", "", Text(f"→ {target}", style="muted"), end_section=True)
+        table.add_row(
+            Text("Target Notebook:", style="heading"), Text(f"→ {target}", style="success")
+        )
     else:
-        table.add_row("", "", Text("no notebook selected", style="warning"), end_section=True)
+        table.add_row(
+            Text("Target Notebook:", style="heading"), Text("no notebook selected", style="warning")
+        )
+
+    target_id = state.selected_notebook
+    if target_id:
+        table.add_row(Text("Notebook ID:", style="muted"), Text(target_id, style="subtle"))
+
+    table.add_row("", "")
+    template = cs.get("template", "mr-and-mrs-language-model")
+    audio_format = cs.get("audio_format", "default")
+    audio_length = cs.get("audio_length", "default")
+
+    table.add_row(Text("Template:", style="label"), Text(template, style="foreground"))
+    table.add_row(Text("Audio Format:", style="label"), Text(audio_format, style="foreground"))
+    table.add_row(Text("Audio Length:", style="label"), Text(audio_length, style="foreground"))
+    table.add_row(Text("Extraction:", style="label"), Text("Chat RAG (Auto-Bind)", style="info"))
+
+    table.add_row("", "")
+    table.add_row(Text("Controls:", style="heading"), Text(""))
+    table.add_row(Text("enter / c", style="key"), Text("Compile prompt from notebook"))
+    table.add_row(Text("f", style="key"), Text("Cycle format (default/deep-dive/...)"))
+    table.add_row(Text("l", style="key"), Text("Cycle length (default/short/long)"))
+    table.add_row(Text("e", style="key"), Text("Edit in $EDITOR"))
+    table.add_row(Text("g", style="key"), Text("Generate audio"))
+
+    if _is_matching_notebook(state):
+        error = cs.get("error")
+        warning = cs.get("warning")
+        if error:
+            table.add_row("", "")
+            table.add_row(Text("Error:", style="error"), Text(error, style="error"))
+        elif warning:
+            table.add_row("", "")
+            table.add_row(Text("Warning:", style="warning"), Text(warning, style="warning"))
 
     return table
+
+
+# Backward compatible alias for existing tests
+_render_config_list = _render_compiler_dashboard
 
 
 def _evidence_lines(state: TUIState) -> list[Text]:
@@ -164,16 +193,23 @@ def _render_confirm_panel(state: TUIState) -> Panel:
 
 def _render_detail(state: TUIState) -> Panel:
     cs = state.compiler_state
-    prompt = cs.get("prompt")
+    matching = _is_matching_notebook(state)
+    prompt = cs.get("prompt") if matching else None
 
-    if cs.get("confirm"):
+    if matching and cs.get("confirm"):
         return _render_confirm_panel(state)
 
     if not prompt:
-        status = _render_status(state)
+        preview = cs.get("preview") if matching else None
+        if preview:
+            return panel(Text(preview, style="foreground"), "Preview", focused=False)
+
+        status = _render_status(state) if matching else None
+        err = cs.get("error") if matching else None
+        warn = cs.get("warning") if matching else None
         body: RenderableType = Text(
-            cs.get("error") or cs.get("warning") or "Press Enter to compile the selected project.",
-            style="error" if cs.get("error") else "muted",
+            err or warn or "Press Enter / c to compile prompt from the target notebook.",
+            style="error" if err else "muted",
         )
         if status is not None:
             body = Group(body, status)
@@ -203,7 +239,7 @@ def render_compiler(state: TUIState) -> tuple[Panel, Panel]:
     if "configs" not in state.compiler_state:
         load_compiler_configs(state)
 
-    results_panel = panel(_render_config_list(state), "Compiler Configs", focused=True)
+    results_panel = panel(_render_compiler_dashboard(state), "Compiler Dashboard", focused=True)
     detail_panel = _render_detail(state)
 
     return results_panel, detail_panel

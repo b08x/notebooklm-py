@@ -157,3 +157,24 @@ def test_warning_line_shown_for_fallback():
     )
     rendered = _render_text(render_compiler(state)[1])
     assert "chat fallback" in rendered
+
+
+def test_compiler_does_not_show_stale_error_from_different_notebook():
+    # compiler_state has error for nb-1, but user switched to nb-2
+    state = _compiler_state(
+        notebook_id="nb-1",
+        error="Notebook not found: nb-1",
+        warning="Some warning on nb-1",
+        prompt="Prompt for nb-1",
+    )
+    state.selected_notebook = "nb-2"
+
+    dashboard_text = _render_text(render_compiler(state)[0])
+    detail_text = _render_text(render_compiler(state)[1])
+
+    # Dashboard and detail should NOT show the error or prompt from nb-1
+    assert "Notebook not found: nb-1" not in dashboard_text
+    assert "Some warning on nb-1" not in dashboard_text
+    assert "Notebook not found: nb-1" not in detail_text
+    assert "Prompt for nb-1" not in detail_text
+    assert "Press Enter / c to compile prompt from the target notebook" in detail_text

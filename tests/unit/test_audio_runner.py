@@ -28,11 +28,10 @@ def runner():
 
 @pytest.fixture(scope="module")
 def audio_config(runner):
-    """A real ``AudioProjectConfig`` via the compiler's own loader."""
-    from compiler.loaders import load_audio_config
+    """A real ``AudioProjectConfig`` via the compiler's models."""
+    from compiler.models import AudioProjectConfig
 
-    yaml = RUNNER_PATH.parent / "projects" / "custom-telemetry-session.yaml"
-    return load_audio_config(yaml)
+    return AudioProjectConfig(title="Test Config")
 
 
 # ---------------------------------------------------------------------------
