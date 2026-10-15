@@ -41,7 +41,12 @@ class TUICache:
             return self._memory_cache
 
         if not self.cache_path.exists():
-            data: dict[str, Any] = {"version": CACHE_VERSION, "summaries": {}, "artifacts": {}}
+            data: dict[str, Any] = {
+                "version": CACHE_VERSION,
+                "summaries": {},
+                "artifacts": {},
+                "notebooks": [],
+            }
             self._memory_cache = data
             return data
 
@@ -49,15 +54,25 @@ class TUICache:
             with FileLock(str(self.lock_path), timeout=5):
                 text = self.cache_path.read_text(encoding="utf-8")
                 if not text.strip():
-                    return {"version": CACHE_VERSION, "summaries": {}, "artifacts": {}}
+                    return {
+                        "version": CACHE_VERSION,
+                        "summaries": {},
+                        "artifacts": {},
+                        "notebooks": [],
+                    }
                 data = json.loads(text)
         except Exception as e:
             logger.warning("Failed to load TUI cache from %s: %s", self.cache_path, e)
-            return {"version": CACHE_VERSION, "summaries": {}, "artifacts": {}}
+            return {
+                "version": CACHE_VERSION,
+                "summaries": {},
+                "artifacts": {},
+                "notebooks": [],
+            }
 
         # Backward compatibility: legacy cache was a flat dict of {notebook_id: summary}
         if isinstance(data, dict):
-            if "summaries" in data or "artifacts" in data:
+            if "summaries" in data or "artifacts" in data or "notebooks" in data:
                 return {
                     "version": data.get("version", CACHE_VERSION),
                     "summaries": data.get("summaries", {})
@@ -66,15 +81,24 @@ class TUICache:
                     "artifacts": data.get("artifacts", {})
                     if isinstance(data.get("artifacts"), dict)
                     else {},
+                    "notebooks": data.get("notebooks", [])
+                    if isinstance(data.get("notebooks"), list)
+                    else [],
                 }
             # Flat dict -> migrate to summaries
             return {
                 "version": CACHE_VERSION,
                 "summaries": {k: str(v) for k, v in data.items()},
                 "artifacts": {},
+                "notebooks": [],
             }
 
-        return {"version": CACHE_VERSION, "summaries": {}, "artifacts": {}}
+        return {
+            "version": CACHE_VERSION,
+            "summaries": {},
+            "artifacts": {},
+            "notebooks": [],
+        }
 
     def _save_raw(self, data: dict[str, Any]) -> None:
         """Write normalized cache contents under a file lock."""
@@ -199,3 +223,55 @@ class TUICache:
         data["artifacts"][notebook_id] = stats
         self._save_raw(data)
         return stats
+
+    def get_notebooks(self) -> list[Any]:
+        """Retrieve cached notebooks, or empty list."""
+        from notebooklm._types.notebooks import Notebook
+
+        data = self._load_raw()
+        cached = data.get("notebooks", [])
+        notebooks = []
+        for item in cached:
+            if not isinstance(item, dict) or not item.get("id"):
+                continue
+            try:
+                created_at = (
+                    datetime.datetime.fromisoformat(item["created_at"])
+                    if item.get("created_at")
+                    else None
+                )
+                modified_at = (
+                    datetime.datetime.fromisoformat(item["modified_at"])
+                    if item.get("modified_at")
+                    else None
+                )
+                nb = Notebook(
+                    id=item["id"],
+                    title=item.get("title", "Untitled"),
+                    created_at=created_at,
+                    sources_count=int(item.get("sources_count", 0)),
+                    modified_at=modified_at,
+                )
+                notebooks.append(nb)
+            except Exception:
+                continue
+        return notebooks
+
+    def save_notebooks(self, notebooks: list[Any]) -> None:
+        """Cache current notebook list."""
+        data = self._load_raw(reload=True)
+        serialized = []
+        for nb in notebooks:
+            created_at = getattr(nb, "created_at", None)
+            modified_at = getattr(nb, "modified_at", None)
+            serialized.append(
+                {
+                    "id": getattr(nb, "id", ""),
+                    "title": getattr(nb, "title", "Untitled"),
+                    "sources_count": getattr(nb, "sources_count", 0),
+                    "created_at": created_at.isoformat() if created_at else None,
+                    "modified_at": modified_at.isoformat() if modified_at else None,
+                }
+            )
+        data["notebooks"] = serialized
+        self._save_raw(data)

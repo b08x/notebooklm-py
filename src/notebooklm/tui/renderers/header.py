@@ -19,7 +19,9 @@ def _meter(tokens: int, max_tokens: int) -> Text:
 
 def render_header(state: TUIState) -> Panel:
     state.update_tokens()  # Refresh tokens for display
-    profile = "default"  # Could be pulled from env or config later
+    from notebooklm.paths import resolve_profile
+
+    profile = resolve_profile(None)
     view_name = state.current_view.name.replace("_", " ").title()
 
     left = Text(no_wrap=True, overflow="ellipsis")

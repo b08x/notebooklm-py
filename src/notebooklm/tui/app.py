@@ -153,6 +153,10 @@ def run_tui(download_dir: str | None = None) -> None:
     state.tui_cache = cache
     state.notebook_summaries = cache.get_all_summaries()
     state.notebook_stats = cache.get_all_artifact_stats()
+    cached_notebooks = cache.get_notebooks()
+    if cached_notebooks:
+        state.notebooks = cached_notebooks
+        state.selected_notebook = getattr(cached_notebooks[0], "id", None)
 
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 

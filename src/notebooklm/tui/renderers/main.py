@@ -525,6 +525,14 @@ def render_main(state: TUIState) -> tuple[Panel, Panel]:
 
     if state.current_view in (View.NOTEBOOK_DETAIL, View.NOTEBOOK_LIST):
         if not state.selected_notebook:
+            if state.error_message and not state.notebooks:
+                return (
+                    message_panel(
+                        f"Failed to load notebooks from NotebookLM:\n\n{state.error_message}\n\nPress 'r' to retry.",
+                        "Notebooks Error",
+                    ),
+                    empty_panel("Details"),
+                )
             return message_panel("No notebook selected.", "Notebook"), empty_panel("Details")
         if state.current_view == View.NOTEBOOK_DETAIL:
             return _render_notebook_detail(state, state.selected_notebook)

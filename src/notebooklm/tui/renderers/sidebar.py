@@ -181,9 +181,22 @@ class _NotebookList:
 
         heading = _list_heading(state)
         if not notebooks:
-            filtered = state.search_query or state.filter_has_audio or state.filter_min_sources
-            empty = "No matching notebooks." if filtered else "No notebooks found."
-            body: Group = Group(heading, Text(""), Text(empty, style="muted"))
+            if state.error_message and not state.notebooks:
+                err_text = state.error_message
+                if len(err_text) > 40:
+                    err_text = err_text[:39] + "…"
+                body: Group = Group(
+                    heading,
+                    Text(""),
+                    Text("Failed to load:", style="error"),
+                    Text(err_text, style="muted"),
+                    Text(""),
+                    Text("Press 'r' to retry", style="key"),
+                )
+            else:
+                filtered = state.search_query or state.filter_has_audio or state.filter_min_sources
+                empty = "No matching notebooks." if filtered else "No notebooks found."
+                body = Group(heading, Text(""), Text(empty, style="muted"))
         else:
             body = Group(heading, Text(""), rows)
 

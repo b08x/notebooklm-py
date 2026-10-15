@@ -92,3 +92,29 @@ def test_cache_handles_corrupt_json(tmp_path):
     # Can recover by writing
     cache.save_summary("nb-1", "Fresh summary")
     assert cache.get_summary("nb-1") == "Fresh summary"
+
+
+def test_cache_save_and_retrieve_notebooks(tmp_path):
+    from notebooklm._types.notebooks import Notebook
+
+    cache_file = tmp_path / "tui_cache.json"
+    cache = TUICache(cache_path=cache_file)
+
+    assert cache.get_notebooks() == []
+
+    dt = datetime(2026, 10, 1, 10, 0, tzinfo=timezone.utc)
+    nbs = [
+        Notebook(id="nb-1", title="First Notebook", created_at=dt, sources_count=3),
+        Notebook(id="nb-2", title="Second Notebook", created_at=None, sources_count=0),
+    ]
+
+    cache.save_notebooks(nbs)
+
+    loaded = cache.get_notebooks()
+    assert len(loaded) == 2
+    assert loaded[0].id == "nb-1"
+    assert loaded[0].title == "First Notebook"
+    assert loaded[0].sources_count == 3
+    assert loaded[0].created_at == dt
+    assert loaded[1].id == "nb-2"
+    assert loaded[1].title == "Second Notebook"

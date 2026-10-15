@@ -261,3 +261,24 @@ def test_render_ingest_picker_tags_notes():
     text = _render_text(render_main(state))
     assert "[note] Meeting note" in text
     assert "A source" in text
+
+
+def test_render_sidebar_shows_error_when_loading_failed():
+    state = TUIState()
+    state.notebooks = []
+    state.error_message = "Connection timed out"
+    text = _render_text(render_sidebar(state))
+    assert "Failed to load:" in text
+    assert "Connection timed out" in text
+    assert "Press 'r' to retry" in text
+
+
+def test_render_main_shows_error_when_loading_failed():
+    state = TUIState()
+    state.notebooks = []
+    state.selected_notebook = None
+    state.error_message = "Connection timed out"
+    text = _render_text(render_main(state))
+    assert "Failed to load notebooks from NotebookLM" in text
+    assert "Connection timed out" in text
+    assert "Press 'r' to retry" in text
