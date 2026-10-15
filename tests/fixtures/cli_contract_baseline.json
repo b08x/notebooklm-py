@@ -18,6 +18,8 @@
     "artifact": [
       "delete",
       "export",
+      "export-ass",
+      "export-assessment",
       "get",
       "get-prompt",
       "list",
@@ -165,6 +167,8 @@
       "commands": [
         "delete",
         "export",
+        "export-ass",
+        "export-assessment",
         "get",
         "get-prompt",
         "list",
@@ -340,6 +344,200 @@
         }
       ],
       "short_help": "Export artifact to Google Docs/Sheets."
+    },
+    "artifact export-ass": {
+      "class": "Command",
+      "params": [
+        {
+          "kind": "argument",
+          "name": "artifact_id",
+          "nargs": 1,
+          "required": false,
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "default": null,
+          "envvar": "NOTEBOOKLM_NOTEBOOK",
+          "has_custom_shell_complete": true,
+          "help": "Notebook ID (uses current if not set). Supports partial IDs.",
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "notebook_id",
+          "opts": [
+            "-n",
+            "--notebook"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "default": "Sentinel.UNSET",
+          "envvar": null,
+          "has_custom_shell_complete": false,
+          "help": "Output .ass file path",
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "output",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "allow_dash": false,
+            "dir_okay": true,
+            "executable": false,
+            "exists": false,
+            "file_okay": true,
+            "name": "path",
+            "readable": true,
+            "resolve_path": false,
+            "writable": true
+          }
+        },
+        {
+          "default": "Sentinel.UNSET",
+          "envvar": null,
+          "has_custom_shell_complete": false,
+          "help": "Optional title for the subtitle script",
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "title",
+          "opts": [
+            "--title"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "default": false,
+          "envvar": null,
+          "has_custom_shell_complete": false,
+          "help": "Output as JSON",
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "json_output",
+          "opts": [
+            "--json"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ],
+      "short_help": "Export audio assessment in fancy ASS..."
+    },
+    "artifact export-assessment": {
+      "class": "Command",
+      "params": [
+        {
+          "kind": "argument",
+          "name": "artifact_id",
+          "nargs": 1,
+          "required": false,
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "default": null,
+          "envvar": "NOTEBOOKLM_NOTEBOOK",
+          "has_custom_shell_complete": true,
+          "help": "Notebook ID (uses current if not set). Supports partial IDs.",
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "notebook_id",
+          "opts": [
+            "-n",
+            "--notebook"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "default": "Sentinel.UNSET",
+          "envvar": null,
+          "has_custom_shell_complete": false,
+          "help": "Output .ass file path",
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "output",
+          "opts": [
+            "-o",
+            "--output"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "allow_dash": false,
+            "dir_okay": true,
+            "executable": false,
+            "exists": false,
+            "file_okay": true,
+            "name": "path",
+            "readable": true,
+            "resolve_path": false,
+            "writable": true
+          }
+        },
+        {
+          "default": "Sentinel.UNSET",
+          "envvar": null,
+          "has_custom_shell_complete": false,
+          "help": "Optional title for the subtitle script",
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "title",
+          "opts": [
+            "--title"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "text"
+          }
+        },
+        {
+          "default": false,
+          "envvar": null,
+          "has_custom_shell_complete": false,
+          "help": "Output as JSON",
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "json_output",
+          "opts": [
+            "--json"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": {
+            "name": "boolean"
+          }
+        }
+      ],
+      "short_help": "Alias for export-ass."
     },
     "artifact get": {
       "class": "Command",

@@ -349,6 +349,34 @@ def handle_key(key: str, state: TUIState) -> bool:
 
             trigger_fact_check(state)
             return True
+        elif key == "e":
+            import os
+
+            from notebooklm._app.ass_export import save_assessment_ass
+            from notebooklm._app.assessment import AssessmentResult
+
+            artifact_id = state.assessment_state.get("artifact_id") or "assessment"
+            download_dir = getattr(state, "download_dir", None) or os.path.expanduser(
+                "~/NotebookLM"
+            )
+            artifacts_dir = os.path.join(download_dir, "artifacts")
+            out_path = os.path.join(artifacts_dir, f"assessment_{artifact_id}.ass")
+
+            chunks = state.assessment_state.get("chunks", [])
+            res = AssessmentResult(
+                system_instructions=state.assessment_state.get("system_instructions", ""),
+                audio_metadata=state.assessment_state.get("audio_metadata", ""),
+                transcript=state.assessment_state.get("transcript", ""),
+                chunks=chunks,
+                sfl_metrics=state.assessment_state.get("sfl_metrics"),
+                diarization=state.assessment_state.get("diarization"),
+            )
+            try:
+                save_assessment_ass(res, out_path, title=f"Audio Assessment: {artifact_id}")
+                state.error_message = f"Exported ASS subtitles to {out_path}"
+            except Exception as e:
+                state.error_message = f"Export failed: {e}"
+            return True
     elif state.current_view == View.VISUAL_ASSESSMENT:
         if key == "\x1b":  # Escape
             if state.previous_view:

@@ -69,7 +69,13 @@ def trigger_assessment_grading(state):
                 output_dir=artifacts_dir,
             )
 
-            state.assessment_state["llm_score"] += f"\n\nReport saved to:\n{report_path}"
+            ass_path = os.path.join(artifacts_dir, f"assessment_{artifact_id}.ass")
+            if os.path.exists(ass_path):
+                state.assessment_state["llm_score"] += (
+                    f"\n\nReport saved to:\n{report_path}\n\nASS subtitles saved to:\n{ass_path}"
+                )
+            else:
+                state.assessment_state["llm_score"] += f"\n\nReport saved to:\n{report_path}"
         except Exception as e:
             err_str = str(e)
             if len(err_str) > 200:
@@ -251,7 +257,13 @@ class AssessmentView:
             _labeled_block("Suggested Score", llm_score),
             _labeled_block("Fact-Check Status", fact_status),
             key_hints(
-                [("enter", "score"), ("f", "fact-check"), ("j/k", "scroll"), ("esc", "back")]
+                [
+                    ("enter", "score"),
+                    ("f", "fact-check"),
+                    ("e", "export .ass"),
+                    ("j/k", "scroll"),
+                    ("esc", "back"),
+                ]
             ),
         ]
         left_panel = panel(Group(*left_items), "Assessment Controls", focused=True)

@@ -1461,6 +1461,7 @@ src/notebooklm/
 ### Repository Structure Intentional Omissions
 
 - `src/notebooklm/_app/assessment.py` - Audio and source assessment business logic.
+- `src/notebooklm/_app/ass_export.py` - Advanced SubStation Alpha (.ass) subtitle export for audio assessments.
 - `src/notebooklm/_app/archive.py` - Notebook archive (export before remote delete) for curation.
 - `src/notebooklm/_app/corpus.py` - Read queries for the TUI Ingest and Fact-check modes.
 - `src/notebooklm/_app/curation.py` - Curation: remove items, add sources, delete notebooks, removal log.

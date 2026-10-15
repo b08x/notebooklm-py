@@ -6,8 +6,10 @@ Commands:
     get-prompt  Show the generation prompt behind an artifact
     rename      Rename an artifact
     delete      Delete an artifact
-    export      Export to Google Docs/Sheets
-    poll        Poll generation status (single check)
+    export             Export to Google Docs/Sheets
+    export-ass         Export audio assessment in ASS subtitle format (.ass)
+    export-assessment  Alias for export-ass
+    poll               Poll generation status (single check)
     wait        Wait for generation to complete (blocking)
     retry       Retry a failed artifact in place
     suggestions Get AI-suggested report topics
@@ -33,7 +35,7 @@ from .._app.artifacts import (
 from ..exceptions import ArtifactNotFoundError
 from .auth_runtime import resolve_client_factory, with_client
 from .error_handler import _output_error, exit_with_code
-from .options import json_option, list_options, notebook_option, wait_polling_options
+from .options import alias_command, json_option, list_options, notebook_option, wait_polling_options
 from .polling_ui import status_with_elapsed
 from .rendering import (
     cli_name_to_artifact_type,
@@ -66,8 +68,10 @@ def artifact():
       get-prompt   Show the generation prompt behind an artifact
       rename       Rename an artifact
       delete       Delete an artifact
-      export       Export to Google Docs/Sheets
-      poll         Poll generation status (single check)
+      export             Export to Google Docs/Sheets
+      export-ass         Export audio assessment in ASS subtitle format (.ass)
+      export-assessment  Alias for export-ass
+      poll               Poll generation status (single check)
       wait         Wait for generation to complete (blocking)
       retry        Retry a failed artifact in place
       suggestions  Get AI-suggested report topics
@@ -470,6 +474,94 @@ def artifact_export(ctx, artifact_id, notebook_id, title, export_type, json_outp
                 console.print("[yellow]Export may have failed[/yellow]")
 
     return _run()
+
+
+@artifact.command("export-ass")
+@click.argument("artifact_id", required=False)
+@notebook_option
+@click.option("-o", "--output", type=click.Path(writable=True), help="Output .ass file path")
+@click.option("--title", help="Optional title for the subtitle script")
+@json_option
+@with_client
+def artifact_export_ass(ctx, artifact_id, notebook_id, output, title, json_output, client_auth):
+    """Export audio assessment in fancy ASS subtitle format (.ass).
+
+    Includes speaker dialogue, SFL linguistic annotations, and fact-check verdicts with citations.
+    ARTIFACT_ID can be a full UUID or partial prefix. If omitted, uses the latest audio overview.
+    """
+    nb_id = require_notebook(notebook_id)
+
+    async def _run():
+        import os
+
+        from notebooklm._app.ass_export import save_assessment_ass
+        from notebooklm._app.assessment import run_full_assessment
+        from notebooklm.db.session import async_session_maker
+
+        async with resolve_client_factory(ctx)(client_auth) as client:
+            nb_id_resolved = await resolve_notebook_id(client, nb_id, json_output=json_output)
+
+            target_artifact_id = None
+            if artifact_id:
+                target_artifact_id = await resolve_artifact_id(
+                    client, nb_id_resolved, artifact_id, json_output=json_output
+                )
+            else:
+                audio_artifacts = await client.artifacts.list_audio(nb_id_resolved)
+                if not audio_artifacts:
+                    _output_error(
+                        "No audio overview artifact found for this notebook.",
+                        code="NO_AUDIO",
+                        json_output=json_output,
+                        exit_code=1,
+                        hint="Generate an audio overview first using 'notebooklm generate audio'",
+                    )
+                latest = max(audio_artifacts, key=lambda a: getattr(a, "created_at", None) or 0)
+                target_artifact_id = latest.id
+
+            async with async_session_maker() as session:
+                result = await run_full_assessment(
+                    client, session, nb_id_resolved, target_artifact_id
+                )
+
+            out_path = output
+            if not out_path:
+                download_dir = os.path.expanduser("~/NotebookLM/artifacts")
+                out_path = os.path.join(download_dir, f"assessment_{target_artifact_id}.ass")
+
+            doc_title = title or f"Audio Assessment: {target_artifact_id}"
+            saved_path = save_assessment_ass(result, out_path, title=doc_title)
+
+            total_chunks = len(result.chunks)
+            passed_chunks = sum(
+                1 for c in result.chunks if getattr(c, "fact_check_passed", None) is True
+            )
+            failed_chunks = sum(
+                1 for c in result.chunks if getattr(c, "fact_check_passed", None) is False
+            )
+
+            if json_output:
+                json_output_response(
+                    {
+                        "status": "ok",
+                        "path": saved_path,
+                        "artifact_id": target_artifact_id,
+                        "total_chunks": total_chunks,
+                        "passed_chunks": passed_chunks,
+                        "failed_chunks": failed_chunks,
+                    }
+                )
+                return
+
+            console.print(f"[green]Exported audio assessment to ASS format:[/green] {saved_path}")
+            console.print(
+                f"[dim]Total claims: {total_chunks} | Verified: {passed_chunks} | Failed: {failed_chunks}[/dim]"
+            )
+
+    return _run()
+
+
+alias_command(artifact, artifact_export_ass, "export-assessment", "Alias for export-ass.")
 
 
 @artifact.command("poll")

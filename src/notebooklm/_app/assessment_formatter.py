@@ -1,4 +1,10 @@
+from .ass_export import generate_ass_script
 from .assessment import AssessmentResult
+
+
+def generate_ass_report(result: AssessmentResult, title: str | None = None) -> str:
+    """Generate an Advanced SubStation Alpha (.ass) subtitle script from AssessmentResult."""
+    return generate_ass_script(result, title=title)
 
 
 def generate_markdown_report(result: AssessmentResult) -> str:

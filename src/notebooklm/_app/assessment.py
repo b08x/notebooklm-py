@@ -242,6 +242,10 @@ class AssessmentChunk:
     #: ``None`` = not yet fact-checked. Set by :func:`run_fact_check_for_chunk`.
     fact_check_passed: bool | None = None
     fact_check_citations: str | None = None
+    speaker: str | None = None
+    start_time: float | None = None
+    end_time: float | None = None
+    sfl: dict[str, Any] | None = None
 
     @property
     def formatted(self) -> str:
@@ -259,6 +263,7 @@ class AssessmentResult:
     transcript: str
     chunks: list[AssessmentChunk]
     sfl_metrics: dict[str, Any] | None = None
+    diarization: Any = None
 
 
 async def run_full_assessment(
@@ -452,6 +457,16 @@ async def run_full_assessment(
         for i, c in enumerate(kept_chunks)
     ]
 
+    from .ass_export import align_chunk_timestamps
+
+    aligned_timings = align_chunk_timestamps(
+        assessment_chunks, diarization=diarization, transcript=transcript
+    )
+    for i, (s_time, e_time, spk) in enumerate(aligned_timings):
+        assessment_chunks[i].start_time = s_time
+        assessment_chunks[i].end_time = e_time
+        assessment_chunks[i].speaker = spk
+
     # Run fact checking sequentially to preserve podcast dialog order
     if assessment_chunks:
 
@@ -524,6 +539,10 @@ async def run_full_assessment(
                 logging.getLogger(__name__).warning(f"Failed to generate SFL context: {e}")
                 sfl_res = {}
                 sfl_context_str = "SFL analysis unavailable."
+
+            chunk.sfl = sfl_res
+            if speaker_prefix and not chunk.speaker:
+                chunk.speaker = speaker_prefix.strip("[] :")
 
             if state_callback:
                 state_callback("current_chunk_text", display_text[:200] + "...")
@@ -620,6 +639,7 @@ async def run_full_assessment(
         transcript=transcript,
         chunks=assessment_chunks,
         sfl_metrics=sfl_metrics,
+        diarization=diarization,
     )
 
 
@@ -698,9 +718,18 @@ async def run_source_assessment(
             clause_external_id=c.external_id,
             topic_id=-1,
             entities=[],
+            speaker="Document",
         )
         for c in clauses
     ]
+
+    from .ass_export import align_chunk_timestamps
+
+    aligned_timings = align_chunk_timestamps(assessment_chunks)
+    for i, (s_time, e_time, _spk) in enumerate(aligned_timings):
+        assessment_chunks[i].start_time = s_time
+        assessment_chunks[i].end_time = e_time
+        assessment_chunks[i].speaker = "Document"
 
     artifacts_dir = os.path.expanduser("~/NotebookLM/artifacts")
 
@@ -783,6 +812,8 @@ async def run_source_assessment(
                 logging.getLogger(__name__).warning(f"Failed to generate SFL context: {e}")
                 sfl_res = {}
                 sfl_context_str = "SFL analysis unavailable."
+
+            chunk.sfl = sfl_res
 
             if state_callback:
                 state_callback("current_chunk_text", display_text[:200] + "...")
@@ -957,7 +988,37 @@ def generate_assessment_report(
     with open(report_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
 
+    # Also export the assessment in fancy .ass subtitle format
+    try:
+        from .ass_export import save_assessment_ass
+
+        ass_path = os.path.join(output_dir, f"assessment_{safe_id}.ass")
+        res = AssessmentResult(
+            system_instructions=assessment_state.get("system_instructions", ""),
+            audio_metadata=assessment_state.get("audio_metadata", ""),
+            transcript=assessment_state.get("transcript", ""),
+            chunks=chunks,
+            sfl_metrics=metrics,
+            diarization=assessment_state.get("diarization"),
+        )
+        save_assessment_ass(res, ass_path, title=f"Audio Assessment: {safe_id}")
+    except Exception as e:
+        import logging
+
+        logging.getLogger(__name__).warning(f"Failed to generate ASS export: {e}")
+
     return report_path
+
+
+def export_assessment_ass(
+    result: AssessmentResult,
+    output_path: str,
+    title: str | None = None,
+) -> str:
+    """Export an AssessmentResult to an .ass subtitle file."""
+    from .ass_export import save_assessment_ass
+
+    return save_assessment_ass(result, output_path, title=title)
 
 
 def run_assessment_scoring(

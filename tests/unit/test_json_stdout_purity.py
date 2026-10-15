@@ -903,6 +903,8 @@ JSON_SUCCESS_WAIVED: dict[tuple[str, ...], str] = {
     # status payload that round-trips through the artifact formatter chain.
     ("artifact", "delete"): _MUTATION_RATIONALE_SUCCESS,
     ("artifact", "export"): _MUTATION_RATIONALE_SUCCESS,
+    ("artifact", "export-ass"): _MUTATION_RATIONALE_SUCCESS,
+    ("artifact", "export-assessment"): _MUTATION_RATIONALE_SUCCESS,
     ("artifact", "get"): _MUTATION_RATIONALE_SUCCESS,
     ("artifact", "get-prompt"): _MUTATION_RATIONALE_SUCCESS,
     ("artifact", "poll"): _MUTATION_RATIONALE_SUCCESS,
@@ -994,6 +996,8 @@ JSON_ERROR_WAIVED: dict[tuple[str, ...], str] = {
     # envelope on RPC failure; coverage can grow with the suite.
     ("artifact", "delete"): _MUTATION_RATIONALE_ERROR,
     ("artifact", "export"): _MUTATION_RATIONALE_ERROR,
+    ("artifact", "export-ass"): _MUTATION_RATIONALE_ERROR,
+    ("artifact", "export-assessment"): _MUTATION_RATIONALE_ERROR,
     ("artifact", "get"): _MUTATION_RATIONALE_ERROR,
     ("artifact", "get-prompt"): _MUTATION_RATIONALE_ERROR,
     ("artifact", "poll"): _MUTATION_RATIONALE_ERROR,
