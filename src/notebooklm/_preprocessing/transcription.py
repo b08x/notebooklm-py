@@ -60,7 +60,7 @@ class DeepgramAdapter(TranscriptionAdapter):
         url = (
             "https://api.deepgram.com/v1/listen"
             f"?model=nova-3&{language}&smart_format=true"
-            f"{diarize}&punctuate=true&paragraphs=true"
+            f"&punctuate=true&paragraphs=true"
             "&filler_words=true&numerals=true"
         )
         headers = {

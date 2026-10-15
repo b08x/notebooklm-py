@@ -2,6 +2,13 @@ import concurrent.futures
 import logging
 import sys
 
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass
+
 from rich.console import Console
 from rich.layout import Layout
 from rich.live import Live

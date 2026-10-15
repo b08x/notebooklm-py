@@ -318,6 +318,13 @@ def completion_cmd(shell: str) -> None:
 
 
 def main():
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv()
+    except ImportError:
+        # best-effort: python-dotenv is optional in production
+        pass
     cli()
 
 

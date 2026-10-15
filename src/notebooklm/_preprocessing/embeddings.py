@@ -4,10 +4,17 @@ from abc import ABC, abstractmethod
 
 import httpx
 
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass
+
 logger = logging.getLogger(__name__)
 
-DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
-DEFAULT_OLLAMA_MODEL = "embeddinggemma:latest"
+DEFAULT_OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://tinybot:11434")
+DEFAULT_OLLAMA_MODEL = os.environ.get("EMBEDDING_MODEL", "embeddinggemma:latest")
 #: A single ``/api/embed`` call sends every text in the batch in one request;
 #: against a remote/loaded Ollama host, a large batch can legitimately exceed
 #: a short timeout well before anything is actually wrong. Raised from 60s

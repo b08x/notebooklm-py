@@ -34,10 +34,20 @@ from ._corpus_env import HEADERS, FakeNotebooks, _health, _nb, _sse, _wait
 # ---------------------------------------------------------------------------
 
 
+def _iter_routes(app: Any) -> list[Any]:
+    routes = []
+    for route in app.routes:
+        if hasattr(route, "effective_route_contexts"):
+            routes.extend(route.effective_route_contexts())
+        else:
+            routes.append(route)
+    return routes
+
+
 def test_every_corpus_route_requires_token(env: Any) -> None:
     paths = {
         (route.path, method)
-        for route in env.app.routes
+        for route in _iter_routes(env.app)
         if getattr(route, "path", "").startswith("/v1/corpus")
         for method in getattr(route, "methods", ())
     }
