@@ -22,7 +22,8 @@ import json
 import logging
 import os
 import tempfile
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Any
 
 try:
@@ -60,6 +61,39 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+async def _prepare_chunk_sfl(
+    texts: list[str], progress_callback: Callable[[str], None] | None = None
+) -> tuple[Any, list[Any] | None]:
+    """The configured SFL engine, plus every chunk's result when it batches.
+
+    A batching engine (``NOTEBOOKLM_SFL_BACKEND`` = a CLI agent) annotates all
+    ``texts`` in a few prompts up front; the per-chunk loop then reads them.
+    Otherwise the second element is ``None`` and the loop calls the engine per
+    chunk, as before. A failed batch also returns ``None`` (per-chunk retry).
+    """
+    import dspy
+
+    from .._preprocessing.sfl_engine import engine_batches, sfl_results
+    from .sfl_tagging import default_engine as default_sfl_engine
+
+    engine = default_sfl_engine()
+    if not texts or not engine_batches(engine):
+        return engine, None
+    if progress_callback:
+        progress_callback(f"Running SFL over {len(texts)} chunks...")
+    lm = dspy.settings.lm
+
+    def _run() -> list[Any]:
+        with dspy.context(lm=lm):
+            return sfl_results(engine, texts)
+
+    try:
+        return engine, await asyncio.to_thread(_run)
+    except Exception as e:
+        logger.warning(f"Batched chunk SFL failed, falling back to per-chunk: {e}")
+        return engine, None
+
+
 # ---------------------------------------------------------------------------
 # DSPy scoring (pre-existing; unchanged in behavior)
 # ---------------------------------------------------------------------------
@@ -72,23 +106,60 @@ logger = logging.getLogger(__name__)
 #: local Ollama host is embeddings-only and has no chat models pulled.
 DEFAULT_MODEL_PROVIDER = "openrouter"
 DEFAULT_MODEL = "deepseek/deepseek-v4-flash-0731"
+#: Per-completion timeout (seconds) when the provider is a CLI coding agent.
+ASSESSMENT_AGENT_TIMEOUT_ENV = "NOTEBOOKLM_ASSESSMENT_AGENT_TIMEOUT"
+#: Named agent the CLI loads for assessment completions (``--agent NAME``).
+ASSESSMENT_AGENT_PROFILE_ENV = "NOTEBOOKLM_ASSESSMENT_AGENT_PROFILE"
+DEFAULT_ASSESSMENT_AGENT_PROFILE = "notebooklm-assessment"
+
+
+def build_agent_lm(
+    provider: str, model: str | None = None, *, agent_profile: str | None = None
+) -> Any:
+    """A DSPy LM that runs each completion on the CLI agent named ``provider``.
+
+    ``model`` is passed to the agent's model flag (``None`` = the agent's default).
+    ``agent_profile`` is the named agent passed as ``--agent``; unset reads
+    ``NOTEBOOKLM_ASSESSMENT_AGENT_PROFILE`` (default ``notebooklm-assessment``),
+    and an empty value passes no ``--agent`` flag.
+    """
+    from .._preprocessing.cli_agents import get_adapter
+    from .._preprocessing.cli_agents.dspy_lm import CLIAgentLM
+
+    if agent_profile is None:
+        agent_profile = os.environ.get(
+            ASSESSMENT_AGENT_PROFILE_ENV, DEFAULT_ASSESSMENT_AGENT_PROFILE
+        )
+    kwargs: dict[str, Any] = {"model": model, "agent": agent_profile.strip() or None}
+    raw_timeout = os.environ.get(ASSESSMENT_AGENT_TIMEOUT_ENV, "").strip()
+    if raw_timeout:
+        kwargs["timeout"] = float(raw_timeout)
+    return CLIAgentLM(get_adapter(provider, **kwargs))
 
 
 def setup_dspy_router():
     """
     Sets up DSPy model and embedding routing based on environment variables.
-    Routes to either local (Ollama) or a provider model (default: OpenRouter).
+    Routes to local Ollama, a provider model (default: OpenRouter), or an LLM CLI
+    coding agent when ``NOTEBOOKLM_ASSESSMENT_MODEL_PROVIDER`` is ``claude``,
+    ``agy``, ``vibe`` or ``opencode`` (``NOTEBOOKLM_ASSESSMENT_MODEL`` is then the
+    agent's ``--model``, unset = agent default).
     Requires ``OPENROUTER_API_KEY`` in the environment when using the default
     provider (litellm reads it directly; no other wiring needed).
     """
+    from .._preprocessing.cli_agents import AGENT_NAMES
+
     model_provider = os.getenv(
         "NOTEBOOKLM_ASSESSMENT_MODEL_PROVIDER", DEFAULT_MODEL_PROVIDER
     ).lower()
-    model_name = os.getenv("NOTEBOOKLM_ASSESSMENT_MODEL", DEFAULT_MODEL)
 
-    if model_provider == "ollama":
+    if model_provider in AGENT_NAMES:
+        lm = build_agent_lm(model_provider, os.getenv("NOTEBOOKLM_ASSESSMENT_MODEL") or None)
+    elif model_provider == "ollama":
+        model_name = os.getenv("NOTEBOOKLM_ASSESSMENT_MODEL", DEFAULT_MODEL)
         lm = dspy.LM(f"ollama_chat/{model_name}")
     else:
+        model_name = os.getenv("NOTEBOOKLM_ASSESSMENT_MODEL", DEFAULT_MODEL)
         api_key = os.environ.get("OPENROUTER_API_KEY") if model_provider == "openrouter" else None
         kwargs = {"api_key": api_key} if api_key else {}
         lm = dspy.LM(f"{model_provider}/{model_name}", **kwargs)
@@ -265,8 +336,130 @@ class AssessmentResult:
     sfl_metrics: dict[str, Any] | None = None
     diarization: Any = None
 
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-ready form; :meth:`from_dict` restores it."""
+        return asdict(self)
 
-async def run_full_assessment(
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> AssessmentResult:
+        chunks = []
+        for raw in data.get("chunks") or []:
+            chunk = dict(raw)
+            chunk["entities"] = [tuple(e) for e in chunk.get("entities") or []]
+            chunks.append(AssessmentChunk(**chunk))
+        return cls(
+            system_instructions=data.get("system_instructions", ""),
+            audio_metadata=data.get("audio_metadata", ""),
+            transcript=data.get("transcript", ""),
+            chunks=chunks,
+            sfl_metrics=data.get("sfl_metrics"),
+            diarization=data.get("diarization"),
+        )
+
+
+@dataclass
+class PreparedAssessment:
+    """Deterministic front half of an assessment: everything before any LLM call.
+
+    Produced by :func:`prepare_audio_assessment` / :func:`prepare_source_assessment`.
+    ``display_texts[i]`` is ``chunks[i]`` as the model sees it (speaker-prefixed for
+    audio). ``segments`` are the diarization segments for transcript-level SFL.
+    """
+
+    mode: str
+    notebook_id: str
+    artifact_id: str | None
+    system_instructions: str
+    audio_metadata: str
+    transcript: str
+    diarization: Any
+    provider: str
+    context: str
+    chunks: list[AssessmentChunk]
+    display_texts: list[str]
+    segments: list[dict[str, Any]]
+    artifacts_dir: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> PreparedAssessment:
+        fields_ = dict(data)
+        fields_["chunks"] = AssessmentResult.from_dict({"chunks": data.get("chunks")}).chunks
+        return cls(**fields_)
+
+
+def _speaker_prefix(chunk_text: str, provider: str, diarization: Any) -> str:
+    """``"[Speaker N] "`` for a chunk, matched against the provider's diarization."""
+    prefix = chunk_text[:40].strip()
+    if not prefix:
+        return ""
+
+    if provider == "assemblyai" and isinstance(diarization, list):
+        for utt in diarization:
+            if prefix in utt.get("text", ""):
+                return f"[Speaker {utt.get('speaker', '?')}] "
+    elif provider == "deepgram" and isinstance(diarization, dict):
+        try:
+            words = diarization["results"]["channels"][0]["alternatives"][0]["words"]
+            prefix_word = prefix.split()[0].strip(".,?!")
+            for w in words:
+                if w.get("punctuated_word", "").strip(".,?!") == prefix_word:
+                    return f"[Speaker {w.get('speaker', '?')}] "
+        except Exception:
+            pass
+    elif provider == "speechmatics" and isinstance(diarization, dict):
+        try:
+            results = diarization.get("results", [])
+            prefix_word = prefix.split()[0].strip(".,?!")
+            for r in results:
+                if r.get("type") == "word" and r.get("alternatives"):
+                    content = r["alternatives"][0].get("content", "").strip(".,?!")
+                    if content == prefix_word and r["alternatives"][0].get("speaker"):
+                        return f"[{r['alternatives'][0]['speaker']}] "
+        except Exception:
+            pass
+
+    return ""
+
+
+def _log_sfl_dataset(artifacts_dir: str, chunk_text: str, sfl_ctx: str, human_skipped: Any) -> None:
+    """Append a claim-detector training row (and mirror it to Langfuse when configured)."""
+    path = os.path.join(artifacts_dir, "sfl_meta_dataset.jsonl")
+    try:
+        with open(path, "a") as f:
+            json.dump(
+                {
+                    "chunk": chunk_text,
+                    "sfl": sfl_ctx,
+                    "is_meta": True,
+                    "human_skipped": human_skipped,
+                },
+                f,
+            )
+            f.write("\n")
+    except Exception as e:
+        logger.warning(f"Failed to log to SFL dataset: {e}")
+
+    if os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY"):
+        try:
+            from langfuse import Langfuse
+
+            lf = Langfuse()
+            dataset_name = "sfl-satire-classifier"
+            lf.create_dataset(name=dataset_name)
+            lf.create_dataset_item(
+                dataset_name=dataset_name,
+                input={"chunk": chunk_text, "sfl_context": sfl_ctx},
+                expected_output={"contains_facts": str(not human_skipped)},
+            )
+            lf.flush()
+        except Exception as e:
+            logger.warning(f"Failed to log dataset to LangFuse: {e}")
+
+
+async def prepare_audio_assessment(
     client: NotebookLMClient,
     session: AsyncSession,
     notebook_id: str,
@@ -274,22 +467,12 @@ async def run_full_assessment(
     *,
     context_override: str | None = None,
     progress_callback=None,
-    state_callback=None,
-    hitl_callback=None,
-) -> AssessmentResult:
-    # Initialize the DSPy router for this parent thread,
-    # so background tasks can inherit the LM via dspy.context.
-    setup_dspy_router()
+) -> PreparedAssessment:
+    """Resolve, transcribe, ingest, chunk and align a notebook's audio overview.
 
-    """Resolve, transcribe, ingest, and preprocess a notebook's audio overview.
-
-    Downloads the artifact via the existing ``client.artifacts.download_audio``
-    path (the same download the CLI's ``download audio`` command drives),
-    transcribes it with a configurable :class:`TranscriptionAdapter`, ingests the
-    transcript as a source under ``notebook_id`` (keyed by ``artifact_id``,
-    alongside the notebook's regular sources' clauses), and runs it through
-    :class:`PreprocessingPipeline`.
-    Runs SFL analysis and fact checking for all chunks.
+    No LLM call: transcription, embedding and clause ingest only. The transcript
+    and diarization JSON are cached next to the audio (or under
+    ``~/NotebookLM/artifacts``) and reused on the next run.
     """
     await get_artifact(client, notebook_id, artifact_id)
     system_instructions = await get_artifact_prompt(client, notebook_id, artifact_id) or ""
@@ -306,46 +489,6 @@ async def run_full_assessment(
         artifacts_dir = os.path.dirname(local_asset.local_path)
     else:
         artifacts_dir = os.path.expanduser("~/NotebookLM/artifacts")
-
-    def _log_sfl_dataset(chunk_text, sfl_ctx, human_skipped):
-        import json
-        import os
-
-        path = os.path.join(artifacts_dir, "sfl_meta_dataset.jsonl")
-        try:
-            with open(path, "a") as f:
-                json.dump(
-                    {
-                        "chunk": chunk_text,
-                        "sfl": sfl_ctx,
-                        "is_meta": True,
-                        "human_skipped": human_skipped,
-                    },
-                    f,
-                )
-                f.write("\n")
-        except Exception as e:
-            import logging
-
-            logging.getLogger(__name__).warning(f"Failed to log to SFL dataset: {e}")
-
-        if os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY"):
-            try:
-                from langfuse import Langfuse
-
-                lf = Langfuse()
-                dataset_name = "sfl-satire-classifier"
-                lf.create_dataset(name=dataset_name)
-                lf.create_dataset_item(
-                    dataset_name=dataset_name,
-                    input={"chunk": chunk_text, "sfl_context": sfl_ctx},
-                    expected_output={"contains_facts": str(not human_skipped)},
-                )
-                lf.flush()
-            except Exception as e:
-                import logging
-
-                logging.getLogger(__name__).warning(f"Failed to log dataset to LangFuse: {e}")
 
     if local_asset and os.path.exists(local_asset.local_path):
         audio_base_name = os.path.splitext(os.path.basename(local_asset.local_path))[0]
@@ -415,12 +558,6 @@ async def run_full_assessment(
     )
 
     if progress_callback:
-        progress_callback("Running SFL transcript analysis...")
-    from .._preprocessing.sfl_engine import analyze_transcript
-
-    sfl_metrics = analyze_transcript(transcript, diarization=diarization)
-
-    if progress_callback:
         progress_callback("Chunking and extracting entities...")
     enable_pii = os.environ.get("NOTEBOOKLM_ENABLE_PII_FILTER", "false").lower() == "true"
     pipeline = PreprocessingPipeline(enable_pii_filter=enable_pii)
@@ -467,47 +604,97 @@ async def run_full_assessment(
         assessment_chunks[i].end_time = e_time
         assessment_chunks[i].speaker = spk
 
+    from .._preprocessing.sfl_engine import _extract_segments
+
+    return PreparedAssessment(
+        mode="audio",
+        notebook_id=notebook_id,
+        artifact_id=artifact_id,
+        system_instructions=system_instructions,
+        audio_metadata=audio_metadata,
+        transcript=transcript,
+        diarization=diarization,
+        provider=provider,
+        context=context or "",
+        chunks=assessment_chunks,
+        display_texts=[
+            f"{_speaker_prefix(c.text, provider, diarization)}{c.text}" for c in assessment_chunks
+        ],
+        segments=_extract_segments(diarization),
+        artifacts_dir=artifacts_dir,
+    )
+
+
+async def run_full_assessment(
+    client: NotebookLMClient,
+    session: AsyncSession,
+    notebook_id: str,
+    artifact_id: str,
+    *,
+    context_override: str | None = None,
+    progress_callback=None,
+    state_callback=None,
+    hitl_callback=None,
+) -> AssessmentResult:
+    """Resolve, transcribe, ingest, and preprocess a notebook's audio overview.
+
+    Downloads the artifact via the existing ``client.artifacts.download_audio``
+    path (the same download the CLI's ``download audio`` command drives),
+    transcribes it with a configurable :class:`TranscriptionAdapter`, ingests the
+    transcript as a source under ``notebook_id`` (keyed by ``artifact_id``,
+    alongside the notebook's regular sources' clauses), and runs it through
+    :class:`PreprocessingPipeline` (all in :func:`prepare_audio_assessment`).
+    Runs SFL analysis and fact checking for all chunks.
+    """
+    # Initialize the DSPy router for this parent thread,
+    # so background tasks can inherit the LM via dspy.context.
+    setup_dspy_router()
+
+    prepared = await prepare_audio_assessment(
+        client,
+        session,
+        notebook_id,
+        artifact_id,
+        context_override=context_override,
+        progress_callback=progress_callback,
+    )
+    system_instructions = prepared.system_instructions
+    transcript = prepared.transcript
+    diarization = prepared.diarization
+    provider = prepared.provider
+    context = prepared.context
+    assessment_chunks = prepared.chunks
+    artifacts_dir = prepared.artifacts_dir
+
+    if progress_callback:
+        progress_callback("Running SFL transcript analysis...")
+    from .._preprocessing.sfl_engine import analyze_transcript
+    from .sfl_tagging import default_engine as default_sfl_engine
+
+    try:
+        # NOTEBOOKLM_SFL_BACKEND applies here too: an agent backend batches the
+        # transcript's segments instead of one DSPy call per segment.
+        sfl_metrics = analyze_transcript(
+            transcript, diarization=diarization, engine=default_sfl_engine()
+        )
+    except Exception as e:
+        logger.warning(f"SFL transcript analysis failed: {e}")
+        sfl_metrics = {"error": str(e), "profiles": {}, "anomalies": []}
+
     # Run fact checking sequentially to preserve podcast dialog order
     if assessment_chunks:
 
         def _extract_speaker(chunk_text: str) -> str:
-            prefix = chunk_text[:40].strip()
-
-            if provider == "assemblyai" and isinstance(diarization, list):
-                for utt in diarization:
-                    if prefix in utt.get("text", ""):
-                        return f"[Speaker {utt.get('speaker', '?')}] "
-            elif provider == "deepgram" and isinstance(diarization, dict):
-                try:
-                    words = diarization["results"]["channels"][0]["alternatives"][0]["words"]
-                    prefix_word = prefix.split()[0].strip(".,?!")
-                    for w in words:
-                        if w.get("punctuated_word", "").strip(".,?!") == prefix_word:
-                            return f"[Speaker {w.get('speaker', '?')}] "
-                except Exception:
-                    pass
-            elif provider == "speechmatics" and isinstance(diarization, dict):
-                try:
-                    results = diarization.get("results", [])
-                    prefix_word = prefix.split()[0].strip(".,?!")
-                    for r in results:
-                        if r.get("type") == "word" and r.get("alternatives"):
-                            content = r["alternatives"][0].get("content", "").strip(".,?!")
-                            if content == prefix_word and r["alternatives"][0].get("speaker"):
-                                return f"[{r['alternatives'][0]['speaker']}] "
-                except Exception:
-                    pass
-
-            return ""
+            return _speaker_prefix(chunk_text, provider, diarization)
 
         results = []
         passed_count = 0
         failed_count = 0
         total_tasks = len(assessment_chunks)
 
-        from .._preprocessing.sfl_engine import SFLEngine
-
-        sfl_engine = SFLEngine()
+        sfl_engine, sfl_batch = await _prepare_chunk_sfl(
+            list(prepared.display_texts), progress_callback
+        )
 
         import dspy
 
@@ -531,7 +718,12 @@ async def run_full_assessment(
                     with dspy.context(lm=dspy.settings.lm):
                         return sfl_engine(utterance=dt)
 
-                sfl_res = await asyncio.to_thread(_run_sfl)
+                if sfl_batch is not None:
+                    sfl_res = sfl_batch[completed - 1]
+                    if isinstance(sfl_res, BaseException):
+                        raise sfl_res
+                else:
+                    sfl_res = await asyncio.to_thread(_run_sfl)
                 sfl_context_str = f"Ideational: {sfl_res.get('ideational')} | Interpersonal: {sfl_res.get('interpersonal')}"
             except Exception as e:
                 import logging
@@ -573,7 +765,7 @@ async def run_full_assessment(
                         return hitl_callback(dt, sc)
 
                     skip_fact_check = await asyncio.to_thread(_run_hitl)
-                    _log_sfl_dataset(display_text, sfl_context_str, skip_fact_check)
+                    _log_sfl_dataset(artifacts_dir, display_text, sfl_context_str, skip_fact_check)
                 else:
                     skip_fact_check = True
 
@@ -635,7 +827,7 @@ async def run_full_assessment(
                 chunk.fact_check_citations = chunk_res.citations
     return AssessmentResult(
         system_instructions=system_instructions,
-        audio_metadata=audio_metadata,
+        audio_metadata=prepared.audio_metadata,
         transcript=transcript,
         chunks=assessment_chunks,
         sfl_metrics=sfl_metrics,
@@ -643,26 +835,15 @@ async def run_full_assessment(
     )
 
 
-async def run_source_assessment(
+async def prepare_source_assessment(
     client: NotebookLMClient,
     session: AsyncSession,
     notebook_id: str,
     *,
     context_override: str | None = None,
     progress_callback=None,
-    state_callback=None,
-    hitl_callback=None,
-) -> AssessmentResult:
-    """Assess already-ingested source clauses for a notebook.
-
-    Falls back to this path when no audio overview artifact exists.
-    Loads persisted ``Clause`` rows for all sources under ``notebook_id``,
-    constructs assessment chunks, and runs them through the same SFL,
-    claim-detection, and fact-checking loop as :func:`run_full_assessment`,
-    skipping transcription and diarization.
-    """
-    setup_dspy_router()
-
+) -> PreparedAssessment:
+    """Load a notebook's ingested source clauses as assessment chunks (no LLM call)."""
     if progress_callback:
         progress_callback("Listing notebook sources...")
     sources = await client.sources.list(notebook_id)
@@ -706,12 +887,6 @@ async def run_source_assessment(
         default=str,
     )
 
-    from .._preprocessing.sfl_engine import analyze_transcript
-
-    sfl_metrics = analyze_transcript("")
-    if isinstance(sfl_metrics, dict):
-        sfl_metrics.setdefault("total_clauses", len(clauses))
-
     assessment_chunks = [
         AssessmentChunk(
             text=c.text,
@@ -731,47 +906,61 @@ async def run_source_assessment(
         assessment_chunks[i].end_time = e_time
         assessment_chunks[i].speaker = "Document"
 
-    artifacts_dir = os.path.expanduser("~/NotebookLM/artifacts")
+    return PreparedAssessment(
+        mode="sources",
+        notebook_id=notebook_id,
+        artifact_id=None,
+        system_instructions=system_instructions,
+        audio_metadata=source_metadata,
+        transcript="",
+        diarization=None,
+        provider="sources",
+        context=context or "",
+        chunks=assessment_chunks,
+        display_texts=[c.text for c in assessment_chunks],
+        segments=[],
+        artifacts_dir=os.path.expanduser("~/NotebookLM/artifacts"),
+    )
 
-    def _log_sfl_dataset(chunk_text, sfl_ctx, human_skipped):
-        import json
-        import os
 
-        path = os.path.join(artifacts_dir, "sfl_meta_dataset.jsonl")
-        try:
-            with open(path, "a") as f:
-                json.dump(
-                    {
-                        "chunk": chunk_text,
-                        "sfl": sfl_ctx,
-                        "is_meta": True,
-                        "human_skipped": human_skipped,
-                    },
-                    f,
-                )
-                f.write("\n")
-        except Exception as e:
-            import logging
+async def run_source_assessment(
+    client: NotebookLMClient,
+    session: AsyncSession,
+    notebook_id: str,
+    *,
+    context_override: str | None = None,
+    progress_callback=None,
+    state_callback=None,
+    hitl_callback=None,
+) -> AssessmentResult:
+    """Assess already-ingested source clauses for a notebook.
 
-            logging.getLogger(__name__).warning(f"Failed to log to SFL dataset: {e}")
+    Falls back to this path when no audio overview artifact exists.
+    Loads persisted ``Clause`` rows for all sources under ``notebook_id``,
+    constructs assessment chunks, and runs them through the same SFL,
+    claim-detection, and fact-checking loop as :func:`run_full_assessment`,
+    skipping transcription and diarization.
+    """
+    setup_dspy_router()
 
-        if os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY"):
-            try:
-                from langfuse import Langfuse
+    prepared = await prepare_source_assessment(
+        client,
+        session,
+        notebook_id,
+        context_override=context_override,
+        progress_callback=progress_callback,
+    )
+    system_instructions = prepared.system_instructions
+    source_metadata = prepared.audio_metadata
+    context = prepared.context
+    assessment_chunks = prepared.chunks
+    artifacts_dir = prepared.artifacts_dir
 
-                lf = Langfuse()
-                dataset_name = "sfl-satire-classifier"
-                lf.create_dataset(name=dataset_name)
-                lf.create_dataset_item(
-                    dataset_name=dataset_name,
-                    input={"chunk": chunk_text, "sfl_context": sfl_ctx},
-                    expected_output={"contains_facts": str(not human_skipped)},
-                )
-                lf.flush()
-            except Exception as e:
-                import logging
+    from .._preprocessing.sfl_engine import analyze_transcript
 
-                logging.getLogger(__name__).warning(f"Failed to log dataset to LangFuse: {e}")
+    sfl_metrics = analyze_transcript("")
+    if isinstance(sfl_metrics, dict):
+        sfl_metrics.setdefault("total_clauses", len(assessment_chunks))
 
     if assessment_chunks:
         results = []
@@ -779,9 +968,9 @@ async def run_source_assessment(
         failed_count = 0
         total_tasks = len(assessment_chunks)
 
-        from .._preprocessing.sfl_engine import SFLEngine
-
-        sfl_engine = SFLEngine()
+        sfl_engine, sfl_batch = await _prepare_chunk_sfl(
+            [c.text for c in assessment_chunks], progress_callback
+        )
 
         import dspy
 
@@ -804,7 +993,12 @@ async def run_source_assessment(
                     with dspy.context(lm=dspy.settings.lm):
                         return sfl_engine(utterance=dt)
 
-                sfl_res = await asyncio.to_thread(_run_sfl)
+                if sfl_batch is not None:
+                    sfl_res = sfl_batch[completed - 1]
+                    if isinstance(sfl_res, BaseException):
+                        raise sfl_res
+                else:
+                    sfl_res = await asyncio.to_thread(_run_sfl)
                 sfl_context_str = f"Ideational: {sfl_res.get('ideational')} | Interpersonal: {sfl_res.get('interpersonal')}"
             except Exception as e:
                 import logging
@@ -844,7 +1038,7 @@ async def run_source_assessment(
                         return hitl_callback(dt, sc)
 
                     skip_fact_check = await asyncio.to_thread(_run_hitl)
-                    _log_sfl_dataset(display_text, sfl_context_str, skip_fact_check)
+                    _log_sfl_dataset(artifacts_dir, display_text, sfl_context_str, skip_fact_check)
                 else:
                     skip_fact_check = True
 
