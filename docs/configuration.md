@@ -208,7 +208,16 @@ remains an unconditional forced re-mint.
 | `NOTEBOOKLM_QUIET_DEPRECATIONS` | Suppress the project's public-API `DeprecationWarning`s (the one-off warnings routed through `warn_deprecated`, e.g. awaiting `from_storage(...)`). Set to a truthy value (`1` / `true` / `yes` / `on`, case-insensitive) to silence them; see `docs/deprecations.md`. | (warnings emitted) |
 | `NOTEBOOKLM_FUTURE_ERRORS` | **Retired (removed in v0.8.0; ignored).** It was the v0.7.0 forward-compat preview gate for the v0.8.0 error contract; now that every break it staged is the default, the flag is a no-op — setting it has no effect. See `docs/deprecations.md`. | (ignored) |
 | `NOTEBOOKLM_VCR_RECORD_ERRORS` | Synthetic-error injection mode for VCR test cassettes (`429`, `5xx`, `expired_csrf`) | - |
-| `NOTEBOOKLM_ASSESSMENT_MODEL` | Default Ollama model used for assessment tasks (e.g. `llama3`) | - |
+| `NOTEBOOKLM_ASSESSMENT_MODEL_PROVIDER` | DSPy LM provider for assessment tasks: `openrouter`, `ollama`, another litellm prefix, or a CLI coding agent (`claude`, `agy`, `vibe`, `opencode`) that runs each completion headlessly | `openrouter` |
+| `NOTEBOOKLM_ASSESSMENT_MODEL` | Model for the assessment provider; for a CLI agent, its model flag (unset = agent default) | `deepseek/deepseek-v4-flash-0731` (HTTP providers) |
+| `NOTEBOOKLM_ASSESSMENT_AGENT_TIMEOUT` | Per-completion timeout (seconds) when the assessment provider is a CLI agent | `300` |
+| `NOTEBOOKLM_ASSESSMENT_AGENT_PROFILE` | Named agent the CLI loads via `--agent` for assessment completions (empty = the CLI's default agent) | `notebooklm-assessment` |
+| `NOTEBOOKLM_SFL_BACKEND` | SFL tagging engine: `dspy` or a CLI agent (`claude`, `agy`, `vibe`, `opencode`) for batched spaCy + agent tagging | `dspy` |
+| `NOTEBOOKLM_SFL_AGENT_MODEL` / `NOTEBOOKLM_SFL_AGENT_TIMEOUT` | Model flag and per-invocation timeout for the SFL agent | agent default / `300` |
+| `NOTEBOOKLM_SFL_AGENT_BATCH` / `NOTEBOOKLM_SFL_AGENT_FALLBACK` | One prompt per parent chunk; fall back to DSPy on agent failure | `1` / `1` |
+| `NOTEBOOKLM_SFL_AGENT_PROFILE` | Named agent each CLI loads via `--agent` (empty = none) | `sfl-annotator` |
+| `NOTEBOOKLM_SFL_AGENT_WORKDIR` | Directory opencode (`--dir`) / vibe (`--workdir`) resolve project agents from | - |
+| `NOTEBOOKLM_CLAUDE_USE_API_KEY` | Keep `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` in the `claude` child process. Off by default, so `claude` uses the claude.ai subscription login instead of per-token API billing | `0` |
 | `FACT_CHECK_FRAMEWORK_PATH` | Path to the local factual consistency checking framework for the assessment extra | - |
 | `OPENAI_API_KEY` | STT API key for Whisper cloud transcription (assessment extra) | - |
 | `DEEPGRAM_API_KEY` | STT API key for Deepgram transcription (assessment extra) | - |
@@ -568,7 +577,7 @@ environment variables; a `.env` loaded by your shell or process manager works.
 | `NOTEBOOKLM_ARTIFACTS_DIR` | `~/NotebookLM/artifacts` | Transcript cache, so the same audio is never transcribed twice |
 | `OPENROUTER_API_KEY` | — | Jev decision model (check-worthiness gate and SIFT verdicts) |
 | `FACT_CHECK_FRAMEWORK_PATH` | `~/.syncopated/skills/fact-check` | Directory holding `sift.skill`; without it gated chunks are recorded as "no framework" |
-| `NOTEBOOKLM_ASSESSMENT_MODEL_PROVIDER` / `NOTEBOOKLM_ASSESSMENT_MODEL` | `openrouter` / project default | DSPy LM for SFL tagging, the corpus agent and SIFT; configured once at server start |
+| `NOTEBOOKLM_ASSESSMENT_MODEL_PROVIDER` / `NOTEBOOKLM_ASSESSMENT_MODEL` | `openrouter` / project default | DSPy LM for SFL tagging, the corpus agent and SIFT; configured once at server start. A provider of `claude` / `agy` / `vibe` / `opencode` runs each completion on that CLI agent |
 | `LANGFUSE_HOST` (+ `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY`) | `https://cloud.langfuse.com` | Trace links in the fact-check evidence log |
 
 Audio and video artifacts are converted to a temporary FLAC before

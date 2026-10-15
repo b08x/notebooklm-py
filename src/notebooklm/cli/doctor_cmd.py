@@ -14,7 +14,7 @@ neutral ``run_checks``.
 import click
 from rich.table import Table
 
-from .._app.doctor import DoctorPaths, DoctorReport, run_checks
+from .._app.doctor import DoctorPaths, DoctorReport, cli_agent_checks, run_checks
 from ..paths import (
     get_browser_profile_dir,
     get_config_path,
@@ -49,6 +49,7 @@ def _doctor_paths() -> DoctorPaths:
         ),
         get_config_path=get_config_path,
         headless_reauth_check=_headless_reauth_check,
+        agent_checks=cli_agent_checks,
     )
 
 

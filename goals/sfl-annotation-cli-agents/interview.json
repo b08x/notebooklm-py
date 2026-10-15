@@ -1,0 +1,79 @@
+{
+  "stage": "interview",
+  "title": "SFL Annotations with LLM CLI Coding Agents",
+  "goalSlug": "sfl-annotation-cli-agents",
+  "questions": [
+    {
+      "id": "supported_agents",
+      "prompt": "Which CLI coding agents should be supported as SFL annotation backends?",
+      "description": "Each agent has distinct CLI flags for headless execution and structured output (e.g., vibe -p, agy -p, claude -p, opencode run).",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "Unified adapter layer supporting vibe, agy, claude, and opencode with a shared interface.",
+      "recommendedOptionIds": ["all"],
+      "options": [
+        { "id": "all", "label": "All four: vibe, agy, claude, opencode via an extensible adapter interface" },
+        { "id": "claude", "label": "Claude Code (claude -p --output-format json)" },
+        { "id": "agy", "label": "Antigravity CLI (agy -p --output-format json)" },
+        { "id": "vibe", "label": "Mistral Vibe (vibe -p --output json)" },
+        { "id": "opencode", "label": "OpenCode (opencode run --format json)" }
+      ],
+      "required": true
+    },
+    {
+      "id": "batching_strategy",
+      "prompt": "How should clauses/utterances be batched when invoking CLI agents?",
+      "description": "Spawning an external CLI process per individual clause causes high process overhead and latency for large transcripts. Batching amortizes startup time.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Batch at the parent chunk level (all clauses of a parent chunk in one CLI invocation), with single-clause fallback.",
+      "recommendedOptionIds": ["parent_batch_configurable"],
+      "options": [
+        { "id": "parent_batch_configurable", "label": "Default to parent-chunk batching with single-clause fallback and configurable batch size" },
+        { "id": "parent_batch_only", "label": "Strict parent-chunk batching only (group all clauses for each parent chunk in one prompt)" },
+        { "id": "clause_individual", "label": "Per-clause invocation (one CLI call per child clause, identical to existing DSPy loop)" }
+      ],
+      "required": true
+    },
+    {
+      "id": "sfl_linguistic_scope",
+      "prompt": "What SFL linguistic dimensions should the CLI agent annotate?",
+      "description": "Current pipeline runs deterministic spaCy pass-1 (participants, processes, circumstances) followed by LLM pass-2 (mood, modality, tenor).",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Hybrid: Keep deterministic spaCy pass 1 for syntactic base, pass it to CLI agent for interpersonal analysis (mood, modality, tenor) and ideational validation.",
+      "recommendedOptionIds": ["hybrid"],
+      "options": [
+        { "id": "hybrid", "label": "Hybrid: Deterministic spaCy pass 1 + CLI agent pass 2 (mood, modality, tenor) with ideational validation" },
+        { "id": "pass2_only", "label": "Pass 2 only: CLI agent strictly generates {mood, modality, tenor}" },
+        { "id": "end_to_end_agent", "label": "Full Agent SFL: CLI agent produces both ideational (participants, processes) and interpersonal tags directly" }
+      ],
+      "required": true
+    },
+    {
+      "id": "integration_entrypoints",
+      "prompt": "Where should the CLI agent SFL annotator be exposed in the application?",
+      "description": "How users and system workflows trigger and select the CLI agent backend.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "Integrate into the core SFL engine factory (used by TUI and web server) and provide a dedicated CLI command.",
+      "recommendedOptionIds": ["engine_factory", "cli_command"],
+      "options": [
+        { "id": "engine_factory", "label": "Core Engine Factory: Configurable via settings/env for transparent use in TUI and Web Corpus Explorer" },
+        { "id": "cli_command", "label": "Dedicated CLI Command: e.g. 'notebooklm corpus sfl' or 'notebooklm sfl annotate'" },
+        { "id": "python_api", "label": "Standalone Python API: Exportable AgentSFLEngine class for scripts and custom pipelines" }
+      ],
+      "required": true
+    },
+    {
+      "id": "fallback_and_resilience",
+      "prompt": "How should agent invocation failures, process timeouts, or malformed JSON be handled?",
+      "description": "External CLI processes may encounter timeouts, rate limits, or non-zero exit codes.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Configurable retry with JSON repair, with optional fallback to DSPy or graceful error recording per clause.",
+      "recommendedOptionIds": ["retry_fallback"],
+      "options": [
+        { "id": "retry_fallback", "label": "Retry with JSON repair, optional fallback to default DSPy engine if agent fails" },
+        { "id": "strict_failure", "label": "Fail immediately: record error on the clause/parent and report without falling back" },
+        { "id": "mock_placeholder", "label": "Record neutral placeholder annotations on failure without aborting the rest of the run" }
+      ],
+      "required": true
+    }
+  ]
+}

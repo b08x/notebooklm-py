@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, patch
 from notebooklm._types.notebooks import Notebook
 from notebooklm.tui.cache import TUICache
 from notebooklm.tui.state import TUIState
+from notebooklm.tui.views import notebook_list
 from notebooklm.tui.views.notebook_list import load_notebooks_sync
 
 
@@ -15,7 +16,7 @@ def test_load_notebooks_sync_success(tmp_path):
         Notebook(id="nb-2", title="Beta"),
     ]
 
-    with patch("notebooklm.tui.views.notebook_list._fetch_notebooks", new_callable=AsyncMock) as m:
+    with patch.object(notebook_list, "fetch_notebooks", new_callable=AsyncMock) as m:
         m.return_value = mock_nbs
         load_notebooks_sync(state)
 
@@ -35,7 +36,7 @@ def test_load_notebooks_sync_failure_with_cache_fallback(tmp_path):
     state = TUIState()
     state.tui_cache = cache
 
-    with patch("notebooklm.tui.views.notebook_list._fetch_notebooks", new_callable=AsyncMock) as m:
+    with patch.object(notebook_list, "fetch_notebooks", new_callable=AsyncMock) as m:
         m.side_effect = RuntimeError("Network unreachable")
         load_notebooks_sync(state)
 
@@ -51,7 +52,7 @@ def test_load_notebooks_sync_failure_preserves_existing_notebooks(tmp_path):
     state.notebooks = [Notebook(id="nb-existing", title="Existing")]
     state.selected_notebook = "nb-existing"
 
-    with patch("notebooklm.tui.views.notebook_list._fetch_notebooks", new_callable=AsyncMock) as m:
+    with patch.object(notebook_list, "fetch_notebooks", new_callable=AsyncMock) as m:
         m.side_effect = RuntimeError("503 Service Unavailable")
         load_notebooks_sync(state)
 
@@ -65,7 +66,7 @@ def test_load_notebooks_sync_failure_no_cache(tmp_path):
     state = TUIState()
     state.tui_cache = TUICache(cache_path=tmp_path / "tui_cache.json")
 
-    with patch("notebooklm.tui.views.notebook_list._fetch_notebooks", new_callable=AsyncMock) as m:
+    with patch.object(notebook_list, "fetch_notebooks", new_callable=AsyncMock) as m:
         m.side_effect = RuntimeError("Auth expired")
         load_notebooks_sync(state)
 

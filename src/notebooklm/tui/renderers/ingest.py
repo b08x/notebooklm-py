@@ -154,6 +154,12 @@ def _sfl(child: dict[str, Any]) -> RenderableType:
     lines = []
     for key in ("mood", "modality", "tenor"):
         lines.append(Text.assemble((f"{key:<9}", "label"), (str(sfl.get(key, "")), "foreground")))
+    for key in ("theme", "rheme"):
+        if sfl.get(key):
+            lines.append(Text.assemble((f"{key:<9}", "label"), (str(sfl[key]), "foreground")))
+    if sfl.get("cohesive_markers"):
+        markers = ", ".join(map(str, sfl["cohesive_markers"]))
+        lines.append(Text.assemble(("cohesive ", "label"), (markers, "foreground")))
     pass1 = sfl.get("pass1") or {}
     for key in ("participants", "processes", "circumstances"):
         if pass1.get(key):

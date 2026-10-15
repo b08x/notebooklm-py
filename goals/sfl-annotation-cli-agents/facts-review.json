@@ -1,0 +1,135 @@
+{
+  "stage": "facts",
+  "title": "SFL Annotations with LLM CLI Coding Agents",
+  "goalSlug": "sfl-annotation-cli-agents",
+  "facts": [
+    {
+      "id": "fact-1",
+      "text": "An abstract CLIAgentAdapter interface defines the contract for spawning CLI agent processes, passing structured prompts, enforcing timeouts, and parsing JSON output.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-2",
+      "text": "ClaudeAdapter implements headless execution via `claude -p` with JSON output formatting and schema enforcement.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-3",
+      "text": "AgyAdapter implements headless execution via `agy -p` with JSON output formatting and schema enforcement.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-4",
+      "text": "VibeAdapter implements headless execution via `vibe -p` with JSON output formatting.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-5",
+      "text": "OpenCodeAdapter implements headless execution via `opencode run` with JSON format output.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-6",
+      "text": "An adapter registry resolves adapters by name (`claude`, `agy`, `vibe`, `opencode`) and checks whether the respective CLI binary is present in PATH.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-7",
+      "text": "AgentSFLEngine implements the SFL engine protocol with a hybrid pipeline: deterministic spaCy pass-1 (ideational) followed by CLI agent pass-2 (interpersonal: mood, modality, tenor).",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-8",
+      "text": "AgentSFLEngine supports parent-chunk batching, bundling all clauses of a parent chunk into a single CLI prompt expecting an array of structured SFL annotations.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-9",
+      "text": "AgentSFLEngine supports per-clause fallback when batch processing fails or when per-clause mode is configured.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-10",
+      "text": "A robust JSON extraction and repair parser extracts valid JSON payloads from CLI agent stdout, stripping markdown code fences and conversational framing.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-11",
+      "text": "When a CLI agent execution fails (missing binary, timeout, or non-zero exit code), AgentSFLEngine gracefully falls back to the default DSPy engine if fallback is enabled.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-12",
+      "text": "The SFL engine backend is configurable via environment variable NOTEBOOKLM_SFL_BACKEND and configuration settings.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-13",
+      "text": "`notebooklm._app.sfl_tagging.default_engine` instantiates AgentSFLEngine when an agent backend is configured, enabling TUI and Web Corpus Explorer jobs to use the agent transparently.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-14",
+      "text": "A CLI command `notebooklm corpus tag-sfl` allows triggering SFL tagging across a notebook or document scope with `--agent` flag selection.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-15",
+      "text": "Doctor diagnostics report the availability, version, and status of supported CLI coding agents (`vibe`, `agy`, `claude`, `opencode`).",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    },
+    {
+      "id": "fact-16",
+      "text": "Unit and integration tests verify CLI invocation arguments, batching, error recovery, JSON repair, and database persistence with mocked CLI processes without requiring live external agent execution.",
+      "accepted": false,
+      "removed": false,
+      "recommendedAutomatedVerification": true,
+      "automatedVerification": true
+    }
+  ]
+}

@@ -98,6 +98,7 @@ COVERAGE_EXEMPT: dict[str, str] = {
     "agent": _REASON_LOCAL_ONLY,
     "skill": _REASON_LOCAL_ONLY,
     "mcp": _REASON_LOCAL_ONLY,
+    "corpus": _REASON_LOCAL_ONLY,
     # (`collection` left this map once its cassettes were recorded against a
     # live account with Collections enabled; see GROUP_COVERAGE above.)
 }

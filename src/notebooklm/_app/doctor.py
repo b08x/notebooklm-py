@@ -74,6 +74,9 @@ class DoctorPaths:
     get_storage_path: Callable[[], Path]
     get_config_path: Callable[[], Path]
     headless_reauth_check: Callable[[], dict[str, str]]
+    agent_checks: Callable[[], dict[str, dict[str, str]]] | None = None
+    """Optional ``() -> {"agent_<name>": {"status", "detail"}}`` CLI agent probe
+    (see :func:`cli_agent_checks`); ``None`` omits the agent rows."""
 
 
 @dataclass(frozen=True)
@@ -232,6 +235,44 @@ def _check_config(config_path: Path, get_profile_dir: Callable[..., Path]) -> di
         return {"status": "fail", "detail": f"invalid: {e}"}
 
 
+def cli_agent_checks(
+    *, which: Callable[[str], str | None] | None = None, runner: Any = None
+) -> dict[str, dict[str, str]]:
+    """One row per supported LLM CLI coding agent (used as an SFL backend).
+
+    ``pass`` with path and version when the binary is on ``PATH``; ``warn``
+    otherwise. Agents are optional, so a missing one is never a ``fail``.
+    """
+    import shutil
+
+    from .._preprocessing.cli_agents import AGENT_NAMES, agent_status
+
+    rows: dict[str, dict[str, str]] = {}
+    for name in AGENT_NAMES:
+        # Read-only diagnostic: a probe that raises (odd PATH entry, platform
+        # quirk) degrades to a warn row instead of aborting the whole report.
+        try:
+            status = agent_status(name, which=which or shutil.which, runner=runner)
+        except Exception as exc:  # noqa: BLE001
+            rows[f"agent_{name}"] = {
+                "status": "warn",
+                "detail": f"probe failed ({type(exc).__name__}: {exc})",
+            }
+            continue
+        if status.available:
+            version = status.version or "version unknown"
+            rows[f"agent_{status.name}"] = {
+                "status": "pass",
+                "detail": f"{version} ({status.path})",
+            }
+        else:
+            rows[f"agent_{status.name}"] = {
+                "status": "warn",
+                "detail": f"'{status.binary}' not found on PATH (optional SFL backend)",
+            }
+    return rows
+
+
 def _apply_fixes(
     checks: dict[str, dict[str, str]],
     home: Path,
@@ -321,6 +362,8 @@ def run_checks(*, fix: bool, paths: DoctorPaths, platform: str | None = None) ->
         "config": _check_config(paths.get_config_path(), paths.get_profile_dir),
         "headless_reauth": paths.headless_reauth_check(),
     }
+    if paths.agent_checks is not None:
+        checks.update(paths.agent_checks())
 
     fixes_applied: list[str] = []
     if fix:
@@ -343,5 +386,6 @@ def run_checks(*, fix: bool, paths: DoctorPaths, platform: str | None = None) ->
 __all__ = [
     "DoctorPaths",
     "DoctorReport",
+    "cli_agent_checks",
     "run_checks",
 ]

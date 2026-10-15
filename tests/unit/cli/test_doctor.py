@@ -339,6 +339,10 @@ def test_doctor_json_output_shape(runner, isolated_notebooklm_home):
         "auth",
         "config",
         "headless_reauth",
+        "agent_claude",
+        "agent_agy",
+        "agent_vibe",
+        "agent_opencode",
     }
     for check in data["checks"].values():
         assert set(check) == {"status", "detail"}

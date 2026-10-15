@@ -81,6 +81,7 @@ class SectionedGroup(click.Group):
                     "note",
                     "label",
                     "collection",
+                    "corpus",
                     "share",
                     "research",
                     "profile",

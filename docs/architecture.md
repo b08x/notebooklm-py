@@ -1508,6 +1508,17 @@ src/notebooklm/
 - `src/notebooklm/_preprocessing/ingestion.py` - Ingestion service.
 - `src/notebooklm/_preprocessing/pipeline.py` - End-to-end preprocessing pipeline.
 - `src/notebooklm/_preprocessing/sfl_engine.py` - Systemic Functional Linguistics engine.
+- `src/notebooklm/_preprocessing/cli_agents` - Headless LLM CLI coding agent adapters (claude, agy, vibe, opencode) used as an SFL backend.
+- `src/notebooklm/_preprocessing/cli_agents/adapter.py` - `CLIAgentAdapter` contract, injected subprocess runner, agent error types.
+- `src/notebooklm/_preprocessing/cli_agents/parser.py` - JSON extraction and repair for agent output (fences, preamble, truncation).
+- `src/notebooklm/_preprocessing/cli_agents/claude.py` - Claude Code adapter (`claude -p --output-format json --json-schema`).
+- `src/notebooklm/_preprocessing/cli_agents/agy.py` - Antigravity adapter (`agy -p --output-format json --json-schema`).
+- `src/notebooklm/_preprocessing/cli_agents/vibe.py` - Mistral Vibe adapter (`vibe -p --output json`).
+- `src/notebooklm/_preprocessing/cli_agents/opencode.py` - OpenCode adapter (`opencode run --format json`, NDJSON events).
+- `src/notebooklm/_preprocessing/cli_agents/dspy_lm.py` - `CLIAgentLM`: `dspy.BaseLM` that runs each completion on a CLI agent (selected by `NOTEBOOKLM_ASSESSMENT_MODEL_PROVIDER`).
+- `src/notebooklm/_preprocessing/cli_agents/registry.py` - Adapter lookup by name and PATH/version probing.
+- `src/notebooklm/_preprocessing/cli_agents/sfl_engine.py` - `AgentSFLEngine`: spaCy pass-1 + agent pass-2 with parent-chunk batching and DSPy fallback.
+- `src/notebooklm/cli/corpus_cmd.py` - `corpus tag-sfl` command over `_app.sfl_tagging` (backend from `--agent` or `NOTEBOOKLM_SFL_BACKEND`).
 - `src/notebooklm/_preprocessing/transcription.py` - Audio transcription services.
 - `src/notebooklm/cli/tui_cmd.py` - Terminal user interface CLI entrypoint.
 - `src/notebooklm/db/models.py` - Database models for clauses, embeddings, and local assets.

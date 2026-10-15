@@ -879,6 +879,12 @@ _SESSION_LOCAL_RATIONALE = (
     "tests/unit/cli/test_cli_session_local.py + test_auth_subcommands.py "
     "(incl. auth refresh --verify failure and the --browser-cookies refusal)."
 )
+_CORPUS_TAG_SFL_RATIONALE = (
+    "Local Postgres corpus command (no NotebookLMClient); the ``--json`` "
+    "success/partial payload AND the NO_CLAUSES / INVALID_BACKEND / "
+    "AMBIGUOUS_ID error envelopes are asserted directly in "
+    "tests/unit/cli/test_corpus_cmd.py."
+)
 _SKILL_PACKAGE_RATIONALE = (
     "Local artifact build (no NotebookLMClient); the ``--json`` success "
     "payload AND the OUTPUT_EXISTS / SKILL_SOURCE_MISSING / WRITE_FAILED "
@@ -899,6 +905,7 @@ JSON_SUCCESS_WAIVED: dict[tuple[str, ...], str] = {
     ("profile", "switch"): _PROFILE_RATIONALE,
     ("skill", "package"): _SKILL_PACKAGE_RATIONALE,
     ("skill", "status"): _INTROSPECTION_RATIONALE,
+    ("corpus", "tag-sfl"): _CORPUS_TAG_SFL_RATIONALE,
     # artifact group — get/poll/wait need a real or fully-stubbed generation
     # status payload that round-trips through the artifact formatter chain.
     ("artifact", "delete"): _MUTATION_RATIONALE_SUCCESS,
@@ -983,6 +990,7 @@ JSON_ERROR_WAIVED: dict[tuple[str, ...], str] = {
     # session/profile/skill local commands — error envelope asserted in the
     # dedicated cli unit tests named in each rationale.
     ("clear",): _SESSION_LOCAL_RATIONALE,
+    ("corpus", "tag-sfl"): _CORPUS_TAG_SFL_RATIONALE,
     ("auth", "logout"): _SESSION_LOCAL_RATIONALE,
     ("auth", "refresh"): _SESSION_LOCAL_RATIONALE,
     ("profile", "create"): _PROFILE_RATIONALE,

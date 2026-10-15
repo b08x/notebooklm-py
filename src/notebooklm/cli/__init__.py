@@ -24,6 +24,7 @@ break Python's package-attribute shadowing — see
   rename, summary, metadata)
 - ``chat_cmd``: Chat commands (ask, configure, history)
 - ``doctor_cmd``: Diagnostic and migration commands
+- ``corpus_cmd``: Local corpus commands (SFL tagging)
 
 The click groups themselves are still exported here under their historical
 names (``source``, ``artifact``, …) so ``from notebooklm.cli import source``
@@ -36,6 +37,7 @@ from .agent_cmd import agent
 from .artifact_cmd import artifact
 from .chat_cmd import register_chat_commands
 from .collection_cmd import collection
+from .corpus_cmd import corpus
 from .doctor_cmd import register_doctor_command
 from .download_cmd import download
 from .generate_cmd import generate
@@ -102,6 +104,7 @@ __all__ = [
     "note",
     "label",
     "collection",
+    "corpus",
     "share",
     "skill",
     "research",

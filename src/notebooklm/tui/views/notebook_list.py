@@ -9,7 +9,7 @@ from ..state import TUIState
 logger = logging.getLogger(__name__)
 
 
-async def _fetch_notebooks() -> list[Any]:
+async def fetch_notebooks() -> list[Any]:
     async with NotebookLMClient.from_storage() as client:
         return await client.notebooks.list()
 
@@ -17,7 +17,7 @@ async def _fetch_notebooks() -> list[Any]:
 def load_notebooks_sync(state: TUIState) -> None:
     cache = getattr(state, "tui_cache", None)
     try:
-        notebooks = asyncio.run(_fetch_notebooks())
+        notebooks = asyncio.run(fetch_notebooks())
         state.notebooks = notebooks
         state.error_message = None
         if notebooks and not state.selected_notebook:
