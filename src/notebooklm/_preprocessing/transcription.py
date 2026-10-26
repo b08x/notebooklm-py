@@ -56,11 +56,11 @@ class DeepgramAdapter(TranscriptionAdapter):
 
     def transcribe(self, audio_path: str) -> dict[str, Any]:
         language = f"language={self.language}" if self.language else "detect_language=true"
-        diarize = "&diarize=true&diarize_model=latest" if self.diarize else ""
+        diarize = "&diarize=true" if self.diarize else ""
         url = (
             "https://api.deepgram.com/v1/listen"
             f"?model=nova-3&{language}&smart_format=true"
-            f"&punctuate=true&paragraphs=true"
+            f"{diarize}&punctuate=true&paragraphs=true"
             "&filler_words=true&numerals=true"
         )
         headers = {
