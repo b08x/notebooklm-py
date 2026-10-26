@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ingestion: source text to pgvector</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --paper: #EDE6D6; --paper-2: #E3DBC8; --card: #F4EFE3;
+      --ink: #2A2420; --muted: #5C5248; --soft: #6B5F52;
+      --rule: rgba(42,36,32,0.12); --rule-strong: rgba(42,36,32,0.22);
+      --accent: #7C3AED; --accent-tint: rgba(124,58,237,0.10);
+      --stripe: rgba(42,36,32,0.035);
+      --font-mono: 'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+      --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --paper: #1F1F24; --paper-2: #26262E; --card: #26262E;
+        --ink: #ECEAF2; --muted: #B6B2C4; --soft: #9A96A8;
+        --rule: rgba(236,234,242,0.12); --rule-strong: rgba(236,234,242,0.24);
+        --accent: #C08BFA; --accent-tint: rgba(192,139,250,0.14);
+        --stripe: rgba(236,234,242,0.04);
+      }
+    }
+    :root[data-theme="dark"] {
+      --paper: #1F1F24; --paper-2: #26262E; --card: #26262E;
+      --ink: #ECEAF2; --muted: #B6B2C4; --soft: #9A96A8;
+      --rule: rgba(236,234,242,0.12); --rule-strong: rgba(236,234,242,0.24);
+      --accent: #C08BFA; --accent-tint: rgba(192,139,250,0.14);
+      --stripe: rgba(236,234,242,0.04);
+    }
+    body { font-family: var(--font-sans); background: var(--paper); color: var(--ink);
+           min-height: 100vh; padding: 3rem 1rem; }
+    .frame { max-width: 1280px; width: 100%; margin: 0 auto; padding: 0 1rem; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 400;
+               letter-spacing: 0.18em; text-transform: uppercase; color: var(--soft); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-mono); font-size: clamp(1.25rem, 2vw + 0.5rem, 1.75rem); font-weight: 700;
+         letter-spacing: -0.02em; line-height: 1.2; margin-bottom: 1.5rem; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    svg { width: 100%; min-width: 1280px; display: block; }
+    .caption { font-family: var(--font-mono); font-size: 0.75rem; line-height: 1.6; color: var(--muted);
+               margin-top: 1.25rem; max-width: 80ch; }
+    .caption code { color: var(--ink); }
+    @media print { .diagram-container { overflow-x: visible; } svg { min-width: 0; } }
+    /* svg roles */
+    .bg { fill: var(--paper); } .mask { fill: var(--paper); }
+    .box { fill: var(--card); stroke: var(--ink); stroke-width: 1; }
+    .box.focal { stroke: var(--accent); stroke-width: 1.2; }
+    .box.optional { stroke-dasharray: 5,4; stroke: var(--muted); }
+    .tint { fill: var(--accent-tint); stroke: none; }
+    .head { fill: var(--stripe); stroke: none; } .head-focal { fill: var(--accent-tint); stroke: none; }
+    .stripe { fill: var(--stripe); }
+    .tag { fill: none; stroke: var(--ink); stroke-opacity: 0.4; stroke-width: 0.8; }
+    .focal-tag { stroke: var(--accent); stroke-opacity: 1; }
+    .chip { fill: none; stroke: var(--ink); stroke-opacity: 0.35; stroke-width: 0.8; }
+    .zone { fill: var(--stripe); stroke: var(--rule-strong); stroke-width: 0.8; stroke-dasharray: 4,4; }
+    .hair { stroke: var(--rule); stroke-width: 0.8; } .hair-strong { stroke: var(--rule-strong); stroke-width: 1; }
+    .ar { fill: none; stroke: var(--muted); stroke-width: 1.2; } .ar.dash { stroke-dasharray: 4,3; stroke-width: 1; }
+    .ar.acc { stroke: var(--accent); stroke-width: 1.2; }
+    .m-std { fill: var(--muted); } .m-acc { fill: var(--accent); }
+    .t-name { font: 600 12px var(--font-sans); fill: var(--ink); }
+    .t-col { font-weight: 400; }
+    .t-sub { font: 400 9px var(--font-mono); fill: var(--muted); }
+    .t-type { font: 400 9px var(--font-mono); fill: var(--muted); }
+    .t-leg { font: 400 9px var(--font-sans); fill: var(--muted); }
+    .eyebrow-tx { font: 400 8px var(--font-mono); letter-spacing: 0.1em; fill: var(--soft); }
+    .al { font: 400 8px var(--font-mono); letter-spacing: 0.06em; fill: var(--muted); }
+    .acc-tx { fill: var(--accent); }
+    .callout { font: italic 400 12px var(--font-mono); fill: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Write path · ingestion → chunking → embedding</p>
+    <h1>Ingestion: source text to pgvector</h1>
+    <div class="diagram-container">
+    <svg viewBox="0 0 1280 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="pipeline-write-title pipeline-write-desc">
+      <title id="pipeline-write-title">Ingestion: source text to pgvector</title>
+      <desc id="pipeline-write-desc">Left-to-right pipeline: a source's text is resolved, split into parent and child chunks, embedded with an optional summary prefix, annotated with spaCy features, and persisted as one chunk run in Postgres.</desc>
+      <defs>
+        <marker id="pipeline-write-arrow-std" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" class="m-std"/></marker>
+        <marker id="pipeline-write-arrow-acc" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" class="m-acc"/></marker>
+      </defs>
+      <rect width="100%" height="100%" class="bg"/>
+<path d="M 236,268 H 300" class="ar" marker-end="url(#pipeline-write-arrow-std)"/>
+<path d="M 484,268 H 548" class="ar" marker-end="url(#pipeline-write-arrow-std)"/>
+<path d="M 732,268 H 796" class="ar" marker-end="url(#pipeline-write-arrow-std)"/>
+<path d="M 980,268 H 1044" class="ar" marker-end="url(#pipeline-write-arrow-std)"/>
+<path d="M 888,144 V 216" class="ar dash" marker-end="url(#pipeline-write-arrow-std)"/>
+<path d="M 640,320 V 436 Q 640,444 648,444 H 796" class="ar" marker-end="url(#pipeline-write-arrow-std)"/>
+<path d="M 980,444 H 1128 Q 1136,444 1136,436 V 320" class="ar" marker-end="url(#pipeline-write-arrow-std)"/>
+<rect x="246.0" y="250" width="44" height="12" rx="2" class="mask"/><text x="268.0" y="259" class="al" text-anchor="middle">SOURCE</text>
+<rect x="500.0" y="250" width="32" height="12" rx="2" class="mask"/><text x="516.0" y="259" class="al" text-anchor="middle">TEXT</text>
+<rect x="738.0" y="250" width="52" height="12" rx="2" class="mask"/><text x="764.0" y="259" class="al" text-anchor="middle">CHILDREN</text>
+<rect x="988.0" y="250" width="48" height="12" rx="2" class="mask"/><text x="1012.0" y="259" class="al" text-anchor="middle">VECTORS</text>
+<rect x="896" y="174" width="44" height="12" rx="2" class="mask"/><text x="900" y="183" class="al" text-anchor="start">PREFIX</text>
+<rect x="690.0" y="426" width="64" height="12" rx="2" class="mask"/><text x="722.0" y="435" class="al" text-anchor="middle">CHILD TEXT</text>
+<rect x="1028.0" y="426" width="52" height="12" rx="2" class="mask"/><text x="1054.0" y="435" class="al" text-anchor="middle">FEATURES</text>
+<rect x="52" y="216" width="184" height="104" rx="6" class="mask"/>
+<rect x="52" y="216" width="184" height="104" rx="6" class="box"/>
+<rect x="184" y="226" width="40" height="12" rx="2" class="tag"/>
+<text x="204.0" y="235" class="eyebrow-tx" text-anchor="middle">INPUT</text>
+<text x="64" y="238" class="t-name">Sources</text>
+<text x="64" y="260" class="t-sub">url · text · file</text>
+<text x="64" y="274" class="t-sub">drive · audio · notes</text>
+<text x="64" y="288" class="t-sub">deep research</text>
+<rect x="300" y="216" width="184" height="104" rx="6" class="mask"/>
+<rect x="300" y="216" width="184" height="104" rx="6" class="box"/>
+<rect x="444" y="226" width="28" height="12" rx="2" class="tag"/>
+<text x="458.0" y="235" class="eyebrow-tx" text-anchor="middle">API</text>
+<text x="312" y="238" class="t-name">Resolve fulltext</text>
+<text x="312" y="260" class="t-sub">local_assets file first</text>
+<text x="312" y="274" class="t-sub">else sources.get_fulltext</text>
+<text x="312" y="288" class="t-sub">audio turns → ingest_chunks</text>
+<rect x="548" y="216" width="184" height="104" rx="6" class="mask"/>
+<rect x="548" y="216" width="184" height="104" rx="6" class="box"/>
+<rect x="660" y="226" width="60" height="12" rx="2" class="tag"/>
+<text x="690.0" y="235" class="eyebrow-tx" text-anchor="middle">STRATEGY</text>
+<text x="560" y="238" class="t-name">Chunk</text>
+<text x="560" y="260" class="t-sub">parent → child chunks</text>
+<text x="560" y="274" class="t-sub">recursive</text>
+<text x="560" y="288" class="t-sub">cluster_semantic</text>
+<text x="560" y="302" class="t-sub">dynamic_window</text>
+<rect x="796" y="216" width="184" height="104" rx="6" class="mask"/>
+<rect x="796" y="216" width="184" height="104" rx="6" class="box"/>
+<rect x="920" y="226" width="48" height="12" rx="2" class="tag"/>
+<text x="944.0" y="235" class="eyebrow-tx" text-anchor="middle">OLLAMA</text>
+<text x="808" y="238" class="t-name">Embed children</text>
+<text x="808" y="260" class="t-sub">embeddinggemma · 768-d</text>
+<text x="808" y="274" class="t-sub">batches of 32 texts</text>
+<text x="808" y="288" class="t-sub">input = prefix + chunk</text>
+<rect x="796" y="40" width="184" height="104" rx="6" class="mask"/>
+<rect x="796" y="40" width="184" height="104" rx="6" class="box optional"/>
+<rect x="940" y="50" width="28" height="12" rx="2" class="tag"/>
+<text x="954.0" y="59" class="eyebrow-tx" text-anchor="middle">API</text>
+<text x="808" y="62" class="t-name">Context prefix</text>
+<text x="808" y="84" class="t-sub">source summary (get_guide)</text>
+<text x="808" y="98" class="t-sub">else notebook summary</text>
+<text x="808" y="112" class="t-sub">embedding input only</text>
+<rect x="796" y="392" width="184" height="104" rx="6" class="mask"/>
+<rect x="796" y="392" width="184" height="104" rx="6" class="box"/>
+<rect x="928" y="402" width="40" height="12" rx="2" class="tag"/>
+<text x="948.0" y="411" class="eyebrow-tx" text-anchor="middle">SPACY</text>
+<text x="808" y="414" class="t-name">Clause features</text>
+<text x="808" y="436" class="t-sub">tokens · lemma · pos · dep</text>
+<text x="808" y="450" class="t-sub">noun chunks</text>
+<text x="808" y="464" class="t-sub">clause groups</text>
+<rect x="1044" y="216" width="184" height="104" rx="6" class="mask"/>
+<rect x="1044" y="216" width="184" height="104" rx="6" class="box focal"/>
+<rect x="1044" y="216" width="184" height="104" rx="6" class="tint"/>
+<rect x="1156" y="226" width="60" height="12" rx="2" class="tag focal-tag"/>
+<text x="1186.0" y="235" class="eyebrow-tx" text-anchor="middle">PGVECTOR</text>
+<text x="1056" y="238" class="t-name">Postgres</text>
+<text x="1056" y="260" class="t-sub">chunk_runs · parent_chunks</text>
+<text x="1056" y="274" class="t-sub">clauses · embeddings</text>
+<text x="1056" y="288" class="t-sub">new run set is_active</text>
+<line x1="40" y1="548" x2="1240" y2="548" class="hair"/>
+<text x="40" y="566" class="eyebrow-tx">LEGEND</text>
+<rect x="40" y="576" width="20" height="12" rx="2" class="box"/>
+<text x="68" y="585" class="t-leg">Stage</text>
+<rect x="150" y="576" width="20" height="12" rx="2" class="box optional"/>
+<text x="178" y="585" class="t-leg">Optional (use_source_context)</text>
+<rect x="400" y="576" width="20" height="12" rx="2" class="box focal"/>
+<rect x="400" y="576" width="20" height="12" rx="2" class="tint"/>
+<text x="428" y="585" class="t-leg">Persisted store</text>
+<line x1="550" y1="582" x2="570" y2="582" class="ar"/>
+<text x="578" y="585" class="t-leg">Data handoff</text>
+<line x1="690" y1="582" x2="710" y2="582" class="ar dash"/>
+<text x="718" y="585" class="t-leg">Optional input</text>
+    </svg>
+    </div>
+    <p class="caption">Code: <code>_preprocessing/ingestion.py</code> (<code>IngestionService</code>), <code>_preprocessing/chunking/</code>, <code>_preprocessing/embeddings.py</code>. Only child chunks are embedded; the context prefix is embedding input, so <code>clauses.text</code> stores the unprefixed chunk. Every ingest appends a new <code>chunk_runs</code> row; older runs stay for comparison.</p>
+  </div>
+</body>
+</html>

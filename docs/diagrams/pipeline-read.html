@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Retrieval: hybrid keyword + vector search</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --paper: #EDE6D6; --paper-2: #E3DBC8; --card: #F4EFE3;
+      --ink: #2A2420; --muted: #5C5248; --soft: #6B5F52;
+      --rule: rgba(42,36,32,0.12); --rule-strong: rgba(42,36,32,0.22);
+      --accent: #7C3AED; --accent-tint: rgba(124,58,237,0.10);
+      --stripe: rgba(42,36,32,0.035);
+      --font-mono: 'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+      --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --paper: #1F1F24; --paper-2: #26262E; --card: #26262E;
+        --ink: #ECEAF2; --muted: #B6B2C4; --soft: #9A96A8;
+        --rule: rgba(236,234,242,0.12); --rule-strong: rgba(236,234,242,0.24);
+        --accent: #C08BFA; --accent-tint: rgba(192,139,250,0.14);
+        --stripe: rgba(236,234,242,0.04);
+      }
+    }
+    :root[data-theme="dark"] {
+      --paper: #1F1F24; --paper-2: #26262E; --card: #26262E;
+      --ink: #ECEAF2; --muted: #B6B2C4; --soft: #9A96A8;
+      --rule: rgba(236,234,242,0.12); --rule-strong: rgba(236,234,242,0.24);
+      --accent: #C08BFA; --accent-tint: rgba(192,139,250,0.14);
+      --stripe: rgba(236,234,242,0.04);
+    }
+    body { font-family: var(--font-sans); background: var(--paper); color: var(--ink);
+           min-height: 100vh; padding: 3rem 1rem; }
+    .frame { max-width: 1280px; width: 100%; margin: 0 auto; padding: 0 1rem; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 400;
+               letter-spacing: 0.18em; text-transform: uppercase; color: var(--soft); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-mono); font-size: clamp(1.25rem, 2vw + 0.5rem, 1.75rem); font-weight: 700;
+         letter-spacing: -0.02em; line-height: 1.2; margin-bottom: 1.5rem; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    svg { width: 100%; min-width: 1280px; display: block; }
+    .caption { font-family: var(--font-mono); font-size: 0.75rem; line-height: 1.6; color: var(--muted);
+               margin-top: 1.25rem; max-width: 80ch; }
+    .caption code { color: var(--ink); }
+    @media print { .diagram-container { overflow-x: visible; } svg { min-width: 0; } }
+    /* svg roles */
+    .bg { fill: var(--paper); } .mask { fill: var(--paper); }
+    .box { fill: var(--card); stroke: var(--ink); stroke-width: 1; }
+    .box.focal { stroke: var(--accent); stroke-width: 1.2; }
+    .box.optional { stroke-dasharray: 5,4; stroke: var(--muted); }
+    .tint { fill: var(--accent-tint); stroke: none; }
+    .head { fill: var(--stripe); stroke: none; } .head-focal { fill: var(--accent-tint); stroke: none; }
+    .stripe { fill: var(--stripe); }
+    .tag { fill: none; stroke: var(--ink); stroke-opacity: 0.4; stroke-width: 0.8; }
+    .focal-tag { stroke: var(--accent); stroke-opacity: 1; }
+    .chip { fill: none; stroke: var(--ink); stroke-opacity: 0.35; stroke-width: 0.8; }
+    .zone { fill: var(--stripe); stroke: var(--rule-strong); stroke-width: 0.8; stroke-dasharray: 4,4; }
+    .hair { stroke: var(--rule); stroke-width: 0.8; } .hair-strong { stroke: var(--rule-strong); stroke-width: 1; }
+    .ar { fill: none; stroke: var(--muted); stroke-width: 1.2; } .ar.dash { stroke-dasharray: 4,3; stroke-width: 1; }
+    .ar.acc { stroke: var(--accent); stroke-width: 1.2; }
+    .m-std { fill: var(--muted); } .m-acc { fill: var(--accent); }
+    .t-name { font: 600 12px var(--font-sans); fill: var(--ink); }
+    .t-col { font-weight: 400; }
+    .t-sub { font: 400 9px var(--font-mono); fill: var(--muted); }
+    .t-type { font: 400 9px var(--font-mono); fill: var(--muted); }
+    .t-leg { font: 400 9px var(--font-sans); fill: var(--muted); }
+    .eyebrow-tx { font: 400 8px var(--font-mono); letter-spacing: 0.1em; fill: var(--soft); }
+    .al { font: 400 8px var(--font-mono); letter-spacing: 0.06em; fill: var(--muted); }
+    .acc-tx { fill: var(--accent); }
+    .callout { font: italic 400 12px var(--font-mono); fill: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Read path · retrieval</p>
+    <h1>Retrieval: hybrid keyword + vector search</h1>
+    <div class="diagram-container">
+    <svg viewBox="0 0 1280 580" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="pipeline-read-title pipeline-read-desc">
+      <title id="pipeline-read-title">Retrieval: hybrid keyword + vector search</title>
+      <desc id="pipeline-read-desc">Left-to-right pipeline: a scoped query runs a Postgres full-text leg and a pgvector similarity leg, the two rankings are fused with reciprocal rank fusion, and the top hits are passed to a DSPy signature that writes the answer.</desc>
+      <defs>
+        <marker id="pipeline-read-arrow-std" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" class="m-std"/></marker>
+        <marker id="pipeline-read-arrow-acc" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" class="m-acc"/></marker>
+      </defs>
+      <rect width="100%" height="100%" class="bg"/>
+<rect x="364" y="48" width="232" height="368" rx="8" class="zone"/>
+<text x="376" y="64" class="eyebrow-tx">POSTGRES · CLAUSES + EMBEDDINGS</text>
+<path d="M 260,216 H 312 Q 320,216 320,208 V 148 Q 320,140 328,140 H 380" class="ar" marker-end="url(#pipeline-read-arrow-std)"/>
+<path d="M 260,248 H 312 Q 320,248 320,256 V 316 Q 320,324 328,324 H 380" class="ar" marker-end="url(#pipeline-read-arrow-std)"/>
+<path d="M 580,140 H 632 Q 640,140 640,148 V 208 Q 640,216 648,216 H 700" class="ar" marker-end="url(#pipeline-read-arrow-std)"/>
+<path d="M 580,324 H 632 Q 640,324 640,316 V 256 Q 640,248 648,248 H 700" class="ar" marker-end="url(#pipeline-read-arrow-std)"/>
+<path d="M 900,232 H 1020" class="ar" marker-end="url(#pipeline-read-arrow-std)"/>
+<rect x="648" y="172" width="48" height="12" rx="2" class="mask"/><text x="652" y="181" class="al" text-anchor="start">KEYWORD</text>
+<rect x="648" y="280" width="44" height="12" rx="2" class="mask"/><text x="652" y="289" class="al" text-anchor="start">VECTOR</text>
+<rect x="928.0" y="214" width="64" height="12" rx="2" class="mask"/><text x="960" y="223" class="al" text-anchor="middle">TOP 8 HITS</text>
+<rect x="60" y="180" width="200" height="104" rx="6" class="mask"/>
+<rect x="60" y="180" width="200" height="104" rx="6" class="box"/>
+<rect x="208" y="190" width="40" height="12" rx="2" class="tag"/>
+<text x="228.0" y="199" class="eyebrow-tx" text-anchor="middle">INPUT</text>
+<text x="72" y="202" class="t-name">Query + scope</text>
+<text x="72" y="224" class="t-sub">query text</text>
+<text x="72" y="238" class="t-sub">document_ids or Scope</text>
+<text x="72" y="252" class="t-sub">notebook → document_ids</text>
+<rect x="380" y="88" width="200" height="104" rx="6" class="mask"/>
+<rect x="380" y="88" width="200" height="104" rx="6" class="box"/>
+<rect x="540" y="98" width="28" height="12" rx="2" class="tag"/>
+<text x="554.0" y="107" class="eyebrow-tx" text-anchor="middle">SQL</text>
+<text x="392" y="110" class="t-name">Keyword leg</text>
+<text x="392" y="132" class="t-sub">ts_rank over to_tsvector</text>
+<text x="392" y="146" class="t-sub">GIN idx_clauses_tsv</text>
+<text x="392" y="160" class="t-sub">up to 25 hits</text>
+<rect x="380" y="272" width="200" height="104" rx="6" class="mask"/>
+<rect x="380" y="272" width="200" height="104" rx="6" class="box"/>
+<rect x="508" y="282" width="60" height="12" rx="2" class="tag"/>
+<text x="538.0" y="291" class="eyebrow-tx" text-anchor="middle">PGVECTOR</text>
+<text x="392" y="294" class="t-name">Vector leg</text>
+<text x="392" y="316" class="t-sub">embed query via Ollama</text>
+<text x="392" y="330" class="t-sub">L2 distance on embeddings</text>
+<text x="392" y="344" class="t-sub">HNSW idx_embeddings_hnsw</text>
+<text x="392" y="358" class="t-sub">up to 25 hits</text>
+<rect x="700" y="180" width="200" height="104" rx="6" class="mask"/>
+<rect x="700" y="180" width="200" height="104" rx="6" class="box focal"/>
+<rect x="700" y="180" width="200" height="104" rx="6" class="tint"/>
+<rect x="852" y="190" width="36" height="12" rx="2" class="tag focal-tag"/>
+<text x="870.0" y="199" class="eyebrow-tx" text-anchor="middle">FUSE</text>
+<text x="712" y="202" class="t-name">RRF fuse</text>
+<text x="712" y="224" class="t-sub">score = Σ 1/(k + rank)</text>
+<text x="712" y="238" class="t-sub">k = 60 · top_k = 8</text>
+<text x="712" y="252" class="t-sub">keeps kw and vec ranks</text>
+<rect x="1020" y="180" width="200" height="104" rx="6" class="mask"/>
+<rect x="1020" y="180" width="200" height="104" rx="6" class="box"/>
+<rect x="1172" y="190" width="36" height="12" rx="2" class="tag"/>
+<text x="1190.0" y="199" class="eyebrow-tx" text-anchor="middle">DSPY</text>
+<text x="1032" y="202" class="t-name">Synthesize answer</text>
+<text x="1032" y="224" class="t-sub">ClauseSearchAnswerSignature</text>
+<text x="1032" y="238" class="t-sub">context = ranked clauses</text>
+<text x="1032" y="252" class="t-sub">LM from setup_dspy_router</text>
+<text x="364" y="448" class="callout">If embedding the query fails, the vector leg is skipped</text>
+<text x="364" y="466" class="callout">and RRF ranks keyword hits alone (vector_leg_ok = false).</text>
+<line x1="40" y1="528" x2="1240" y2="528" class="hair"/>
+<text x="40" y="546" class="eyebrow-tx">LEGEND</text>
+<rect x="40" y="556" width="20" height="12" rx="2" class="box"/>
+<text x="68" y="565" class="t-leg">Stage</text>
+<rect x="150" y="556" width="20" height="12" rx="2" class="zone"/>
+<text x="178" y="565" class="t-leg">Postgres tables read</text>
+<rect x="340" y="556" width="20" height="12" rx="2" class="box focal"/>
+<rect x="340" y="556" width="20" height="12" rx="2" class="tint"/>
+<text x="368" y="565" class="t-leg">Rank fusion</text>
+<line x1="470" y1="562" x2="490" y2="562" class="ar"/>
+<text x="498" y="565" class="t-leg">Data handoff</text>
+    </svg>
+    </div>
+    <p class="caption">Code: <code>_app/clause_search.py</code> (<code>ranked_search</code>, <code>rrf_search</code>, <code>search_clauses</code>). <code>ranked_search</code> returns the fused hits with per-leg ranks and is what callers use when no generated answer is wanted; <code>search_clauses</code> adds the LLM synthesis step.</p>
+  </div>
+</body>
+</html>
