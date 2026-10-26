@@ -1,0 +1,106 @@
+{
+  "stage": "interview",
+  "title": "Fork separation + fresh multi-source ingest project",
+  "goalSlug": "fork-separation-ingest",
+  "questions": [
+    {
+      "id": "separation-scope",
+      "prompt": "What should the \"separation\" deliverable in this repo be?",
+      "description": "The fork (`development`) is 528 changed files / +66k lines over upstream `main`, almost purely additive. How much restructuring should happen here vs. just documenting the boundary?",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Manifest only: produce a fork-vs-upstream inventory (file/commit classification + extraction notes) under goals/fork-separation-ingest/, and leave both branches untouched.",
+      "recommendedOptionIds": ["manifest"],
+      "options": [
+        { "id": "manifest", "label": "Manifest/report only (Recommended)" },
+        { "id": "restructure", "label": "Restructure: split fork layer into its own package/dir in this repo" },
+        { "id": "mirror", "label": "Make development a clean upstream mirror; move all fork work out" },
+        { "id": "sync-merge", "label": "Merge latest upstream main into development first, then manifest" }
+      ],
+      "required": true
+    },
+    {
+      "id": "fresh-project",
+      "prompt": "Where should the fresh project live, and what should it be called?",
+      "description": "The new project depends on the upstream notebooklm-py API (published on PyPI) and does its own multi-source ingestion.",
+      "answerMode": "text",
+      "recommendedAnswer": "/home/b08x/WorkspaceV3/nlm-ingest, package name `nlm-ingest`",
+      "required": true
+    },
+    {
+      "id": "lift-set",
+      "prompt": "Which fork subsystems should be lifted into the fresh project?",
+      "description": "Fork-owned code, graph-traced: `_preprocessing/` (chunkers, embeddings, IngestionService), `db/` + `alembic/` (Postgres+pgvector schema), `_app/` corpus orchestration (corpus, scope, tracing, artifact_ingest), transcription/audio, fact-check/SFL/assessment, TUI, web UI, REST corpus routes, MCP clauses tools.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "preprocessing-core + db-schema + corpus-orchestration (the proven ingest path); defer transcription and the UIs.",
+      "recommendedOptionIds": ["preprocessing-core", "db-schema", "corpus-orchestration"],
+      "options": [
+        { "id": "preprocessing-core", "label": "Preprocessing core (chunk/embed/ingest) (Recommended)" },
+        { "id": "db-schema", "label": "DB schema + alembic migrations (pgvector) (Recommended)" },
+        { "id": "corpus-orchestration", "label": "Corpus orchestration (_app corpus/scope/tracing) (Recommended)" },
+        { "id": "transcription-audio", "label": "Transcription + audio ingest path" },
+        { "id": "factcheck-sfl", "label": "Fact-check / SFL / assessment engine" },
+        { "id": "tui", "label": "Textual TUI + job queue" },
+        { "id": "web-ui", "label": "React Corpus Explorer web UI" },
+        { "id": "rest-routes", "label": "REST corpus/factcheck routes" },
+        { "id": "mcp-tools", "label": "MCP clause tools" }
+      ],
+      "required": true
+    },
+    {
+      "id": "source-types",
+      "prompt": "Which input source types must the fresh project's ingestion v1 support?",
+      "description": "Upstream `client.sources` already exposes add_url / add_text / add_file / add_drive / add_drive_file + get_fulltext; audio needs artifacts.download_audio → transcribe; the fork also has a LocalAsset disk cache and note ingestion.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "URL, text, file upload, and audio artifacts as the four v1 paths; Drive and notes later.",
+      "recommendedOptionIds": ["nlm-url", "nlm-text", "nlm-file", "audio-artifacts"],
+      "options": [
+        { "id": "nlm-url", "label": "Web URL → NotebookLM source (Recommended)" },
+        { "id": "nlm-text", "label": "Raw text paste (Recommended)" },
+        { "id": "nlm-file", "label": "File upload → NotebookLM source (Recommended)" },
+        { "id": "audio-artifacts", "label": "Audio artifact → transcribe → ingest (Recommended)" },
+        { "id": "nlm-drive", "label": "Google Drive file" },
+        { "id": "local-cache", "label": "Local disk cache bypass (LocalAsset)" },
+        { "id": "notes", "label": "Notebook notes as input" },
+        { "id": "deep-research", "label": "Deep research import" }
+      ],
+      "required": true
+    },
+    {
+      "id": "storage",
+      "prompt": "What storage/embedding stack should the fresh project use?",
+      "description": "Upstream notebooklm-py has no embeddings API, so embeddings must be external either way. The fork already ships a proven Postgres + pgvector schema with alembic migrations and an Ollama adapter (embeddinggemma-300m).",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Reuse the fork's Postgres + pgvector + Ollama stack (schema and migrations already battle-tested in the DB-pipeline goal).",
+      "recommendedOptionIds": ["postgres"],
+      "options": [
+        { "id": "postgres", "label": "Postgres + pgvector + Ollama (Recommended)" },
+        { "id": "sqlite", "label": "SQLite + local embeddings (lighter, portable)" },
+        { "id": "hybrid", "label": "SQLite for dev, Postgres for prod" },
+        { "id": "defer", "label": "Decide during planning" }
+      ],
+      "required": true
+    },
+    {
+      "id": "upstream-dep",
+      "prompt": "How should the fresh project depend on upstream notebooklm-py?",
+      "description": "Upstream publishes to PyPI (`notebooklm-py`, fork currently at 0.8.1); upstream main has 344 commits not yet in development.",
+      "answerMode": "single",
+      "recommendedAnswer": "PyPI release of notebooklm-py (clean semver upgrades; no vendoring).",
+      "recommendedOptionIds": ["pypi"],
+      "options": [
+        { "id": "pypi", "label": "PyPI release (Recommended)" },
+        { "id": "git-pin", "label": "Git dependency pinned to teng-lin/notebooklm-py main" },
+        { "id": "vendored", "label": "Vendored snapshot of upstream code" }
+      ],
+      "required": true
+    },
+    {
+      "id": "success",
+      "prompt": "What is the done condition for this goal?",
+      "description": "What must exist (and be verifiable) to call this goal complete?",
+      "answerMode": "text",
+      "recommendedAnswer": "The fork/upstream manifest exists under goals/fork-separation-ingest/, and the fresh project ingests all selected v1 source types end-to-end (add → fulltext → chunk → embed → pgvector) with passing automated tests.",
+      "required": false
+    }
+  ]
+}
