@@ -288,11 +288,9 @@ def align_chunk_timestamps(
                     matched_end = max(matched_start + 1.0, normalized_words[end_idx].end)
 
                     spk_candidates = [normalized_words[k].speaker for k in range(i, end_idx + 1)]
-                    detected_spk = (
-                        Counter(spk_candidates).most_common(1)[0][0]
-                        if spk_candidates
-                        else "Speaker 0"
-                    )
+                    detected_spk = "Speaker 0"
+                    if spk_candidates:
+                        detected_spk, _count = Counter(spk_candidates).most_common(1)[0]
 
                     results.append((matched_start, matched_end, spk or detected_spk))
                     current_time_cursor = matched_end + 0.2
@@ -353,6 +351,128 @@ def _stylize_dialogue_entities(
 
 
 # ---------------------------------------------------------------------------
+# Formatting Helpers for Fact-Check Evidence & SFL Linguistics
+# ---------------------------------------------------------------------------
+
+
+def format_ass_evidence(citations: str, clause_id: str, badge: str) -> str:
+    """Format fact-check evidence into clean, untruncated ASS lines with clearly displayed links."""
+    clean_raw = citations.strip() if citations else ""
+    if not clean_raw:
+        return (
+            rf"{{\an9}}{badge}\N"
+            rf"{{\fs14\c{ASS_WHITE}}}Evidence: {{\c{ASS_MUTED}}}No citation data recorded.\N"
+            rf"{{\fs12\c{ASS_MUTED}}}[Clause {clause_id}]"
+        )
+
+    # 1. Search for markdown links: [Title](URL)
+    md_link_pattern = r"\[([^\]]+)\]\((https?://[^)]+)\)"
+    md_matches = list(re.finditer(md_link_pattern, clean_raw))
+
+    lines: list[str] = [rf"{{\an9}}{badge}"]
+
+    if md_matches:
+        for i, match in enumerate(md_matches, start=1):
+            title = sanitize_ass_text(match.group(1).strip().strip("\"'"))
+            url = sanitize_ass_text(match.group(2).strip())
+            prefix = f"Source {i}: " if len(md_matches) > 1 else "Source: "
+            lines.append(rf"{{\fs14\b1\c{ASS_WHITE}}}{prefix}{{\b0\c{ASS_OFFWHITE}}}{title}")
+            lines.append(
+                rf"{{\fs13\b1\c{ASS_SPEAKER_1}}}Link: {{\b0\c{ASS_FC_BYPASS}\u1}}{url}{{\u0}}"
+            )
+
+        # Retain any meaningful commentary outside the markdown links
+        remaining = re.sub(md_link_pattern, "", clean_raw)
+        remaining = re.sub(r"^[\s\-*•:]+", "", remaining)
+        remaining = re.sub(r"[\s\-*•:]+$", "", remaining).strip()
+        if remaining and len(remaining) > 3 and not remaining.startswith("("):
+            clean_rem = sanitize_ass_text(remaining)
+            lines.append(rf"{{\fs13\c{ASS_MUTED}}}Note: {{\c{ASS_OFFWHITE}}}{clean_rem}")
+
+    else:
+        # 2. Check for standalone URLs
+        url_pattern = r"(https?://[^\s)\]]+)"
+        urls = list(re.finditer(url_pattern, clean_raw))
+        if urls:
+            rem_text = re.sub(url_pattern, "", clean_raw).strip(" -:*\n")
+            if rem_text:
+                clean_rem = sanitize_ass_text(rem_text)
+                lines.append(
+                    rf"{{\fs14\b1\c{ASS_WHITE}}}Evidence: {{\b0\c{ASS_OFFWHITE}}}{clean_rem}"
+                )
+            for i, u_match in enumerate(urls, start=1):
+                url = sanitize_ass_text(u_match.group(1).strip())
+                prefix = f"Link {i}: " if len(urls) > 1 else "Link: "
+                lines.append(
+                    rf"{{\fs13\b1\c{ASS_SPEAKER_1}}}{prefix}{{\b0\c{ASS_FC_BYPASS}\u1}}{url}{{\u0}}"
+                )
+        else:
+            # 3. Pure text evidence without URL
+            clean_text = re.sub(r"^[\s\-*•]+\s*", "", clean_raw)
+            clean_text = sanitize_ass_text(clean_text)
+            lines.append(rf"{{\fs14\b1\c{ASS_WHITE}}}Evidence: {{\b0\c{ASS_OFFWHITE}}}{clean_text}")
+
+    lines.append(rf"{{\fs12\c{ASS_MUTED}}}[Clause {clause_id}]")
+    return r"\N".join(lines)
+
+
+def format_ass_sfl(
+    chunk_sfl: dict[str, Any] | None,
+    entities: list[tuple[str, str]] | None = None,
+    topic_id: int = -1,
+) -> str:
+    """Format SFL linguistic analysis into clean, untruncated ASS lines."""
+    if chunk_sfl:
+        sfl_formatted = format_sfl(chunk_sfl)
+        ideational = sfl_formatted["ideational"]
+        interpersonal = sfl_formatted["interpersonal"]
+
+        participants = ", ".join(ideational.get("participants", []))
+        processes = ", ".join(ideational.get("processes", []))
+        circumstances = ", ".join(ideational.get("circumstances", []))
+        tenor = ", ".join(interpersonal.get("tenor", []))
+        mood = ", ".join(interpersonal.get("mood", []))
+        modality = ", ".join(interpersonal.get("modality", []))
+
+        lines = [rf"{{\an7\fscx92\fscy92}}{{\b1\c{ASS_SFL_TITLE}}}SFL METAFUNCTIONS{{\b0}}"]
+        if tenor:
+            lines.append(
+                rf"{{\fs14\c{ASS_SFL_LABEL}}}Tenor: {{\c{ASS_SFL_TENOR}}}{sanitize_ass_text(tenor)}"
+            )
+        if mood:
+            lines.append(
+                rf"{{\fs14\c{ASS_SFL_LABEL}}}Mood: {{\c{ASS_SFL_MOOD}}}{sanitize_ass_text(mood)}"
+            )
+        if modality and modality != "neutral":
+            lines.append(
+                rf"{{\fs14\c{ASS_SFL_LABEL}}}Modality: {{\c{ASS_SFL_MODALITY}}}{sanitize_ass_text(modality)}"
+            )
+        if participants:
+            lines.append(
+                rf"{{\fs14\c{ASS_SFL_LABEL}}}Participants: {{\c{ASS_WHITE}}}{sanitize_ass_text(participants)}"
+            )
+        if processes:
+            lines.append(
+                rf"{{\fs14\c{ASS_SFL_LABEL}}}Processes: {{\c{ASS_OFFWHITE}}}{sanitize_ass_text(processes)}"
+            )
+        if circumstances:
+            lines.append(
+                rf"{{\fs14\c{ASS_SFL_LABEL}}}Circumstances: {{\c{ASS_MUTED}}}{sanitize_ass_text(circumstances)}"
+            )
+        return r"\N".join(lines)
+    else:
+        lines = [rf"{{\an7\fscx92\fscy92}}{{\b1\c{ASS_SFL_TITLE}}}ANNOTATIONS{{\b0}}"]
+        topic_str = str(topic_id) if topic_id != -1 else "general"
+        lines.append(rf"{{\fs14\c{ASS_SFL_LABEL}}}Topic: {{\c{ASS_SFL_MOOD}}}{topic_str}")
+        if entities:
+            ent_summary = ", ".join(f"{name} ({kind})" for name, kind in entities)
+            lines.append(
+                rf"{{\fs14\c{ASS_SFL_LABEL}}}Entities: {{\c{ASS_WHITE}}}{sanitize_ass_text(ent_summary)}"
+            )
+        return r"\N".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Core ASS Subtitle Exporter
 # ---------------------------------------------------------------------------
 
@@ -407,17 +527,17 @@ def generate_ass_script(
         # Default / Fallback
         f"Style: Default,Arial,32,{ASS_WHITE},&H000000FF&,{ASS_DARK_SHADOW},{ASS_HEADER_BG},0,0,0,0,100,100,0,0,1,2,2,2,40,40,40,1",
         # Dialogue Styles (Bottom-Center, Alignment 2)
-        f"Style: Dialogue_Speaker0,Arial,34,{ASS_SPEAKER_0},&H000000FF&,{ASS_DARK_SHADOW},{ASS_HEADER_BG},0,0,0,0,100,100,0,0,1,2,2,2,60,60,45,1",
-        f"Style: Dialogue_Speaker1,Arial,34,{ASS_SPEAKER_1},&H000000FF&,{ASS_DARK_SHADOW},{ASS_HEADER_BG},0,0,0,0,100,100,0,0,1,2,2,2,60,60,45,1",
-        f"Style: Dialogue_Speaker2,Arial,34,{ASS_SPEAKER_2},&H000000FF&,{ASS_DARK_SHADOW},{ASS_HEADER_BG},0,0,0,0,100,100,0,0,1,2,2,2,60,60,45,1",
-        f"Style: Dialogue_Speaker3,Arial,34,{ASS_SPEAKER_3},&H000000FF&,{ASS_DARK_SHADOW},{ASS_HEADER_BG},0,0,0,0,100,100,0,0,1,2,2,2,60,60,45,1",
+        f"Style: Dialogue_Speaker0,Arial,34,{ASS_SPEAKER_0},&H000000FF&,{ASS_DARK_SHADOW},{ASS_HEADER_BG},-1,0,0,0,100,100,0,0,1,3,2,2,80,80,65,1",
+        f"Style: Dialogue_Speaker1,Arial,34,{ASS_SPEAKER_1},&H000000FF&,{ASS_DARK_SHADOW},{ASS_HEADER_BG},-1,0,0,0,100,100,0,0,1,3,2,2,80,80,65,1",
+        f"Style: Dialogue_Speaker2,Arial,34,{ASS_SPEAKER_2},&H000000FF&,{ASS_DARK_SHADOW},{ASS_HEADER_BG},-1,0,0,0,100,100,0,0,1,3,2,2,80,80,65,1",
+        f"Style: Dialogue_Speaker3,Arial,34,{ASS_SPEAKER_3},&H000000FF&,{ASS_DARK_SHADOW},{ASS_HEADER_BG},-1,0,0,0,100,100,0,0,1,3,2,2,80,80,65,1",
         # Fact-Check HUD Styles (Top-Right, Alignment 9)
-        f"Style: FactCheck_Pass,Arial,20,{ASS_FC_PASS},&H000000FF&,{ASS_DARK_SHADOW},{ASS_BOX_BG},-1,0,0,0,100,100,0,0,1,2,1,9,40,50,35,1",
-        f"Style: FactCheck_Fail,Arial,20,{ASS_FC_FAIL},&H000000FF&,{ASS_DARK_SHADOW},{ASS_BOX_BG},-1,0,0,0,100,100,0,0,1,2,1,9,40,50,35,1",
-        f"Style: FactCheck_Bypass,Arial,20,{ASS_FC_BYPASS},&H000000FF&,{ASS_DARK_SHADOW},{ASS_BOX_BG},-1,0,0,0,100,100,0,0,1,2,1,9,40,50,35,1",
-        f"Style: FactCheck_Unverified,Arial,20,{ASS_FC_UNVERIFIED},&H000000FF&,{ASS_DARK_SHADOW},{ASS_BOX_BG},-1,0,0,0,100,100,0,0,1,2,1,9,40,50,35,1",
+        f"Style: FactCheck_Pass,Arial,18,{ASS_FC_PASS},&H000000FF&,{ASS_DARK_SHADOW},{ASS_BOX_BG},-1,0,0,0,100,100,0,0,1,2,1,9,960,45,30,1",
+        f"Style: FactCheck_Fail,Arial,18,{ASS_FC_FAIL},&H000000FF&,{ASS_DARK_SHADOW},{ASS_BOX_BG},-1,0,0,0,100,100,0,0,1,2,1,9,960,45,30,1",
+        f"Style: FactCheck_Bypass,Arial,18,{ASS_FC_BYPASS},&H000000FF&,{ASS_DARK_SHADOW},{ASS_BOX_BG},-1,0,0,0,100,100,0,0,1,2,1,9,960,45,30,1",
+        f"Style: FactCheck_Unverified,Arial,18,{ASS_FC_UNVERIFIED},&H000000FF&,{ASS_DARK_SHADOW},{ASS_BOX_BG},-1,0,0,0,100,100,0,0,1,2,1,9,960,45,30,1",
         # Linguistic / SFL Annotations HUD Style (Top-Left, Alignment 7)
-        f"Style: Annotation_SFL,Arial,18,{ASS_OFFWHITE},&H000000FF&,{ASS_DARK_SHADOW},{ASS_BOX_BG},0,0,0,0,100,100,0,0,1,2,1,7,50,40,35,1",
+        f"Style: Annotation_SFL,Arial,16,{ASS_OFFWHITE},&H000000FF&,{ASS_DARK_SHADOW},{ASS_BOX_BG},0,0,0,0,100,100,0,0,1,2,1,7,45,960,30,1",
         # Top Header / Watermark / Intro Banner (Top-Center, Alignment 8)
         f"Style: Assessment_Header,Arial,18,{ASS_OFFWHITE},&H000000FF&,{ASS_DARK_SHADOW},{ASS_HEADER_BG},0,0,0,0,100,100,0,0,1,1,1,8,40,40,15,1",
         "",
@@ -433,7 +553,9 @@ def generate_ass_script(
     passed_chunks = sum(1 for c in chunks if getattr(c, "fact_check_passed", None) is True)
 
     # Title Card / Intro Banner at 00:00:00 to 00:00:04 (or first chunk start)
-    first_start = aligned[0][0] if aligned else 0.0
+    first_start = 0.0
+    if aligned:
+        first_start, _end, _speaker = aligned[0]
     intro_end = min(4.5, max(2.5, first_start))
     header_text = (
         r"{\an8\fs24\b1\c"
@@ -477,11 +599,10 @@ def generate_ass_script(
         # -------------------------------------------------------------------
         fc_passed = getattr(chunk, "fact_check_passed", None)
         fc_citations = getattr(chunk, "fact_check_citations", "") or ""
-        clean_citations = sanitize_ass_text(fc_citations)
         clause_id = getattr(chunk, "clause_external_id", f"chunk-{idx + 1:03d}")
 
         if fc_passed is True:
-            if "bypassed" in clean_citations.lower() or "subjective" in clean_citations.lower():
+            if "bypassed" in fc_citations.lower() or "subjective" in fc_citations.lower():
                 fc_style = "FactCheck_Bypass"
                 badge = rf"{{\b1\c{ASS_FC_BYPASS}}}ℹ FACT-CHECK: BYPASSED (SUBJECTIVE){{\b0}}"
             else:
@@ -494,17 +615,7 @@ def generate_ass_script(
             fc_style = "FactCheck_Unverified"
             badge = rf"{{\b1\c{ASS_FC_UNVERIFIED}}}? FACT-CHECK: UNVERIFIED{{\b0}}"
 
-        # Truncate evidence string cleanly if very verbose for video display
-        if len(clean_citations) > 130:
-            evidence_snippet = clean_citations[:127] + "…"
-        else:
-            evidence_snippet = clean_citations or "No citation data recorded."
-
-        fc_hud_text = (
-            rf"{{\an9}}{badge}\N"
-            rf"{{\fs15\c{ASS_WHITE}}}Evidence: {evidence_snippet}\N"
-            rf"{{\fs13\c{ASS_MUTED}}}[Clause {clause_id}]"
-        )
+        fc_hud_text = format_ass_evidence(fc_citations, clause_id, badge)
         events_lines.append(
             f"Dialogue: 1,{start_ts},{end_ts},{fc_style},FactCheck,0,0,0,,{fc_hud_text}"
         )
@@ -513,43 +624,11 @@ def generate_ass_script(
         # Event C: SFL Linguistic Annotations HUD (Layer 2, Top-Left)
         # -------------------------------------------------------------------
         chunk_sfl = getattr(chunk, "sfl", None)
-        if chunk_sfl:
-            sfl_formatted = format_sfl(chunk_sfl)
-            ideational = sfl_formatted["ideational"]
-            interpersonal = sfl_formatted["interpersonal"]
-
-            participants = ", ".join(ideational.get("participants", [])) or "none"
-            processes = ", ".join(ideational.get("processes", [])) or "none"
-            tenor = ", ".join(interpersonal.get("tenor", [])) or "conversational"
-            mood = ", ".join(interpersonal.get("mood", [])) or "declarative"
-            modality = ", ".join(interpersonal.get("modality", [])) or "neutral"
-
-            # Truncate long SFL items so they stay sleek
-            if len(participants) > 35:
-                participants = participants[:32] + "…"
-            if len(tenor) > 30:
-                tenor = tenor[:27] + "…"
-
-            sfl_hud_text = (
-                rf"{{\an7\fscx92\fscy92}}{{\b1\c{ASS_SFL_TITLE}}}SFL METAFUNCTIONS{{\b0}}\N"
-                rf"{{\fs15\c{ASS_SFL_LABEL}}}Tenor: {{\c{ASS_SFL_TENOR}}}{tenor}\N"
-                rf"{{\c{ASS_SFL_LABEL}}}Mood: {{\c{ASS_SFL_MOOD}}}{mood}  {{\c{ASS_SFL_LABEL}}}Modality: {{\c{ASS_SFL_MODALITY}}}{modality}\N"
-                rf"{{\c{ASS_SFL_LABEL}}}Participants: {{\c{ASS_WHITE}}}{participants}\N"
-                rf"{{\c{ASS_SFL_LABEL}}}Processes: {{\c{ASS_OFFWHITE}}}{processes}"
-            )
-        else:
-            # Fallback annotations: Entities and Topic ID
-            ent_summary = (
-                ", ".join(f"{name} ({kind})" for name, kind in entities[:3]) if entities else "none"
-            )
-            top_id = getattr(chunk, "topic_id", -1)
-            topic_str = str(top_id) if top_id != -1 else "general"
-            sfl_hud_text = (
-                rf"{{\an7\fscx92\fscy92}}{{\b1\c{ASS_SFL_TITLE}}}ANNOTATIONS{{\b0}}\N"
-                rf"{{\fs15\c{ASS_SFL_LABEL}}}Topic: {{\c{ASS_SFL_MOOD}}}{topic_str}\N"
-                rf"{{\c{ASS_SFL_LABEL}}}Entities: {{\c{ASS_WHITE}}}{ent_summary}"
-            )
-
+        sfl_hud_text = format_ass_sfl(
+            chunk_sfl,
+            entities=entities,
+            topic_id=getattr(chunk, "topic_id", -1),
+        )
         events_lines.append(
             f"Dialogue: 2,{start_ts},{end_ts},Annotation_SFL,SFL,0,0,0,,{sfl_hud_text}"
         )

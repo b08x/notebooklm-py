@@ -5,6 +5,7 @@ import pytest
 from click.testing import CliRunner
 
 import notebooklm.auth as auth_module
+from notebooklm._app import assessment as assessment_module
 from notebooklm._app.assessment import AssessmentChunk, AssessmentResult
 from notebooklm.cli import helpers as helpers_module
 from notebooklm.notebooklm_cli import cli
@@ -65,8 +66,8 @@ def test_artifact_export_ass_success(runner, mock_auth, tmp_path):
 
     out_file = str(tmp_path / "custom_assessment.ass")
 
-    with patch(
-        "notebooklm._app.assessment.run_full_assessment", new_callable=AsyncMock
+    with patch.object(
+        assessment_module, "run_full_assessment", new_callable=AsyncMock
     ) as mock_assess:
         mock_assess.return_value = fake_result
         res = runner.invoke(
@@ -111,8 +112,8 @@ def test_artifact_export_ass_json(runner, mock_auth, tmp_path):
 
     out_file = str(tmp_path / "json_export.ass")
 
-    with patch(
-        "notebooklm._app.assessment.run_full_assessment", new_callable=AsyncMock
+    with patch.object(
+        assessment_module, "run_full_assessment", new_callable=AsyncMock
     ) as mock_assess:
         mock_assess.return_value = fake_result
         res = runner.invoke(
@@ -148,8 +149,8 @@ def test_artifact_export_assessment_alias(runner, mock_auth, tmp_path):
 
     out_file = str(tmp_path / "alias_out.ass")
 
-    with patch(
-        "notebooklm._app.assessment.run_full_assessment", new_callable=AsyncMock
+    with patch.object(
+        assessment_module, "run_full_assessment", new_callable=AsyncMock
     ) as mock_assess:
         mock_assess.return_value = fake_result
         res = runner.invoke(

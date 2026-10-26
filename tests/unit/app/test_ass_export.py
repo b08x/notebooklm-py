@@ -4,6 +4,8 @@ import os
 from notebooklm._app.ass_export import (
     align_chunk_timestamps,
     extract_normalized_words,
+    format_ass_evidence,
+    format_ass_sfl,
     format_ass_timestamp,
     generate_ass_script,
     sanitize_ass_text,
@@ -263,3 +265,73 @@ def test_save_assessment_ass(tmp_path):
         content = f.read()
     assert "[Script Info]" in content
     assert "File save test." in content
+
+
+def test_format_ass_evidence_markdown_links():
+    badge = r"{\b1\c&H0070FA50&}✓ FACT-CHECK: VERIFIED{\b0}"
+    citations = (
+        '- [HackerNoon: Calling Current LLM Wrappers "Agents" is Like Calling Excel Macros '
+        "a Programming Language Revolution](https://hackernoon.com/calling-current-llm-wrappers-agents-is-like-calling-excel-macros-a-programming-language-revolution)"
+    )
+    clause_id = "9bac0ca8-456b-4b4d-8adc-f7c37c2ca726:98:149"
+    formatted = format_ass_evidence(citations, clause_id, badge)
+
+    # Must contain full, untruncated URL and clean source title
+    assert (
+        "https://hackernoon.com/calling-current-llm-wrappers-agents-is-like-calling-excel-macros-a-programming-language-revolution"
+        in formatted
+    )
+    assert "Calling Current LLM Wrappers" in formatted
+    assert "Source:" in formatted
+    assert "Link:" in formatted
+    assert r"\u1" in formatted  # Underlined link
+    assert "…" not in formatted  # Untruncated
+    assert "..." not in formatted
+    assert f"[Clause {clause_id}]" in formatted
+
+
+def test_format_ass_evidence_standalone_urls():
+    badge = r"{\b1\c&H0070FA50&}✓ FACT-CHECK: VERIFIED{\b0}"
+    citations = "Verified via https://en.wikipedia.org/wiki/Artificial_intelligence"
+    clause_id = "c-wiki"
+    formatted = format_ass_evidence(citations, clause_id, badge)
+
+    assert "https://en.wikipedia.org/wiki/Artificial_intelligence" in formatted
+    assert "Link:" in formatted
+    assert "Verified via" in formatted
+    assert "[Clause c-wiki]" in formatted
+
+
+def test_format_ass_sfl_untruncated():
+    sfl_data = {
+        "ideational": {
+            "participants": [
+                "Speaker",
+                "Our sources",
+                "a great example of this, the classic retry wrapper",
+            ],
+            "processes": ["give"],
+            "circumstances": ["in production"],
+        },
+        "interpersonal": {
+            "tenor": ["role_relationship: collaborator, power: equal, contact: frequent"],
+            "mood": ["declarative (indicative)"],
+            "modality": [
+                "type: epistemic, value: high certainty, realization: assertion of fact ('give a great example')"
+            ],
+        },
+    }
+    formatted = format_ass_sfl(sfl_data)
+
+    # Assert neither participants nor tenor nor modality is truncated
+    assert "a great example of this, the classic retry wrapper" in formatted
+    assert "role_relationship: collaborator, power: equal, contact: frequent" in formatted
+    assert "type: epistemic, value: high certainty" in formatted
+    assert "…" not in formatted
+    assert "..." not in formatted
+    assert r"Tenor:" in formatted
+    assert r"Mood:" in formatted
+    assert r"Modality:" in formatted
+    assert r"Participants:" in formatted
+    assert r"Processes:" in formatted
+    assert r"Circumstances:" in formatted
